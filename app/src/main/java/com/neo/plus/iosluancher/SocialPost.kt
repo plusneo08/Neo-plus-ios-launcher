@@ -276,7 +276,11 @@ object SocialPoster {
                     .flatMap { UiDriver.names(it).take(2) }.map { it.take(28) }.distinct().take(30).joinToString(" | ")
             } catch (e: Exception) { }
 
-            if (!typed) {
+            // Only type once the composer is open (every opening step done, or the final button is already on screen),
+            // so the text can never land in a comment or search box on the feed.
+            val composerOpen = stages.withIndex().none { (i, st) -> st.kind == STEP && i >= idx } ||
+                stages.any { it.kind == FINAL && UiDriver.findAny(root, it.names, it.ids) != null }
+            if (!typed && composerOpen) {
                 val field = UiDriver.findEditable(root, "", skipSearch = true)
                 if (field != null) {
                     val cur = if (field.isShowingHintText) "" else field.text?.toString().orEmpty()
@@ -340,13 +344,4 @@ object SocialCmd {
     private val mediaPhrase = Regex("^(?:my |the |a |an |this |that |our )?(?:(?:latest|last|recent|newest|new|first|best)\\s+)?(?:photos?|pictures?|images?|pics?|selfies?|screenshots?|videos?|clips?|movies?|files?|documents?|pdf)\\b", I)
     private val thisWord = Regex("^(?:this|that|it|these|those|them)(?: (?:photo|picture|image|video|file|one))?$", I)
 
-    private fun kindOf(word: String): String = when (word.lowercase(Locale.ROOT)) {
-        "story", "stories" -> "story"
-        "reel", "reels" -> "reel"
-        "status" -> "status"
-        else -> "post"
-    }
-
-    fun plan(text: String, apps: List<AppEntry>): LocalPlan? {
-        val attached = attachTag.findAll(text).map { it.groupValues[1].trim() }.filter { it.isNotEmpty() }.toList()
-        val t = text.replace(attachTag, " ").trim().replace(lead, "").trim().trimEnd('
+    private fun kindOf(word: String): String = when (word.low
