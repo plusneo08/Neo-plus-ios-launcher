@@ -1,0 +1,39 @@
+NEO PLUS iOS Launcher - setup on the phone itself (no computer)
+================================================================
+Needs Android 11 or newer, Wi-Fi, and the free LADB app (adb that runs on the phone).
+
+1. Install LADB (search "LADB" - github.com/tytydraco/LADB, or the Play Store).
+2. Settings > About phone > tap Build number 7 times. Then Settings > System > Developer options > turn on "Wireless debugging".
+3. Open LADB and follow its pairing screen (it shows how to enter the pairing code from Wireless debugging).
+4. When LADB shows a shell prompt, paste these lines ONE AT A TIME (press Enter after each).
+   Replace nothing - they are already correct:
+
+pm grant com.neo.plus.iosluancher android.permission.WRITE_SECURE_SETTINGS
+pm grant com.neo.plus.iosluancher android.permission.CAMERA
+pm grant com.neo.plus.iosluancher android.permission.READ_CONTACTS
+pm grant com.neo.plus.iosluancher android.permission.CALL_PHONE
+pm grant com.neo.plus.iosluancher android.permission.READ_PHONE_STATE
+pm grant com.neo.plus.iosluancher android.permission.READ_CALENDAR
+pm grant com.neo.plus.iosluancher android.permission.RECORD_AUDIO
+pm grant com.neo.plus.iosluancher android.permission.ACCESS_FINE_LOCATION
+pm grant com.neo.plus.iosluancher android.permission.ACCESS_COARSE_LOCATION
+pm grant com.neo.plus.iosluancher android.permission.POST_NOTIFICATIONS
+appops set com.neo.plus.iosluancher MANAGE_EXTERNAL_STORAGE allow
+appops set com.neo.plus.iosluancher WRITE_SETTINGS allow
+cmd notification allow_listener com.neo.plus.iosluancher/com.neo.plus.iosluancher.NeoNotificationService
+cmd notification allow_dnd com.neo.plus.iosluancher
+dpm set-active-admin com.neo.plus.iosluancher/com.neo.plus.iosluancher.NeoDeviceAdminReceiver
+cmd role add-role-holder android.app.role.HOME com.neo.plus.iosluancher
+
+   (Some lines may say a permission is unknown on your Android version - ignore those.)
+
+5. Full-phone mode (optional, hides Android's bars in every app):
+   a. Settings > Accounts: remove every account (Google, Samsung ...). Re-add them afterwards.
+   b. In LADB, run these two lines:
+
+cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.gestural
+dpm set-device-owner com.neo.plus.iosluancher/com.neo.plus.iosluancher.NeoDeviceAdminReceiver
+
+   It prints "Success" when it worked. If it refuses, an account is still signed in.
+6. Turn on "NEO PLUS iOS Controls" in Settings > Accessibility if the launcher has not already asked.
+7. To leave: tell Neo Plus Assistant "remove device owner".

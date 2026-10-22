@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Files handed to WhatsApp, Messenger, Instagram and mail apps are copied here first, so those apps can read them. -->
+<paths>
+    <cache-path name="share" path="share/" />
+</paths>
