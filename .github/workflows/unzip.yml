@@ -1,0 +1,18 @@
+name: Unzip project
+on: workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  unzip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          unzip -q NEO-PLUS-IOS-LAUNCHER-fixed.zip
+          cp -r NEO-PLUS-IOS-LAUNCHER/. .
+          rm -rf NEO-PLUS-IOS-LAUNCHER NEO-PLUS-IOS-LAUNCHER-fixed.zip
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add -A
+          git commit -m "Unzip project"
+          git push
