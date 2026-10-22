@@ -228,7 +228,19 @@ object SocialPoster {
             return "Turn on “NEO PLUS iOS Controls” in Accessibility so I can press the buttons. I opened $label with $what ready, " +
                 "but nothing is posted yet."
         }
-        if (intents.none { ctx.safeStart(it) }) return "Couldn’t open $label"
+        // Also try the same share without a named screen (the app picks its own), and say WHY it failed if nothing opens.
+        val failures = ArrayList<String>()
+        fun tryStart(i: Intent): Boolean = try {
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(i)
+            true
+        } catch (e: Exception) {
+            failures += (e.javaClass.simpleName + ": " + e.message.orEmpty().take(90))
+            false
+        }
+        if (builtin != null && kind != "story" && items.isNotEmpty()) intents += Intent(share()).setPackage(pkg)
+        if (intents.none { tryStart(it) })
+            return "Couldn’t open $label (${failures.distinct().joinToString(" / ").ifBlank { "no way to open it" }})"
         try { Thread.sleep(1200) } catch (e: InterruptedException) { }
 
         val problem = runFlow(ctx, pkgs, stages, caption, 90_000L, finalName, extras)
