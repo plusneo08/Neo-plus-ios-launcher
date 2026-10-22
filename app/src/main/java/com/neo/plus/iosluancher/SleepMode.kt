@@ -83,8 +83,10 @@ object SleepMode {
 
     /* ---------------- start / stop ---------------- */
 
-    fun start(ctx: Context, hour: Int, minute: Int): String {
+    fun start(ctx: Context, hour: Int, minute: Int, activity: String = ""): String {
         val app = ctx.applicationContext
+        // What the user is doing instead of sleeping ("in a meeting", "driving"); blank = asleep. Kept short and on one line.
+        val act = activity.replace(Regex("[\\r\\n\"]"), " ").trim().take(40)
         if (!NotificationManagerCompat.getEnabledListenerPackages(app).contains(app.packageName)) {
             app.safeStart(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             return "Turn on notification access for Neo Plus, then tell me again"
@@ -96,7 +98,7 @@ object SleepMode {
         }
         if (cal.timeInMillis <= System.currentTimeMillis() + 60_000) cal.add(Calendar.DAY_OF_YEAR, 1)
         prefs(app).edit().putBoolean("on", true).putLong("wake_at", cal.timeInMillis).putLong("started", System.currentTimeMillis())
-            .putString("log", "[]").putString("replied", "{}").putString("replied_n", "{}").putInt("retries", 0).putString("report", "").apply()
+            .putString("activity", act).putString("log", "[]").putString("replied", "{}").putString("replied_n", "{}").putInt("retries", 0).putString("report", "").apply()
         synchronized(seen) { seen.clear() }
         NotifStore.convoClear()
         // Capture what is already waiting in the notification shade, so nothing that arrived just before bed is missed
@@ -121,6 +123,7 @@ object SleepMode {
         val at = day + SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(cal.timeInMillis))
         val warn = (if (!Settings.canDrawOverlays(app)) " To make sure the call screen opens by itself, allow Display over other apps for Neo Plus." else "") +
             (if (battery) " Please allow “No restrictions” for Neo Plus so the phone does not stop me while you sleep." else "")
+        if (act.isNotEmpty()) return "Okay. I’ll answer your messages as your assistant, saying you’re $act, except money ones, and call you $at.$warn"
         return "Good night. Sleep mode is on: I’ll answer your messages except money ones, and call you $at.$warn"
     }
 
@@ -299,218 +302,13 @@ Reply rules: actually answer what the person said or asked, the way a relaxed, f
 How Neo writes (copy this voice in every reply, while still following the rules above): very short, relaxed texts, usually 3 to 12 words and often just a few; no full stop at the end and no emojis; normal capital letter at the start; plain everyday words, nothing formal or polite-sounding like a customer service agent. He writes mostly English and only sometimes mixes in Chichewa, so keep English as the default and add Chichewa words only now and then, mainly when the other person writes Chichewa or mixes it themselves (if they write only English, answer in plain English). When the other person writes mostly Chichewa, answer in Chichewa mixed with English, for example "Nde siunanene koma kungokwiya" or "Yeah tinachokapo paja nde tangofika kumene" (the word nde, koma and paja come up a lot). With male friends he says "boss" or "men" ("Thanks boss", "Zatheka boss", "It's working too men", "Boss r u alive"). With close friends he sometimes shortens you to u and are to r ("r u alive", "never find someone like u"), but not in every sentence. Typical lines of his: "So what's the problem", "Just tell me what was wrong then", "Why are you getting angry on me", "Thanks boss", "Nothing". He asks short direct questions and does not write long explanations. Keep the first-reply introduction in the same casual voice, for example: "Hey, I'm Neo's assistant, he's asleep right now" and then the answer, not a formal paragraph.
 Emotional or personal topics (a relationship, someone upset, sad or angry, an argument, an apology, feelings) are not for you to handle: do not comfort, argue, apologise or say anything about feelings. Say in one short casual line that Neo will talk to them himself when he wakes up."""
 
-    private fun handle(ctx: Context, key: String, pkg: String, app: String, title: String, text: String, group: Boolean, category: String, history: List<String>) {
-        val note = NotifStore.noteByKey(key)
-        val who = title.ifBlank { app }
-        val canReply = note?.reply != null
-        val isChat = canReply || category == Notification.CATEGORY_MESSAGE
-
-        if (looksLikeMoney(pkg, title, text)) { add(ctx, "MONEY", app, who, text, ""); return }
-        if (!isChat) { add(ctx, "NOTE", app, who, text, ""); return }
-        if (group) { add(ctx, "GROUP", app, who, text, ""); return }
-        if (!canReply || note == null) { add(ctx, "MSG", app, who, text, ""); return }
-
-        val pkey = pkg + "|" + who.lowercase(Locale.ROOT)
-        val replied = JSONObject(prefs(ctx).getString("replied_n", "{}") ?: "{}")
-        if (replied.optInt(pkey, 0) >= MAX_PER_CHAT || replied.length() >= MAX_REPLIES) { add(ctx, "MSG", app, who, text, ""); return }
-
-        val cfg = AssistantConfig.load(ctx)
-        if (cfg.key.isBlank()) { add(ctx, "MSG", app, who, text, ""); return }
-        val prompt = "App: $app\nSender: $who\nLast messages of this chat, oldest first, newest last (lines starting with Neo assistant are your own earlier replies):\n" + history.joinToString("\n") + "\n\nAnswer the newest message."
-        var raw: String? = null
-        // A busy server (503), a dozing network or a short outage is retried instead of giving up on the message
-        for (wait in longArrayOf(0L, 15_000L, 45_000L, 120_000L)) {
-            if (wait > 0) {
-                try { Thread.sleep(wait) } catch (e: InterruptedException) { break }
-                if (!isOn(ctx)) return
-            }
-            raw = try { Llm.chat(Provider.GEMINI, cfg.key, GeminiModels.FLASH, SYSTEM, listOf(true to prompt), null, false).trim() } catch (e: Exception) { null }
-            if (!raw.isNullOrBlank()) break
-        }
-        if (raw.isNullOrBlank()) { add(ctx, "FAILED", app, who, text, ""); return }
-
-        val lines = raw.lines()
-        val verdict = lines.firstOrNull()?.trim()?.uppercase(Locale.ROOT).orEmpty()
-        val body = lines.drop(1).joinToString("\n").trim()
-        when {
-            verdict.startsWith("MONEY") -> add(ctx, "MONEY", app, who, text, "")
-            verdict.startsWith("SKIP") -> add(ctx, "AUTO", app, who, text, "")
-            verdict.startsWith("REPLY") && body.isNotBlank() -> {
-                val fresh = NotifStore.findIn(listOf(pkg), listOf(who))
-                if (NotifStore.sendNote(ctx, note, body) || (fresh != null && NotifStore.sendNote(ctx, fresh, body))) {
-                    synchronized(sent) { sent.add(body); while (sent.size > 20) sent.removeAt(0) }
-                    NotifStore.convoAdd(pkg, title.ifBlank { app }, "Neo assistant: " + body)
-                    replied.put(pkey, replied.optInt(pkey, 0) + 1)
-                    prefs(ctx).edit().putString("replied_n", replied.toString()).apply()
-                    add(ctx, "REPLIED", app, who, text, body)
-                } else add(ctx, "FAILED", app, who, text, "")
-            }
-            else -> add(ctx, "MSG", app, who, text, "")
-        }
+    /** The same rules, but saying what Neo is really doing when it is not sleep (e.g. "in a meeting"). */
+    private fun systemFor(ctx: Context): String {
+        val act = prefs(ctx).getString("activity", "").orEmpty().trim()
+        if (act.isEmpty()) return SYSTEM
+        return SYSTEM.replace("Neo is asleep", "Neo is $act").replace("he's asleep right now", "he's $act right now")
+            .replace("when he wakes up", "when he's free") +
+            "\nNeo is NOT asleep: he is currently $act. Say that, never say he is asleep, and never invent more detail about what he is doing."
     }
 
-    @Synchronized
-    private fun add(ctx: Context, kind: String, app: String, who: String, text: String, reply: String) {
-        val arr = try { JSONArray(prefs(ctx).getString("log", "[]")) } catch (e: Exception) { JSONArray() }
-        arr.put(JSONObject().put("t", System.currentTimeMillis()).put("k", kind).put("app", app).put("who", who)
-            .put("text", text.take(300)).put("reply", reply.take(300)))
-        val trimmed = if (arr.length() > MAX_LOG) JSONArray().also { o -> for (i in arr.length() - MAX_LOG until arr.length()) o.put(arr.get(i)) } else arr
-        prefs(ctx).edit().putString("log", trimmed.toString()).apply()
-    }
-
-    /* ---------------- the night summary ---------------- */
-
-    private const val REPORT_SYSTEM = """You are Neo Plus Assistant, speaking to Neo on a phone call right after he woke up. Tell him what happened during the night.
-Sound like a real person chatting on the phone, not like someone reading a report: warm, relaxed, contractions ("you've", "I didn't"), short and medium sentences mixed, small natural connectors like "so", "also", "and one more thing". Plain text only, no markdown, no lists. Say times the way people say them out loud ("around two in the morning"), never as digits like 02:15. Speak English unless Neo's messages show he wants otherwise.
-Start with "Good morning." Then cover, in this order: who wrote to him and what about, and what you answered; then messages that mention money: say only who wrote and on which app, that you did NOT answer them and they are waiting for him, and never read out amounts, numbers or account details; then other notifications grouped by app with counts; then group chats you left alone.
-Skip a part when it is empty. If nothing happened say it was a quiet night. Never read out codes or passwords. Do not invent anything. Keep it under about 150 words unless a lot happened. End by asking nothing, just say have a good day."""
-
-    fun report(ctx: Context): String {
-        val app = ctx.applicationContext
-        val arr = try { JSONArray(prefs(app).getString("log", "[]")) } catch (e: Exception) { JSONArray() }
-        val tf = SimpleDateFormat("h:mm a", Locale.getDefault())
-        val sb = StringBuilder()
-        for (i in maxOf(0, arr.length() - 80) until arr.length()) {
-            val o = arr.getJSONObject(i)
-            sb.append("[").append(tf.format(Date(o.optLong("t")))).append("] ").append(o.optString("k")).append(" | ")
-                .append(o.optString("app")).append(" | ").append(o.optString("who")).append(" | ")
-                .append(o.optString("text").take(160).replace('\n', ' ')).append(" | my reply: ")
-                .append(o.optString("reply").ifBlank { "none" }.take(160).replace('\n', ' ')).append('\n')
-        }
-        if (arr.length() == 0) return "Good morning. It was a quiet night: nothing came in."
-        val key = AssistantConfig.load(app).key
-        val text = try {
-            if (key.isBlank()) throw Exception("no key")
-            Llm.chat(Provider.GEMINI, key, GeminiModels.FLASH, REPORT_SYSTEM,
-                listOf(true to ("Kinds: REPLIED=I answered, MONEY=money message not answered, MSG=message not answered, GROUP=group chat not answered, AUTO=automated message, NOTE=other notification, FAILED=could not answer.\n\n" + sb)), null, false).trim()
-        } catch (e: Exception) { fallbackReport(arr) }
-        prefs(app).edit().putString("report", text).apply()
-        return text
-    }
-
-    private fun fallbackReport(arr: JSONArray): String {
-        val c = HashMap<String, Int>()
-        val money = LinkedHashSet<String>()
-        val people = LinkedHashSet<String>()
-        for (i in 0 until arr.length()) {
-            val o = arr.getJSONObject(i)
-            val k = o.optString("k")
-            c[k] = (c[k] ?: 0) + 1
-            if (k == "MONEY") money.add(o.optString("who") + " on " + o.optString("app"))
-            if (k == "REPLIED" || k == "MSG") people.add(o.optString("who"))
-        }
-        val parts = ArrayList<String>()
-        parts.add("Good morning.")
-        if (people.isNotEmpty()) parts.add("${people.size} people wrote to you: ${people.joinToString(", ")}. I answered ${c["REPLIED"] ?: 0} of them.")
-        if (money.isNotEmpty()) parts.add("There are money messages from ${money.joinToString(", ")}. I did not answer them, they are waiting for you.")
-        if ((c["NOTE"] ?: 0) > 0) parts.add("You also had ${c["NOTE"]} other notifications.")
-        if ((c["GROUP"] ?: 0) > 0) parts.add("${c["GROUP"]} group messages were left alone.")
-        return parts.joinToString(" ")
-    }
-
-    fun lastReport(ctx: Context): String = prefs(ctx.applicationContext).getString("report", "").orEmpty()
-}
-
-/** Plays the "phone ringing" sound on the alarm volume, so it is heard even when Do Not Disturb is on. */
-object WakeRinger {
-    private var ringtone: Ringtone? = null
-    private var vibrator: Vibrator? = null
-    private val main = Handler(Looper.getMainLooper())
-    @Volatile var ringing = false
-        private set
-
-    fun start(ctx: Context) {
-        val app = ctx.applicationContext
-        stop()
-        try {
-            val uri = RingtoneManager.getActualDefaultRingtoneUri(app, RingtoneManager.TYPE_RINGTONE)
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            ringtone = RingtoneManager.getRingtone(app, uri)?.also {
-                it.audioAttributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
-                if (Build.VERSION.SDK_INT >= 28) it.isLooping = true
-                it.play()
-            }
-            vibrator = (app.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator)?.also {
-                it.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 800, 800), 0))
-            }
-        } catch (e: Exception) { }
-        ringing = true
-        main.postDelayed({ if (ringing) SleepMode.missedCall(app) }, 60_000L)
-    }
-
-    fun stop() {
-        main.removeCallbacksAndMessages(null)
-        ringing = false
-        try { ringtone?.stop() } catch (e: Exception) { }
-        try { vibrator?.cancel() } catch (e: Exception) { }
-        ringtone = null
-        vibrator = null
-    }
-}
-
-class SleepWakeReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) { SleepMode.ring(context) }
-}
-
-class SleepBootReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED) SleepMode.rearm(context)
-    }
-}
-
-/** Understands "I'm sleeping, call me at 6:30", "I'm awake" and "what did I miss" without asking the AI model. */
-object SleepCmd {
-    private val I = RegexOption.IGNORE_CASE
-    private val offRe = Regex("\\b(?:i['’]?m|i am|im) (?:awake|up now)\\b|\\b(?:stop|end|turn off|cancel|switch off|disable) (?:the )?sleep mode\\b|\\bsleep mode off\\b|\\bndadzuka\\b", I)
-    private val reportRe = Regex("\\bwhat did i miss\\b|\\b(?:night|sleep|overnight) (?:report|summary)\\b|\\bsummary of the night\\b|\\bwhat happened (?:last night|while i (?:was )?sleeping)\\b", I)
-    private val freeRe = Regex("\\b(?:free|phone|offline|system)\\b.{0,20}\\bvoice\\b.{0,40}\\b(?:call|sleep|wake)|\\b(?:call|sleep|wake)\\b.{0,40}\\b(?:free|phone|offline)\\b.{0,15}\\bvoice\\b", I)
-    private val gemRe = Regex("\\b(?:gemini|natural|ai)\\b.{0,15}\\bvoice\\b.{0,40}\\b(?:call|sleep|wake)|\\b(?:call|sleep|wake)\\b.{0,40}\\b(?:gemini|natural|ai)\\b.{0,15}\\bvoice\\b", I)
-    private val sleepRe = Regex("\\b(?:sleep|sleeping|going to (?:bed|sleep)|good ?night|bedtime)\\b|ndikugona|ndigona", I)
-    private val timeRe = Regex("(?:\\bcall\\b|\\bwake\\b|\\bring\\b|\\buntil\\b|\\btill\\b|\\bat\\b|\\bby\\b|\\baround\\b)[^0-9]{0,15}(\\d{1,2})(?:[:.](\\d{2}))?\\s*(a\\.?m\\.?|p\\.?m\\.?)?", I)
-
-    fun plan(text: String): LocalPlan? {
-        val t = text.trim()
-        if (freeRe.containsMatchIn(t)) return LocalPlan("", listOf("sleep_voice" to JSONObject().put("free", true)))
-        if (gemRe.containsMatchIn(t)) return LocalPlan("", listOf("sleep_voice" to JSONObject().put("free", false)))
-        if (offRe.containsMatchIn(t)) return LocalPlan("", listOf("sleep_mode" to JSONObject().put("on", false)))
-        if (reportRe.containsMatchIn(t)) return LocalPlan("", listOf("sleep_report" to JSONObject()))
-        if (!sleepRe.containsMatchIn(t) && !t.contains("sleep mode", true)) return null
-        val m = timeRe.find(t) ?: return null
-        var h = m.groupValues[1].toIntOrNull() ?: return null
-        val min = m.groupValues[2].toIntOrNull() ?: 0
-        val ap = m.groupValues[3].lowercase(Locale.ROOT).replace(".", "")
-        if (ap == "pm" && h < 12) h += 12
-        if (ap == "am" && h == 12) h = 0
-        if (h !in 0..23 || min !in 0..59) return null
-        return LocalPlan("", listOf("sleep_mode" to JSONObject().put("on", true).put("hour", h).put("minute", min)))
-    }
-}
-
-/** Makes written text sound right when read aloud: no markdown or emoji, times said the way people say them. */
-object SpokenText {
-    private val time = Regex("\\b([01]?\\d|2[0-3]):([0-5]\\d)\\s*([ap]\\.?m\\.?)?", RegexOption.IGNORE_CASE)
-
-    fun clean(text: String): String {
-        var s = text
-        s = s.replace(Regex("https?://\\S+"), "a link")
-        s = s.replace(Regex("[*_`#>~|]+"), "")
-        s = s.replace(Regex("^\\s*[-•]\\s+", RegexOption.MULTILINE), "")
-        s = s.replace(Regex("[\\p{So}\\p{Cs}]"), "")
-        s = time.replace(s) { m -> say(m.groupValues[1].toInt(), m.groupValues[2].toInt(), m.groupValues[3]) }
-        return s.replace(Regex("[ \\t]{2,}"), " ").trim()
-    }
-
-    private fun say(h: Int, min: Int, ampm: String): String {
-        val ap = ampm.lowercase(Locale.ROOT).replace(".", "")
-        val h24 = when {
-            ap == "pm" && h < 12 -> h + 12
-            ap == "am" && h == 12 -> 0
-            else -> h
-        }
-        val h12 = if (h24 % 12 == 0) 12 else h24 % 12
-        val part = when (h24) { in 5..11 -> "in the morning"; in 12..16 -> "in the afternoon"; in 17..20 -> "in the evening"; else -> "at night" }
-        val m = when { min == 0 -> ""; min < 10 -> " oh $min"; else -> ":$min" }
-        return "$h12$m $part"
-    }
-}
+    private fun h
