@@ -138,19 +138,19 @@ object SocialPoster {
                 if (kind == "story") {
                     if (items.isEmpty()) return "No photo or video given: a Facebook story needs one"
                     intents += aimed(ctx, share(), pkg, listOf("story"), listOf("messenger", "direct"))
-                    stages = listOf(Stage(STEP, listOf("your story", "add to story", "share to story")),
-                        Stage(FINAL, listOf("share", "share now", "post to story")))
+                    stages = listOf(Stage(STEP, listOf("your story", "add to story", "add to your story", "share to story", "create story")),
+                        Stage(FINAL, listOf("share", "share now", "post to story", "share to story", "done")))
                     finalName = "Share"
                 } else if (items.isNotEmpty()) {
                     intents += aimed(ctx, share(), pkg, listOf("composer", "share", "post"), listOf("messenger", "direct", "story"))
                     caption = text
-                    stages = listOf(Stage(FINAL, listOf("post")))
+                    stages = listOf(Stage(FINAL, listOf("post", "share", "share now", "publish")))
                     finalName = "Post"
                 } else {
                     ctx.packageManager.getLaunchIntentForPackage(pkg)?.let { intents += it }
                     caption = text
-                    stages = listOf(Stage(STEP, listOf("~on your mind", "~write something", "~create a post")),
-                        Stage(FINAL, listOf("post")))
+                    stages = listOf(Stage(STEP, listOf("~on your mind", "~write something", "~create a post", "~what’s on your mind", "~status")),
+                        Stage(FINAL, listOf("post", "share", "publish")))
                     finalName = "Post"
                 }
             }
@@ -265,11 +265,16 @@ object SocialPoster {
         var idx = 0
         var typed = cap.isBlank()
         var sawApp = false
+        var lastSeen = ""
         while (SystemClock.uptimeMillis() - start < timeoutMs) {
             val elapsed = SystemClock.uptimeMillis() - start
             val root = UiDriver.rootOf(ctx, pkgs)
             if (root == null) { nap(450); continue }
             sawApp = true
+            try {
+                lastSeen = UiDriver.all(root).filter { it.isVisibleToUser }
+                    .flatMap { UiDriver.names(it).take(2) }.map { it.take(28) }.distinct().take(30).joinToString(" | ")
+            } catch (e: Exception) { }
 
             if (!typed) {
                 val field = UiDriver.findEditable(root, "", skipSearch = true)
@@ -304,7 +309,9 @@ object SocialPoster {
             nap(if (acted) 900 else 450)
         }
         return if (!sawApp) "the app never came to the front, so nothing is posted"
-        else "I never saw the $finalName button (is the app logged in, and is its screen showing the post?), so nothing is posted"
+        else "I never saw the $finalName button (is the app logged in, and is its screen showing the post?), so nothing is posted" +
+            (if (lastSeen.isBlank()) "\nThe screen showed no readable buttons or text at all: the app hides its screen from the accessibility service."
+            else "\nWhat I could read on the last screen: $lastSeen")
     }
 
     private fun pressFinal(ctx: Context, pkgs: Set<String>, st: Stage, first: android.view.accessibility.AccessibilityNodeInfo, finalName: String): String? {
@@ -342,210 +349,4 @@ object SocialCmd {
 
     fun plan(text: String, apps: List<AppEntry>): LocalPlan? {
         val attached = attachTag.findAll(text).map { it.groupValues[1].trim() }.filter { it.isNotEmpty() }.toList()
-        val t = text.replace(attachTag, " ").trim().replace(lead, "").trim().trimEnd('.', '!', '?').trim()
-        if (t.isEmpty()) return null
-
-        if (Regex("^(?:which|what) apps (?:can|do) you (?:post|control|use|work with)|^(?:what|where) can you post|^which apps can i post", I).containsMatchIn(t))
-            return LocalPlan("", listOf("post_apps" to JSONObject()))
-
-        // "set my whatsapp status to hello"
-        Regex("^(?:set|update|change|put|write|make)\\s+(?:my\\s+)?($DEST)\\s+(status|story)\\s*(?:to|as|:|saying|says|with)?\\s*(.*)$", I).find(t)?.let { m ->
-            return compose("post", m.groupValues[1], kindOf(m.groupValues[2]), m.groupValues[3].trim(), "", attached)
-        }
-        // "update my status on whatsapp to hello"
-        Regex("^(?:set|update|change|put|write|make)\\s+(?:my\\s+)?(status|story)\\s+(?:on|in)\\s+($DEST)\\s*(?:to|as|:|saying|says|with)?\\s*(.*)$", I).find(t)?.let { m ->
-            return compose("post", m.groupValues[2], kindOf(m.groupValues[1]), m.groupValues[3].trim(), "", attached)
-        }
-        // "whatsapp status hello" / "post whatsapp status hello"
-        Regex("^(?:post |upload |put )?(?:(?:my|a|an|the)\\s+)?($DEST)\\s+(status|story|stories)\\s*(?:to|as|:|saying|says|with)?\\s*(.*)$", I).find(t)?.let { m ->
-            return compose("post", m.groupValues[1], kindOf(m.groupValues[2]), m.groupValues[3].trim(), "", attached)
-        }
-
-        val vm = Regex("^(post|share|upload|publish|put|add|send|status)\\b\\s*(.*)$", I).find(t) ?: return null
-        val verb = vm.groupValues[1].lowercase(Locale.ROOT)
-        val rest = vm.groupValues[2].trim()
-        val toPerson = Regex("\\b(?:to|with)\\s+(?!(?:my|the|your)\\b)\\S+", I)
-
-        val destRx = Regex("\\b(?:on|to|in|onto|into|via|at|for)\\s+(?:(?:my|the|your)\\s+)?($DEST)\\b(?:\\s+(status|stories|story|reels?|feed|timeline|page))?", I)
-        val dm = destRx.find(rest)
-        if (dm != null) {
-            val before = rest.substring(0, dm.range.first).trim()
-            val after = rest.substring(dm.range.last + 1).trim()
-            if ((verb == "share" || verb == "send") && toPerson.containsMatchIn(before)) return null   // a private message to a person
-            val kindWord = dm.groupValues[2]
-            val isWa = dm.groupValues[1].lowercase(Locale.ROOT).replace(" ", "").startsWith("whatsapp")
-            val saysStatus = kindWord.equals("status", true) || Regex("\\bstatus\\b", I).containsMatchIn(before)
-            val saysStory = kindWord.lowercase(Locale.ROOT).startsWith("stor") || Regex("\\bstory\\b", I).containsMatchIn(before)
-            if (verb == "send" && !saysStatus && !saysStory) return null
-            if (isWa && !saysStatus && (verb == "share")) return null   // "share ... on whatsapp" = a message
-            val kind = when {
-                saysStatus && isWa -> "status"
-                saysStory -> "story"
-                kindWord.isNotBlank() -> kindOf(kindWord)
-                isWa -> "status"
-                else -> "post"
-            }
-            return compose(verb, dm.groupValues[1], kind, before, after, attached)
-        }
-
-        // Any other app: "post this on telegram", "share my latest photo on x"
-        if (verb == "send") return null
-        val prep = Regex("\\b(on|onto|via|to)\\s+(?:(?:my|the)\\s+)?", I)
-        for (pm in prep.findAll(rest).toList()) {
-            val tail = rest.substring(pm.range.last + 1)
-            val words = tail.split(Regex("\\s+")).filter { it.isNotEmpty() }
-            for (n in 1..minOf(3, words.size)) {
-                val cand = words.take(n).joinToString(" ").trim(',', ':', '.')
-                if (cand.length < 3) continue
-                val app = apps.firstOrNull { it.shownLabel.equals(cand, true) || it.label.equals(cand, true) } ?: continue
-                val before = rest.substring(0, pm.range.first).trim()
-                val after = words.drop(n).joinToString(" ")
-                val prepWord = pm.groupValues[1].lowercase(Locale.ROOT)
-                if (verb == "share" && (prepWord == "to" || toPerson.containsMatchIn(before))) return null
-                return compose(verb, app.shownLabel, "post", before, after, attached, pkg = app.pkg)
-            }
-        }
-        return null
-    }
-
-    private fun compose(verb: String, destRaw: String, kind: String, beforeRaw: String, afterRaw: String, attached: List<String>, pkg: String = ""): LocalPlan {
-        val full = "$beforeRaw $afterRaw"
-        val ask = AutoCaption.asks(full)
-        var what = (if (ask) AutoCaption.head(beforeRaw) else beforeRaw).trim()
-        var cap = (if (ask) AutoCaption.head(afterRaw) else afterRaw).trim().replace(sayWord, "").trim().trim('"', '“', '”')
-        what = what.replace(Regex("^(?:(?:a|an|the|my|new)\\s+)*(?:status|story|post|update)(?:\\s+update)?(?:\\s*(?:saying|that says|says|of|with|:)\\s*)?", I), "").trim()
-        what = what.replace(sayWord, "").trim()
-        if (what.isEmpty() && cap.isNotEmpty()) { what = cap; cap = "" }
-        what = what.trim('"', '“', '”')
-
-        val files = ArrayList<String>()
-        var body: String
-        when {
-            attached.isNotEmpty() -> { files += attached; body = if (thisWord.matches(what)) cap else listOf(what, cap).filter { it.isNotEmpty() }.joinToString(" ") }
-            thisWord.matches(what) -> {
-                return LocalPlan("Attach the photo or video with the paperclip first, then say “post this on ${prettyName(destRaw)}”.", emptyList())
-            }
-            what.split(" ").size <= 9 && (mediaPhrase.containsMatchIn(what) ||
-                (MediaFinder.looksLikeMedia(what) && Regex("\\b(called|named|titled)\\b", I).containsMatchIn(what))) -> {
-                files += what
-                body = cap
-            }
-            else -> body = listOf(what, cap).filter { it.isNotEmpty() }.joinToString(" ")
-        }
-        if (files.isEmpty() && body.isEmpty())
-            return LocalPlan("What should I post on ${prettyName(destRaw)}? Tell me the words, or name a photo or video.", emptyList())
-
-        val o = JSONObject().put("app", destRaw.trim()).put("kind", kind).put("text", body).put("files", JSONArray(files))
-        if (pkg.isNotBlank()) o.put("pkg", pkg)
-        if (ask) o.put("auto_caption", true).put("vibe", AutoCaption.vibe(full)).put("song", AutoCaption.wantsSong(full))
-            .put("review", !AutoCaption.noReview(full))
-        return LocalPlan("", listOf("post" to o))
-    }
-
-    private fun prettyName(raw: String) = raw.trim().split(" ").joinToString(" ") { w -> w.replaceFirstChar { it.uppercase() } }
-}
-
-
-/** Spots “add a viral and cool caption with the matched song” so those words are not posted as the caption. */
-object AutoCaption {
-    private val I = RegexOption.IGNORE_CASE
-    private const val V = "viral|cool|catchy|trendy|trending|funny|cute|savage|aesthetic|creative|witty|sassy|epic|fire|stylish|smart|clever|motivational|inspiring|romantic|emotional|short|good|great|nice|best|perfect|amazing|awesome|attractive|classy|unique|killer|better|hot"
-
-    private val captionAsk = Regex(
-        "\\b(?:(?:$V)(?:\\s*(?:,|and|&)\\s*(?:$V))*\\s+captions?" +
-            "|(?:write|generate|create|come up with|think of|make|compose|draft|suggest)\\s+(?:me\\s+)?(?:an?|the|some)?\\s*(?:\\w+\\s+){0,3}captions?" +
-            "|(?:ai|auto|automatic)\\s+captions?)\\b", I)
-    private val songAsk = Regex(
-        "\\b(?:(?:matched|matching|suitable|fitting|perfect|right|best|trending|viral|cool)\\s+(?:song|music|track|audio)s?" +
-            "|songs?\\s+(?:that\\s+|to\\s+)?(?:matches|match|fits|fit|goes with))\\b", I)
-    private val cutAt = Regex("\\s*(?:,|\\band\\b|\\bthen\\b)?\\s*\\b(?:add|write|make|create|generate|give|put|with|plus|also|using|use|include|caption|captioned)\\b", I)
-    private val vibeRx = Regex("\\b($V)\\b", I)
-    private val skipReview = Regex(
-        "\\b(?:right away|straight away|directly|immediately|without (?:asking|checking|my ok|review)|don'?t ask|no need to (?:ask|check)|just post|post it now)\\b", I)
-
-    /** Text in quotes after “caption” is the user's own caption, not a request to write one. */
-    fun asks(s: String): Boolean {
-        if (Regex("captions?\\s*[:\"“]", I).containsMatchIn(s)) return false
-        return captionAsk.containsMatchIn(s) || songAsk.containsMatchIn(s)
-    }
-
-    /** What comes before the “add / write / with ...” request. */
-    fun head(s: String): String = cutAt.find(s)?.let { s.substring(0, it.range.first) }?.trim() ?: s.trim()
-
-    fun vibe(s: String): String = vibeRx.findAll(s).map { it.groupValues[1].lowercase(Locale.ROOT) }.distinct().take(4)
-        .joinToString(", ").ifBlank { "viral, cool" }
-
-    fun wantsSong(s: String): Boolean = songAsk.containsMatchIn(s)
-
-    fun noReview(s: String): Boolean = skipReview.containsMatchIn(s)
-}
-
-
-/** What to add on top of a story photo before it is shared. [songDone] / [textDone] tell what really worked. */
-class StoryExtras(val app: String, val text: String, val song: String) {
-    @Volatile var songDone = false
-    @Volatile var textDone = false
-}
-
-/**
- * Presses the story editor's own buttons: Text (the caption) and Music (search the song, pick the first match).
- * Each step is best effort: apps move their buttons around, so every step checks the screen and gives up quietly,
- * and the caller reports exactly what was and was not added.
- */
-object StoryEditor {
-    private fun nap(ms: Long) { try { Thread.sleep(ms) } catch (e: InterruptedException) { } }
-
-    fun apply(ctx: Context, pkgs: Set<String>, x: StoryExtras) {
-        if (x.text.isNotBlank()) x.textDone = try { addText(ctx, pkgs, x.text) } catch (e: Exception) { false }
-        nap(700)
-        if (x.song.isNotBlank()) x.songDone = try { addSong(ctx, pkgs, x.song) } catch (e: Exception) { false }
-        nap(700)
-    }
-
-    private fun addText(ctx: Context, pkgs: Set<String>, text: String): Boolean {
-        val root = UiDriver.rootOf(ctx, pkgs) ?: return false
-        val btn = UiDriver.findAny(root, listOf("text", "aa", "add text", "~add text")) ?: return false
-        if (!UiDriver.tap(btn)) return false
-        val field = UiDriver.waitFor(ctx, pkgs, 5000L) { r -> UiDriver.findEditable(r, "", skipSearch = true) } ?: return false
-        if (!UiDriver.setText(ctx, field, text, replace = true)) return false
-        nap(500)
-        val done = UiDriver.waitFor(ctx, pkgs, 4000L) { r -> UiDriver.findAny(r, listOf("done", "next")) } ?: return false
-        UiDriver.tap(done)
-        nap(900)
-        return true
-    }
-
-    private fun addSong(ctx: Context, pkgs: Set<String>, song: String): Boolean {
-        val title = song.substringBefore(" – ").substringBefore(" - ").trim().lowercase(Locale.ROOT)
-        if (title.isBlank()) return false
-        val query = song.replace(" – ", " ").replace(" - ", " ").trim()
-
-        // Facebook shows Music in the editor bar; Instagram keeps it inside the Stickers tray.
-        var music = UiDriver.rootOf(ctx, pkgs)?.let { UiDriver.findAny(it, listOf("music")) }
-        if (music == null) {
-            val stickers = UiDriver.rootOf(ctx, pkgs)?.let { UiDriver.findAny(it, listOf("stickers", "sticker tray", "~stickers")) } ?: return false
-            if (!UiDriver.tap(stickers)) return false
-            music = UiDriver.waitFor(ctx, pkgs, 5000L) { r -> UiDriver.findAny(r, listOf("music")) }
-        }
-        if (music == null || !UiDriver.tap(music)) return false
-
-        val search = UiDriver.waitFor(ctx, pkgs, 6000L) { r -> UiDriver.findEditable(r) } ?: return false
-        if (!UiDriver.setText(ctx, search, query, replace = true)) return false
-        nap(2200)
-
-        val hit = UiDriver.waitFor(ctx, pkgs, 9000L) { r ->
-            UiDriver.all(r).firstOrNull { n ->
-                n.isVisibleToUser && !n.isEditable && UiDriver.names(n).any { it.contains(title) }
-            }
-        } ?: return false
-        if (!UiDriver.tap(hit)) return false
-        nap(1800)
-
-        // After choosing, the app asks which part of the song to use: accept it.
-        val done = UiDriver.waitFor(ctx, pkgs, 6000L) { r -> UiDriver.findAny(r, listOf("done", "next")) } ?: return false
-        UiDriver.tap(done)
-        nap(1200)
-        // The tray / editor is back when the Share button of the story is visible again, which runFlow checks next.
-        return true
-    }
-}
+        val t = text.replace(attachTag, " ").trim().replace(lead, "").trim().trimEnd('
