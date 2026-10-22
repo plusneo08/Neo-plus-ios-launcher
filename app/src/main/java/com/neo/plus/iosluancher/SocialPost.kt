@@ -322,34 +322,3 @@ object SocialPoster {
 
     private fun nap(ms: Long) { try { Thread.sleep(ms) } catch (e: InterruptedException) { } }
 }
-
-/** Plain-words commands for posting: "post hello on Facebook", "upload my latest video to TikTok with caption ...". */
-object SocialCmd {
-    private val I = RegexOption.IGNORE_CASE
-    private val lead = Regex("^(?:hey |ok |okay )?(?:(?:neo plus assistant|neo plus|neo)[, ]+)?(?:please |can you |could you |would you )?", I)
-    private val attachTag = Regex("\\[Attached file: ([^\\]]+)\\]")
-    private const val DEST = "whats ?app business|whats ?app|facebook lite|facebook|fb lite|fb|tik ?tok lite|tik ?tok|instagram lite|instagram|insta|ig"
-    private val sayWord = Regex("^(?:saying|says|that says|with the (?:caption|text|message)|with (?:a )?caption|captioned|caption|and say|with|:)\\s*", I)
-    private val mediaPhrase = Regex("^(?:my |the |a |an |this |that |our )?(?:(?:latest|last|recent|newest|new|first|best)\\s+)?(?:photos?|pictures?|images?|pics?|selfies?|screenshots?|videos?|clips?|movies?|files?|documents?|pdf)\\b", I)
-    private val thisWord = Regex("^(?:this|that|it|these|those|them)(?: (?:photo|picture|image|video|file|one))?$", I)
-
-    private fun kindOf(word: String): String = when (word.lowercase(Locale.ROOT)) {
-        "story", "stories" -> "story"
-        "reel", "reels" -> "reel"
-        "status" -> "status"
-        else -> "post"
-    }
-
-    fun plan(text: String, apps: List<AppEntry>): LocalPlan? {
-        val attached = attachTag.findAll(text).map { it.groupValues[1].trim() }.filter { it.isNotEmpty() }.toList()
-        val t = text.replace(attachTag, " ").trim().replace(lead, "").trim().trimEnd('.', '!', '?').trim()
-        if (t.isEmpty()) return null
-
-        if (Regex("^(?:which|what) apps (?:can|do) you (?:post|control|use|work with)|^(?:what|where) can you post|^which apps can i post", I).containsMatchIn(t))
-            return LocalPlan("", listOf("post_apps" to JSONObject()))
-
-        // "set my whatsapp status to hello"
-        Regex("^(?:set|update|change|put|write|make)\\s+(?:my\\s+)?($DEST)\\s+(status|story)\\s*(?:to|as|:|saying|says|with)?\\s*(.*)$", I).find(t)?.let { m ->
-            return compose("post", m.groupValues[1], kindOf(m.groupValues[2]), m.groupValues[3].trim(), "", attached)
-        }
-        // "update my status
