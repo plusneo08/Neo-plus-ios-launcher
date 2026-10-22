@@ -211,7 +211,7 @@ object SocialPoster {
         }
 
         // Stories: caption as a text sticker + the song through the app's own Music sticker (Instagram / Facebook)
-        val extras: StoryExtras? = if (kind == "story" && (base == "instagram" || base == "facebook") && builtin != null) {
+        val extras: StoryExtras? = if (kind == "story" && (base == "instagram" || (base == "facebook" && !key.endsWith("lite"))) && builtin != null) {
             val t = storyText.ifBlank { text }
             if (t.isBlank() && songName.isBlank()) null else StoryExtras(base, t, songName)
         } else null
