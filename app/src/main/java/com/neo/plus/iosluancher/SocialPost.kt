@@ -138,19 +138,19 @@ object SocialPoster {
                 if (kind == "story") {
                     if (items.isEmpty()) return "No photo or video given: a Facebook story needs one"
                     intents += aimed(ctx, share(), pkg, listOf("story"), listOf("messenger", "direct"))
-                    stages = listOf(Stage(STEP, listOf("your story", "add to story", "add to your story", "share to story", "create story")),
-                        Stage(FINAL, listOf("share", "share now", "post to story", "share to story", "done")))
+                    stages = listOf(Stage(STEP, listOf("your story", "add to story", "share to story")),
+                        Stage(FINAL, listOf("share", "share now", "post to story")))
                     finalName = "Share"
                 } else if (items.isNotEmpty()) {
                     intents += aimed(ctx, share(), pkg, listOf("composer", "share", "post"), listOf("messenger", "direct", "story"))
                     caption = text
-                    stages = listOf(Stage(FINAL, listOf("post", "share", "share now", "publish")))
+                    stages = listOf(Stage(FINAL, listOf("post")))
                     finalName = "Post"
                 } else {
                     ctx.packageManager.getLaunchIntentForPackage(pkg)?.let { intents += it }
                     caption = text
-                    stages = listOf(Stage(STEP, listOf("~on your mind", "~write something", "~create a post", "~what’s on your mind", "~status")),
-                        Stage(FINAL, listOf("post", "share", "publish")))
+                    stages = listOf(Stage(STEP, listOf("~on your mind", "~write something", "~create a post")),
+                        Stage(FINAL, listOf("post")))
                     finalName = "Post"
                 }
             }
@@ -265,22 +265,13 @@ object SocialPoster {
         var idx = 0
         var typed = cap.isBlank()
         var sawApp = false
-        var lastSeen = ""
         while (SystemClock.uptimeMillis() - start < timeoutMs) {
             val elapsed = SystemClock.uptimeMillis() - start
             val root = UiDriver.rootOf(ctx, pkgs)
             if (root == null) { nap(450); continue }
             sawApp = true
-            try {
-                lastSeen = UiDriver.all(root).filter { it.isVisibleToUser }
-                    .flatMap { UiDriver.names(it).take(2) }.map { it.take(28) }.distinct().take(30).joinToString(" | ")
-            } catch (e: Exception) { }
 
-            // Only type once the composer is open (every opening step done, or the final button is already on screen),
-            // so the text can never land in a comment or search box on the feed.
-            val composerOpen = stages.withIndex().none { (i, st) -> st.kind == STEP && i >= idx } ||
-                stages.any { it.kind == FINAL && UiDriver.findAny(root, it.names, it.ids) != null }
-            if (!typed && composerOpen) {
+            if (!typed) {
                 val field = UiDriver.findEditable(root, "", skipSearch = true)
                 if (field != null) {
                     val cur = if (field.isShowingHintText) "" else field.text?.toString().orEmpty()
@@ -313,9 +304,7 @@ object SocialPoster {
             nap(if (acted) 900 else 450)
         }
         return if (!sawApp) "the app never came to the front, so nothing is posted"
-        else "I never saw the $finalName button (is the app logged in, and is its screen showing the post?), so nothing is posted" +
-            (if (lastSeen.isBlank()) "\nThe screen showed no readable buttons or text at all: the app hides its screen from the accessibility service."
-            else "\nWhat I could read on the last screen: $lastSeen")
+        else "I never saw the $finalName button (is the app logged in, and is its screen showing the post?), so nothing is posted"
     }
 
     private fun pressFinal(ctx: Context, pkgs: Set<String>, st: Stage, first: android.view.accessibility.AccessibilityNodeInfo, finalName: String): String? {
@@ -344,4 +333,23 @@ object SocialCmd {
     private val mediaPhrase = Regex("^(?:my |the |a |an |this |that |our )?(?:(?:latest|last|recent|newest|new|first|best)\\s+)?(?:photos?|pictures?|images?|pics?|selfies?|screenshots?|videos?|clips?|movies?|files?|documents?|pdf)\\b", I)
     private val thisWord = Regex("^(?:this|that|it|these|those|them)(?: (?:photo|picture|image|video|file|one))?$", I)
 
-    private fun kindOf(word: String): String = when (word.low
+    private fun kindOf(word: String): String = when (word.lowercase(Locale.ROOT)) {
+        "story", "stories" -> "story"
+        "reel", "reels" -> "reel"
+        "status" -> "status"
+        else -> "post"
+    }
+
+    fun plan(text: String, apps: List<AppEntry>): LocalPlan? {
+        val attached = attachTag.findAll(text).map { it.groupValues[1].trim() }.filter { it.isNotEmpty() }.toList()
+        val t = text.replace(attachTag, " ").trim().replace(lead, "").trim().trimEnd('.', '!', '?').trim()
+        if (t.isEmpty()) return null
+
+        if (Regex("^(?:which|what) apps (?:can|do) you (?:post|control|use|work with)|^(?:what|where) can you post|^which apps can i post", I).containsMatchIn(t))
+            return LocalPlan("", listOf("post_apps" to JSONObject()))
+
+        // "set my whatsapp status to hello"
+        Regex("^(?:set|update|change|put|write|make)\\s+(?:my\\s+)?($DEST)\\s+(status|story)\\s*(?:to|as|:|saying|says|with)?\\s*(.*)$", I).find(t)?.let { m ->
+            return compose("post", m.groupValues[1], kindOf(m.groupValues[2]), m.groupValues[3].trim(), "", attached)
+        }
+        // "update my status
