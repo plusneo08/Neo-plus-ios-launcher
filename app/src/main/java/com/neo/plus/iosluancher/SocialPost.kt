@@ -322,7 +322,13 @@ object SocialPoster {
     private fun pressFinal(ctx: Context, pkgs: Set<String>, st: Stage, first: android.view.accessibility.AccessibilityNodeInfo, finalName: String): String? {
         var node = first
         for (attempt in 0 until 3) {
-            if (!UiDriver.tap(node)) return "I couldn’t press $finalName, so nothing is posted"
+            // 1st try: the normal click. Later tries: a real finger touch in the middle of the button, because some
+            // apps (Facebook Lite) accept the click but do nothing, which is what leaves the screen stuck on Share.
+            val r0 = android.graphics.Rect()
+            node.getBoundsInScreen(r0)
+            val pressed = if (attempt == 0 || r0.isEmpty) UiDriver.tap(node)
+            else UiDriver.tapAt(r0.exactCenterX(), r0.exactCenterY(), if (attempt == 2) 160L else 60L)
+            if (!pressed) return "I couldn’t press $finalName, so nothing is posted"
             nap(2300)
             val r = UiDriver.rootOf(ctx, pkgs)
             val again = if (r == null) null else UiDriver.findAny(r, st.names, st.ids)
