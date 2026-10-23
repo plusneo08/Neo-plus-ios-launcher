@@ -91,32 +91,78 @@ object TaskReports {
     /** The phone number the reports are also texted to (SMS). Empty = notification only. */
     fun smsNumber(ctx: Context): String = prefs(ctx).getString("sms_to", "") ?: ""
 
-    /** The `report_number` action: {"number":"+2557..."} turns SMS reports on, an empty number turns them off. */
-    fun setSms(ctx: Context, number: String): String {
+    private fun hasSmsPermission(ctx: Context) =
+        androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.SEND_SMS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    /** The SIM the phone uses for texts (matters on dual-SIM phones, where the plain default manager can fail). */
+    private fun smsManager(ctx: Context): android.telephony.SmsManager {
+        val sub = if (Build.VERSION.SDK_INT >= 22) try { android.telephony.SmsManager.getDefaultSmsSubscriptionId() } catch (e: Exception) { -1 } else -1
+        return when {
+            Build.VERSION.SDK_INT >= 31 -> {
+                val base = ctx.getSystemService(android.telephony.SmsManager::class.java)
+                if (sub >= 0) base.createForSubscriptionId(sub) else base
+            }
+            Build.VERSION.SDK_INT >= 22 && sub >= 0 -> @Suppress("DEPRECATION") android.telephony.SmsManager.getSmsManagerForSubscriptionId(sub)
+            else -> @Suppress("DEPRECATION") android.telephony.SmsManager.getDefault()
+        }
+    }
+
+    /** Sends one real SMS. Returns null when it was handed to the phone, otherwise the reason it was not. */
+    private fun sendSms(ctx: Context, to: String, body: String): String? {
+        if (!hasSmsPermission(ctx)) return "SMS is not allowed for Neo Plus (phone Settings > Apps > Neo Plus > Permissions > SMS)"
+        return try {
+            val sm = smsManager(ctx)
+            val parts = sm.divideMessage(body.take(600))
+            if (parts.size > 1) sm.sendMultipartTextMessage(to, null, parts, null, null)
+            else sm.sendTextMessage(to, null, parts[0], null, null)
+            null
+        } catch (e: SecurityException) {
+            "Android blocked the text (allow SMS for Neo Plus, and on Xiaomi / Vivo also allow “Send SMS” in the phone’s security or permissions app)"
+        } catch (e: IllegalArgumentException) {
+            "the number does not look valid"
+        } catch (e: Exception) {
+            e.javaClass.simpleName + (e.message?.let { ": " + it.take(80) } ?: "")
+        }
+    }
+
+    /**
+     * The `report_number` action: {"number":"+2557...","text":"optional summary to send right now"}.
+     * Saves the number so every finished task is texted there, AND sends a text straight away (the given summary, else the latest
+     * reports, else a short confirmation) so you can see that it works. An empty number with no text turns SMS reports off.
+     */
+    fun setSms(ctx: Context, number: String, text: String = ""): String {
         val n = number.filter { it.isDigit() || it == '+' }
+        val saved = smsNumber(ctx)
         if (n.isBlank()) {
+            if (text.isNotBlank()) {
+                if (saved.isBlank()) return "I don’t have your number yet. Tell me the number to text it to, for example +265..."
+                val err = sendSms(ctx, saved, text.trim())
+                return if (err == null) "Sent the text to $saved." else "Couldn’t send the text to $saved: $err."
+            }
             prefs(ctx).edit().remove("sms_to").apply()
             return "Task reports by SMS are off. You still get a notification for each task."
         }
         if (n.count { it.isDigit() } < 6) return "Couldn’t save that: it doesn’t look like a phone number"
         prefs(ctx).edit().putString("sms_to", n).apply()
-        val ok = androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.SEND_SMS) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        return "Okay, I’ll also text each task report to $n." + (if (ok) "" else " Allow SMS for Neo Plus in the phone’s settings, or the texts can’t be sent.")
+        val recent = (history(ctx) + list(ctx)).takeLast(5)
+        val body = when {
+            text.isNotBlank() -> text.trim()
+            recent.isNotEmpty() -> "Neo Plus reports:\n" + recent.joinToString("\n") { r ->
+                "- " + (if (r.ok) "done" else "didn’t finish") + ": " + (if (r.title.isNotBlank()) r.title.take(60) + ": " else "") + r.detail.take(120) }
+            else -> "Neo Plus: text reports are now on for this number. You will get a text each time a task finishes."
+        }
+        val err = sendSms(ctx, n, body)
+        return if (err == null) "Done. I saved $n and sent the text now; each finished task will be texted there too."
+        else "I saved $n, but the text could not be sent: $err."
     }
 
     /** The same report as a real SMS to the saved number (no spoken announcement, no notification). */
     private fun sms(ctx: Context, r: Report) {
-        try {
-            val to = smsNumber(ctx)
-            if (to.isBlank()) return
-            if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.SEND_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return
-            val sm: android.telephony.SmsManager =
-                if (Build.VERSION.SDK_INT >= 31) ctx.getSystemService(android.telephony.SmsManager::class.java)
-                else @Suppress("DEPRECATION") android.telephony.SmsManager.getDefault()
-            val body = "Neo Plus: " + (if (r.ok) "done" else "didn’t finish") + ". " +
-                (if (r.title.isNotBlank()) r.title.take(80) + ": " else "") + r.detail.take(220)
-            sm.sendMultipartTextMessage(to, null, sm.divideMessage(body), null, null)
-        } catch (e: Exception) { }
+        val to = smsNumber(ctx)
+        if (to.isBlank()) return
+        val body = "Neo Plus: " + (if (r.ok) "done" else "didn’t finish") + ". " +
+            (if (r.title.isNotBlank()) r.title.take(80) + ": " else "") + r.detail.take(220)
+        sendSms(ctx, to, body)
     }
 
     /** The "text": one notification with what the assistant did. */

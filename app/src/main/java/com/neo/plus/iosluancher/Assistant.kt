@@ -218,7 +218,7 @@ object PhoneActions {
             "approvals" -> return Approvals.handle(ctx, a.optString("do"))
             "schedule" -> return Scheduler.add(ctx, a)
             "schedules" -> return Scheduler.handle(ctx, a)
-            "report_number" -> return TaskReports.setSms(ctx, a.optString("number"))
+            "report_number" -> return TaskReports.setSms(ctx, a.optString("number"), a.optString("text"))
             "email" -> return Comms.email(ctx, a.optString("to"), a.optString("subject"), a.optString("text"))
 
             "share_file" -> return ShareSender.send(ctx, a)
@@ -1354,7 +1354,7 @@ messenger {"to":"name","text":"message or link","app":"messenger|messenger lite|
 message {"to":"name or number","text":"..."}   (plain SMS ONLY. NEVER use it when the user named WhatsApp, WhatsApp Business, Messenger or Facebook: use whatsapp or messenger instead. "Send this <link> to Sam on WhatsApp business" = whatsapp with "business":true and the link as "text".)
 queue {"do":"whatsapp|messenger|message|email|post","to":"...","text":"...","business":false,"urgent":false}   (set "urgent":true ONLY when the item cannot wait (a deadline within the hour, an emergency, something the user said is urgent): the phone then rings the user like an incoming call right away. Normal items never ring; the user is called once when 5 items are waiting. Puts a message or post on the user's "waiting for your OK" list instead of sending it; use the same fields as the real action. ALWAYS use queue and never the direct action when you act on your own initiative (follow-ups, reminders, promotions, anything the user did not dictate as one exact message to one person) and ALWAYS when the same request would send to more than one person. One message the user dictated to one person is sent directly.)
 schedule {"do":"<any action name>","at":"17:30","date":"2026-10-25","in_minutes":90,"repeat":"daily", ...the same fields as that action}   (runs the action LATER at the time the user asked, then the phone sends the user a notification saying done or what went wrong. Use ONE of "at" (24-hour clock; if the time already passed today it means tomorrow; add "date" yyyy-MM-dd only when the user named a day) or "in_minutes". "repeat":"daily" only when the user said every day. Use it whenever the user says "at 5pm", "tomorrow morning", "in an hour" for any action except alarm and timer (those have their own actions). Money transfers, sleep/time lock and power-off cannot be scheduled. Tell the user the time you set.)
-report_number {"number":"+255..."}   (the user wants their finished-task reports also as a real SMS to this number; each finished task is texted, and after 5 finished tasks the assistant calls instead. Empty number = SMS off. Use it when the user says things like "text my reports to ...")
+report_number {"number":"+255...","text":"optional: the summary to text right now"}   (NEVER guess or invent a number: if the user says "my number" and has not given one, ask for it first; with no number and a text, it goes to the number already saved. The text is sent immediately, so only say it was sent when the result says so. The user wants their finished-task reports also as a real SMS to this number; each finished task is texted, and after 5 finished tasks the assistant calls instead. Empty number = SMS off. Use it when the user says things like "text my reports to ...")
 schedules {"do":"list|history|cancel","id":"optional id or all"}   (list = what is scheduled, history = what already ran and whether it worked, cancel = remove a scheduled task. Use history when the user asks what you did or whether it worked.)
 approvals {"do":"list|approve_all|skip_all"}   (shows or settles what is waiting for the user's OK; use approve_all or skip_all only when the user says so)
 Never send, pay or buy money in any other way than send_money, which has its own authorisation screen.
@@ -1380,18 +1380,67 @@ ${mem}Default apps are called Phone, Messages (iMessage), Safari (the web browse
 }
 
 
-private val actionTag = Regex("\\[\\[(?:do:)?(\\w+)\\s*(\\{.*?\\})?\\s*\\]\\]", RegexOption.DOT_MATCHES_ALL)
-
+/**
+ * Pulls every [[name {json}]] command out of a reply. Tolerant on purpose: "do:" is optional, JSON may contain braces / "]]" inside
+ * strings, smart quotes and trailing commas are repaired, and a command that is cut off (still streaming) is hidden, never shown.
+ * Returns the reply text with ALL command codes removed, plus the commands found.
+ */
 internal fun parseActionTags(reply: String): Pair<String, List<Pair<String, JSONObject>>> {
-    val actions = actionTag.findAll(reply).map { m ->
-        val args = try { JSONObject(m.groupValues[2].ifBlank { "{}" }) } catch (e: Exception) { JSONObject() }
-        m.groupValues[1] to args
-    }.toList()
-    val clean = reply.replace(actionTag, "")
+    val actions = ArrayList<Pair<String, JSONObject>>()
+    val out = StringBuilder()
+    val n = reply.length
+    var i = 0
+    while (i < n) {
+        val start = reply.indexOf("[[", i)
+        if (start < 0) { out.append(reply, i, n); break }
+        out.append(reply, i, start)
+        var j = start + 2
+        while (j < n && reply[j].isWhitespace()) j++
+        if (reply.startsWith("do:", j, ignoreCase = true)) j += 3
+        while (j < n && reply[j].isWhitespace()) j++
+        val ns = j
+        while (j < n && (reply[j].isLetterOrDigit() || reply[j] == '_')) j++
+        val name = reply.substring(ns, j).lowercase()
+        if (name.isEmpty()) {                       // "[[" that is not a command: keep it as text
+            if (j >= n) break
+            out.append("[["); i = start + 2; continue
+        }
+        while (j < n && reply[j].isWhitespace()) j++
+        var json = ""
+        if (j < n && reply[j] == '{') {
+            var depth = 0; var inStr = false; var esc = false; var k = j
+            while (k < n) {
+                val c = reply[k]
+                if (inStr) { if (esc) esc = false else if (c == '\\') esc = true else if (c == '"') inStr = false }
+                else if (c == '"') inStr = true
+                else if (c == '{') depth++
+                else if (c == '}') { depth--; if (depth == 0) { k++; break } }
+                k++
+            }
+            if (depth != 0) break                   // cut off or still streaming: hide the unfinished command
+            json = reply.substring(j, k); j = k
+            while (j < n && reply[j].isWhitespace()) j++
+        }
+        if (j >= n) break                           // "[[name" / "[[name {...}" with the end not here yet
+        if (reply[j] == ']' && j + 1 >= n) break  // only one "]" has arrived so far: still streaming
+        if (reply.startsWith("]]", j)) j += 2
+        else if (json.isEmpty()) { out.append("[["); i = start + 2; continue }
+        actions += name to parseArgs(json)
+        i = j
+    }
+    val clean = out.toString()
         .replace("**", "")
         .replace(Regex("(?m)^\\s*[*-]\\s+"), "• ")
         .trim()
     return clean to actions
+}
+
+private fun parseArgs(json: String): JSONObject {
+    if (json.isBlank()) return JSONObject()
+    val fixed = json.replace('\u201C', '"').replace('\u201D', '"').replace('\u2018', '\'').replace('\u2019', '\'')
+        .replace(Regex(",\\s*([}\\]])"), "$1")
+    for (t in listOf(json, fixed)) { try { return JSONObject(t) } catch (e: Exception) { } }
+    return JSONObject()
 }
 
 
