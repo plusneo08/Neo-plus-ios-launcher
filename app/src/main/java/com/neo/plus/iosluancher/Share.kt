@@ -32,6 +32,8 @@ object MediaFinder {
     private val newest = Regex("(?i)\\b(latest|last|recent|newest|most recent|new)\\b")
     private val filler = Regex("(?i)\\b(the|my|a|an|called|named|titled|by|file|latest|last|recent|newest|most recent|new|of)\\b")
 
+    private val placeWords = Regex("(?i)\\b(from|in|on|at|to|gallery|galleries|camera roll|camera|phone|device|storage|album|albums|photos app|taken|please|this|one)\\b")
+
     fun looksLikeMedia(spec: String) =
         imageWords.containsMatchIn(spec) || videoWords.containsMatchIn(spec) || audioWords.containsMatchIn(spec) ||
             Regex("(?i)\\b(file|document|pdf|attachment)\\b").containsMatchIn(spec)
@@ -80,8 +82,10 @@ object MediaFinder {
 
         val wantNewest = newest.containsMatchIn(s)
         val isShot = Regex("(?i)screenshots?").containsMatchIn(s)
-        val word = s.replace(imageWords, " ").replace(videoWords, " ").replace(audioWords, " ").replace(filler, " ")
+        var word = s.replace(imageWords, " ").replace(videoWords, " ").replace(audioWords, " ").replace(filler, " ")
             .replace(Regex("\\s+"), " ").trim()
+        // "the latest photo from my gallery / on my phone / in the camera roll": the place is not part of the file name
+        if (wantNewest) word = word.replace(placeWords, " ").replace(Regex("\\s+"), " ").trim()
         val images = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
         val videos = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
         val audios = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
