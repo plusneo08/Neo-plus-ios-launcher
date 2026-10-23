@@ -54,6 +54,10 @@ object SiteVault {
         return String(c.doFinal(Base64.decode(ct, Base64.NO_WRAP)), Charsets.UTF_8)
     }
 
+    /** Encrypts / decrypts one secret (e.g. the email app password) with the same Keystore key as the website logins. */
+    fun seal(plain: String): String = enc(plain)
+    fun unseal(blob: String): String = try { dec(blob) } catch (e: Exception) { "" }
+
     /** "https://www.Example.com/login" -> "example.com" */
     fun normalizeDomain(input: String): String {
         var d = input.trim().lowercase()

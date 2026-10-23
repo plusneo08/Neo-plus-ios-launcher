@@ -86,6 +86,7 @@ object TaskReports {
             if (notify) text(a, report)
             sms(a, report)
         }
+        EmailReport.sendReport(a, report)   // free: no SIM, no airtime
     }
 
     /** The phone number the reports are also texted to (SMS). Empty = notification only. */
@@ -130,7 +131,7 @@ object TaskReports {
      * Saves the number so every finished task is texted there, AND sends a text straight away (the given summary, else the latest
      * reports, else a short confirmation) so you can see that it works. An empty number with no text turns SMS reports off.
      */
-    fun setSms(ctx: Context, number: String, text: String = ""): String {
+    fun setSms(ctx: Context, number: String, text: String = "", quiet: Boolean = false): String {
         val n = number.filter { it.isDigit() || it == '+' }
         val saved = smsNumber(ctx)
         if (n.isBlank()) {
@@ -144,6 +145,7 @@ object TaskReports {
         }
         if (n.count { it.isDigit() } < 6) return "Couldn’t save that: it doesn’t look like a phone number"
         prefs(ctx).edit().putString("sms_to", n).apply()
+        if (quiet) return "Saved. Each finished task will be texted to $n."   // the settings screen only saves, it sends nothing
         val recent = (history(ctx) + list(ctx)).takeLast(5)
         val body = when {
             text.isNotBlank() -> text.trim()

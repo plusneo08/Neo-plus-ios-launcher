@@ -144,7 +144,7 @@ object SocialPoster {
                 } else if (items.isNotEmpty()) {
                     intents += aimed(ctx, share(), pkg, listOf("composer", "share", "post"), listOf("messenger", "direct", "story"))
                     caption = text
-                    stages = listOf(Stage(FINAL, listOf("post")))
+                    stages = listOf(Stage(FINAL, listOf("post", "share now", "publish", "share")))
                     finalName = "Post"
                 } else {
                     ctx.packageManager.getLaunchIntentForPackage(pkg)?.let { intents += it }
@@ -336,7 +336,7 @@ object SocialPoster {
             nap(if (acted) 900 else 450)
         }
         return if (!sawApp) "the app never came to the front, so nothing is posted"
-        else "I never saw the $finalName button (is the app logged in, and is its screen showing the post?), so nothing is posted"
+        else "I never saw the $finalName button (is the app logged in, and is its screen showing the post?), so nothing is posted" + screenHint(ctx, pkgs)
     }
 
     private fun pressFinal(ctx: Context, pkgs: Set<String>, st: Stage, first: android.view.accessibility.AccessibilityNodeInfo, finalName: String): String? {
@@ -356,6 +356,20 @@ object SocialPoster {
             node = again
         }
         return "I pressed $finalName but the app still shows it, so please check whether it posted"
+    }
+
+    /** What the screen shows right now (labels of the buttons), so a failure says what is really there. */
+    private fun screenHint(ctx: Context, pkgs: Set<String>): String {
+        val root = UiDriver.rootOf(ctx, pkgs) ?: return ""
+        val labels = LinkedHashSet<String>()
+        for (n in UiDriver.all(root)) {
+            if (labels.size >= 14) break
+            if (!n.isVisibleToUser || n.isPassword || n.isEditable || !n.isClickable) continue
+            val t = (n.text ?: n.contentDescription)?.toString()?.trim().orEmpty()
+            if (t.isNotEmpty() && t.length <= 40) labels += t.replace("\n", " ")
+        }
+        return if (labels.isEmpty()) "\nThe screen shows no readable buttons: this app draws them without labels, so I cannot press them."
+        else "\nOn screen I can see: " + labels.joinToString(", ") + "."
     }
 
     private fun nap(ms: Long) { try { Thread.sleep(ms) } catch (e: InterruptedException) { } }

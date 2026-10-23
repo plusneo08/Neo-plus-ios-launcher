@@ -321,6 +321,10 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
     var limitText by remember { WebUsage.load(ctx); mutableStateOf(WebUsage.limit.toString()) }
     var reportNumber by remember { mutableStateOf(TaskReports.smsNumber(ctx)) }
     var reportMsg by remember { mutableStateOf("") }
+    var emailFrom by remember { mutableStateOf(EmailReport.from(ctx)) }
+    var emailPass by remember { mutableStateOf("") }
+    var emailTo by remember { mutableStateOf(EmailReport.to(ctx)) }
+    var emailMsg by remember { mutableStateOf(EmailReport.lastError(ctx).let { if (it.isBlank()) "" else "Last email problem: $it" }) }
     val smsPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     // The settings are separate pages: 0 = the menu, 1 = API keys, 2 = Voice, 3 = Website authorisation, 4 = Apps, 5 = Task reports.
     var page by remember { mutableStateOf(0) }
@@ -516,7 +520,37 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                 }
 
                 5 -> {
-                    Text("Task reports by text", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Task reports", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                    Text("By email (free, sent from your own mailbox, no SIM used)", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Every finished task is emailed to you. Enter the email address that sends the reports and its APP PASSWORD " +
+                            "(Gmail: Google Account > Security > 2-Step Verification > App passwords). Your normal password will not work. " +
+                            "The app password is stored encrypted on this phone. Leave the email empty and save to turn email reports off.",
+                        color = note, fontSize = 13.sp, lineHeight = 18.sp
+                    )
+                    GlassField(emailFrom, { emailFrom = it.trim().take(120); emailMsg = "" }, "Your email, e.g. you@gmail.com")
+                    GlassField(emailPass, { emailPass = it.take(64); emailMsg = "" },
+                        if (EmailReport.hasPassword(ctx)) "App password (saved, leave empty to keep it)" else "App password", password = true)
+                    GlassField(emailTo, { emailTo = it.trim().take(120); emailMsg = "" }, "Send reports to (empty = the same email)")
+                    if (emailMsg.isNotBlank()) Text(emailMsg, color = if (emailMsg.startsWith("Couldn") || emailMsg.startsWith("Last")) Color(0xFFFFB347) else Color(0xFF7DE08A), fontSize = 13.sp, lineHeight = 18.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                        Box(
+                            Modifier.weight(1f).clip(RoundedCornerShape(50)).background(UserBlueBottom)
+                                .clickable { emailMsg = EmailReport.save(ctx, emailFrom, emailPass, emailTo); if (!emailMsg.startsWith("Couldn")) emailPass = "" }
+                                .padding(vertical = 12.dp),
+                            contentAlignment = Alignment.Center
+                        ) { Text("Save email", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+                        Box(
+                            Modifier.weight(1f).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.16f))
+                                .clickable {
+                                    emailMsg = "Sending the test email…"
+                                    val c = ctx.applicationContext
+                                    Thread { emailMsg = EmailReport.sendTest(c) }.start()
+                                }.padding(vertical = 12.dp),
+                            contentAlignment = Alignment.Center
+                        ) { Text("Send test", color = Color.White, fontSize = 15.sp) }
+                    }
+                    Text("By text message (sent from your own SIM, uses airtime)", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     Text(
                         "Add the phone number the assistant should text when it finishes a task (include the country code, e.g. +265…). Each finished task is sent as a text message to this number, and after 5 finished tasks the assistant calls you instead. Leave it empty to turn texts off: you still get a notification for each task.",
                         color = note, fontSize = 13.sp, lineHeight = 18.sp
@@ -538,7 +572,7 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                         Box(
                             Modifier.weight(1f).clip(RoundedCornerShape(50)).background(UserBlueBottom)
                                 .clickable {
-                                    val r = TaskReports.setSms(ctx, reportNumber)
+                                    val r = TaskReports.setSms(ctx, reportNumber, quiet = true)
                                     if (r.startsWith("Couldn")) reportMsg = r
                                     else {
                                         if (reportNumber.isNotBlank() && androidx.core.content.ContextCompat.checkSelfPermission(ctx, Manifest.permission.SEND_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
