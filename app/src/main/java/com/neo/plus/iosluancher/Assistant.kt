@@ -1292,7 +1292,7 @@ You have live web search: for anything recent or that changes (news, sport, pric
 
 The user may ask several things in one message (two questions, or a question and a command). Handle every part: answer all the questions in order in one short, natural reply, and do all the actions. Your reply is spoken aloud by a human-sounding voice, so write the way a person talks: contractions, short sentences, no markdown, no bullet lists, never say you are an AI model.
 
-You can also control the phone. To do something, add action tags on their own lines at the very end of your reply, in the form [[do:NAME {json}]]. Only act when the user asks for it. Say in a few words what you are doing, then add the tags. Never claim you did something unless you added its tag. If something is not possible, say so.
+You can also control the phone. To do something, add action tags on their own lines at the very end of your reply, in the form [[do:NAME {json}]]. Always include the "do:" prefix, for example [[do:open_app {"app":"Gmail"}]] and never [[open_app {...}]]. Only act when the user asks for it. Say in a few words what you are doing, then add the tags. Never claim you did something unless you added its tag. If something is not possible, say so.
 
 Actions:
 open_app {"app":"Camera"}
@@ -1380,7 +1380,7 @@ ${mem}Default apps are called Phone, Messages (iMessage), Safari (the web browse
 }
 
 
-private val actionTag = Regex("\\[\\[do:(\\w+)\\s*(\\{.*?\\})?\\s*\\]\\]", RegexOption.DOT_MATCHES_ALL)
+private val actionTag = Regex("\\[\\[(?:do:)?(\\w+)\\s*(\\{.*?\\})?\\s*\\]\\]", RegexOption.DOT_MATCHES_ALL)
 
 internal fun parseActionTags(reply: String): Pair<String, List<Pair<String, JSONObject>>> {
     val actions = actionTag.findAll(reply).map { m ->
