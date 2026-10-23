@@ -286,7 +286,7 @@ private fun Bubble(m: ChatMsg) {
         }
         m.notes.filter { !it.startsWith(NOTIF_MARK) }.forEach { n ->
             Text(
-                "✓ $n", color = Color.White.copy(alpha = 0.62f), fontSize = 12.sp,
+                "${if (noteFailed(n)) "✗" else "✓"} $n", color = Color.White.copy(alpha = if (noteFailed(n)) 0.85f else 0.62f), fontSize = 12.sp,
                 modifier = Modifier.padding(start = 6.dp, end = 6.dp, top = 4.dp)
             )
         }
@@ -1098,4 +1098,12 @@ fun AssistantOverlay(a: AssistantViewModel, apps: List<AppEntry>, onClose: () ->
         if (taskOpen && !showSettings) TaskScreen()
         if (showSettings) SettingsSheet(a, apps) { showSettings = false }
     }
+}
+
+
+/** A status line under a reply that says the task did NOT finish gets a cross instead of a tick. */
+internal fun noteFailed(n: String): Boolean {
+    val t = n.trimStart().lowercase()
+    return listOf("couldn’t", "couldn't", "could not", "i couldn", "i never saw", "no file", "no app", "no photo", "no words",
+        "turn on", "failed", "error", "nothing is posted").any { t.startsWith(it) || t.contains("so nothing is posted") }
 }

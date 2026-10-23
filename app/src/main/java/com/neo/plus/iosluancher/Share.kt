@@ -32,7 +32,7 @@ object MediaFinder {
     private val newest = Regex("(?i)\\b(latest|last|recent|newest|most recent|new)\\b")
     private val filler = Regex("(?i)\\b(the|my|a|an|called|named|titled|by|file|latest|last|recent|newest|most recent|new|of)\\b")
 
-    private val placeWords = Regex("(?i)\\b(from|in|on|at|to|gallery|galleries|camera roll|camera|phone|device|storage|album|albums|photos app|taken|please|this|one)\\b")
+    private val placeWords = Regex("(?i)\\b(from|in|on|at|to|gallery|galleries|camera roll|camera|phone|device|storage|album|albums|photos app|taken|please|this|one|as|story|stories|status|reel|post|posting|for|with|and|then|facebook|fb|lite|instagram|insta|whatsapp|business|tiktok)\\b")
 
     fun looksLikeMedia(spec: String) =
         imageWords.containsMatchIn(spec) || videoWords.containsMatchIn(spec) || audioWords.containsMatchIn(spec) ||

@@ -199,6 +199,9 @@ class IosControlService : AccessibilityService() {
 
     private val shotExecutor = Executors.newSingleThreadExecutor()
 
+    /** Real pixel size (width to height) of the screen at the last captureScreen(), used to turn a spot in the picture into a touch. */
+    @Volatile var lastShotSize: Pair<Int, Int>? = null
+
     /** A JPEG of what is on the screen right now (Android 11+), scaled down; null if unavailable. Call off the main thread. */
     fun captureScreen(): ByteArray? {
         if (Build.VERSION.SDK_INT < 30) return null
@@ -212,6 +215,7 @@ class IosControlService : AccessibilityService() {
                         val bmp = hw?.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
                         result.hardwareBuffer.close()
                         if (bmp != null) {
+                            lastShotSize = bmp.width to bmp.height
                             val scale = 1280f / maxOf(bmp.width, bmp.height)
                             val scaled = if (scale < 1f) android.graphics.Bitmap.createScaledBitmap(
                                 bmp, (bmp.width * scale).toInt(), (bmp.height * scale).toInt(), true

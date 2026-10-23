@@ -297,6 +297,9 @@ object SocialPoster {
         var idx = 0
         var typed = cap.isBlank()
         var sawApp = false
+        var lastProgress = start
+        var visionCalls = 0
+        var viaVision = false
         while (SystemClock.uptimeMillis() - start < timeoutMs) {
             val elapsed = SystemClock.uptimeMillis() - start
             val root = UiDriver.rootOf(ctx, pkgs)
@@ -333,6 +336,36 @@ object SocialPoster {
                 }
                 break
             }
+            if (acted) lastProgress = SystemClock.uptimeMillis()
+
+            // Nothing with a label matched for 10 s: this app probably draws its buttons without labels (Facebook Lite).
+            // Look at the screen with the AI and touch the spot it points to. Capped so it cannot loop on Gemini quota.
+            if (!acted && visionCalls < 6 && SystemClock.uptimeMillis() - lastProgress > 10_000L && (typed || elapsed > 20_000L)) {
+                val label = pkgs.firstOrNull() ?: ""
+                for (j in idx until stages.size) {
+                    val st = stages[j]
+                    if (st.kind == REPEAT) continue
+                    val name = st.names.first().removePrefix("~")
+                    visionCalls++
+                    val spot = VisionTap.locate(ctx, label, name)
+                    if (spot == null) { if (st.kind == STEP) { idx = j + 1; continue } else break }
+                    if (extras != null && st.kind == FINAL && !extrasTried) { extrasTried = true; StoryEditor.apply(ctx, pkgs, extras); break }
+                    VisionTap.tap(spot)
+                    viaVision = true
+                    lastProgress = SystemClock.uptimeMillis()
+                    if (st.kind == STEP) { idx = j + 1; break }
+                    // The publishing button: it only counts when it is gone afterwards; otherwise touch it once more, longer.
+                    nap(2300)
+                    visionCalls++
+                    val again = VisionTap.locate(ctx, label, name) ?: return null
+                    if (!VisionTap.same(spot, again)) return null
+                    VisionTap.tap(again, 160L)
+                    nap(2300)
+                    visionCalls++
+                    return if (VisionTap.locate(ctx, label, name) == null) null
+                    else "I touched $finalName (found by looking at the screen) but the app still shows it, so please check whether it posted"
+                }
+            }
             nap(if (acted) 900 else 450)
         }
         return if (!sawApp) "the app never came to the front, so nothing is posted"
@@ -368,7 +401,7 @@ object SocialPoster {
             val t = (n.text ?: n.contentDescription)?.toString()?.trim().orEmpty()
             if (t.isNotEmpty() && t.length <= 40) labels += t.replace("\n", " ")
         }
-        return if (labels.isEmpty()) "\nThe screen shows no readable buttons: this app draws them without labels, so I cannot press them."
+        return if (labels.isEmpty()) "\nThe screen shows no readable buttons: this app draws them without labels. I also tried finding them by looking at the screen with the AI (needs Android 11+ and a Gemini key) and could not see them."
         else "\nOn screen I can see: " + labels.joinToString(", ") + "."
     }
 
