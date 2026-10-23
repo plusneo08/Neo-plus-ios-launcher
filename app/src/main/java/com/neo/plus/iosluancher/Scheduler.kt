@@ -241,6 +241,9 @@ class SchedulerReceiver : BroadcastReceiver() {
 /** Puts the scheduled tasks back after the phone restarts. */
 class SchedulerBootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED) try { Scheduler.rearm(context) } catch (e: Exception) { }
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
+            try { Scheduler.rearm(context) } catch (e: Exception) { }
+            try { Goals.rearm(context) } catch (e: Exception) { }
+        }
     }
 }

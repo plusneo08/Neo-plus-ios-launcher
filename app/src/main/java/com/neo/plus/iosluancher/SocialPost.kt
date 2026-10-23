@@ -263,7 +263,7 @@ object SocialPoster {
         }
         nap(900)
 
-        val problem = runFlow(ctx, pkgs, stages, caption, 90_000L, finalName, extras)
+        val problem = runFlow(ctx, pkgs, stages, caption, 45_000L, finalName, extras)
         val songNote = when {
             songName.isBlank() -> ""
             extras != null && extras.songDone -> "\nSong added: “$songName”."

@@ -393,26 +393,34 @@ class IosControlService : AccessibilityService() {
 
     @Volatile private var consumedDown = true
 
-    /** Which window is in front right now (a missed window event used to leave the ringer selected inside an app). */
-    private fun refreshFront() {
+    /**
+     * Which window is in front right now (a missed window event used to leave the ringer selected inside an app).
+     * Returns false when the front app could not be read at all: then the caller must not assume the home screen.
+     */
+    private fun refreshFront(): Boolean {
         try {
-            val root = rootInActiveWindow ?: return
+            val root = rootInActiveWindow ?: return false
             val p = root.packageName?.toString()
             try { root.recycle() } catch (e: Exception) { }
-            if (p == null || p == "android" || p == "com.android.systemui" || p in imePackages()) return
+            if (p == null) return false
+            if (p == "android" || p == "com.android.systemui" || p in imePackages()) return launcherFront
             launcherFront = p == packageName
-        } catch (e: Exception) { }
+            return true
+        } catch (e: Exception) { return false }
     }
 
     private fun adjust(dir: Int) {
         val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         // A mic beep-mute that has not been undone yet must never swallow a button press
         if (BeepMute.isHolding()) BeepMute.restoreNow(this)
-        refreshFront()
+        // The ringer is only chosen when the home screen is KNOWN to be in front. If the front app cannot be read
+        // (some apps give no window to read), or the last window event was missed, the media volume is used, so the
+        // buttons never silently change the ringer while an app is open and look dead.
+        val onHome = refreshFront() && launcherFront
         var stream = when {
             am.mode == AudioManager.MODE_IN_CALL || am.mode == AudioManager.MODE_IN_COMMUNICATION -> AudioManager.STREAM_VOICE_CALL
             am.isMusicActive -> AudioManager.STREAM_MUSIC
-            launcherFront -> AudioManager.STREAM_RING   // on the home screen with nothing playing: ringer
+            onHome -> AudioManager.STREAM_RING          // on the home screen with nothing playing: ringer
             else -> AudioManager.STREAM_MUSIC           // inside any other app: media volume
         }
         // Media volume goes on past 100 % (up to 200 %): at the top, volume-up adds a boost, volume-down removes it first.
@@ -431,11 +439,20 @@ class IosControlService : AccessibilityService() {
         }
         // The ringer needs FLAG_ALLOW_RINGER_MODES, otherwise Volume Up does nothing while the phone is on vibrate or silent
         val flags = if (stream == AudioManager.STREAM_RING) AudioManager.FLAG_ALLOW_RINGER_MODES else 0
+        // A stream left muted (e.g. by an old mic beep-mute) ignores the buttons: lift the mute first.
+        try { if (am.isStreamMute(stream)) am.adjustStreamVolume(stream, AudioManager.ADJUST_UNMUTE, 0) } catch (e: Exception) { }
+        val before = am.getStreamVolume(stream)
         try { am.adjustStreamVolume(stream, dir, flags) } catch (e: Exception) {
             stream = AudioManager.STREAM_MUSIC
             try { am.adjustStreamVolume(stream, dir, 0) } catch (e2: Exception) { }
         }
-        val max = am.getStreamMaxVolume(stream).coerceAtLeast(1)
+        // Nothing moved although it was not at its limit: let Android pick the stream itself and show its own panel.
+        val mxNow = am.getStreamMaxVolume(stream)
+        val atLimit = (dir == AudioManager.ADJUST_RAISE && before >= mxNow) || (dir == AudioManager.ADJUST_LOWER && before <= 0)
+        if (!atLimit && am.getStreamVolume(stream) == before) {
+            try { am.adjustVolume(dir, AudioManager.FLAG_SHOW_UI); return } catch (e: Exception) { }
+        }
+        val max = mxNow.coerceAtLeast(1)
         showHud(am.getStreamVolume(stream) / max.toFloat(), stream == AudioManager.STREAM_MUSIC)
     }
 

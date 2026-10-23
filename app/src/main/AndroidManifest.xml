@@ -221,6 +221,7 @@
             android:turnScreenOn="true" />
 
         <receiver android:name=".SchedulerReceiver" android:exported="false" />
+        <receiver android:name=".GoalReceiver" android:exported="false" />
         <receiver android:name=".SchedulerBootReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

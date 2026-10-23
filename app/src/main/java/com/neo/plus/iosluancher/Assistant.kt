@@ -122,11 +122,11 @@ object PhoneActions {
     /** Actions that move the user out of the launcher, so the assistant panel closes afterwards. */
     private val leaving = setOf(
         "open_app", "call", "message", "whatsapp", "messenger", "email", "navigate", "open_url", "settings", "control_center", "system",
-        "share_file", "whatsapp_call", "post", "ui_tap", "ui_long_press", "ui_type", "ui_scroll", "ui_back", "ui_search", "ui_enter"
+        "share_file", "whatsapp_call", "post", "ui_tap", "ui_tap_visual", "ui_long_press", "ui_type", "ui_scroll", "ui_back", "ui_search", "ui_enter"
     )
 
     /** Actions that fetch something to tell the user (the note is the answer). */
-    val infoActions = setOf("calendar", "weather", "lookup", "news", "stock", "sports", "read_sms", "call_log", "screen", "read_messages", "read_notifications", "read_app", "last_message", "sleep_mode", "sleep_report", "sleep_voice", "time_lock", "send_money", "money_setup", "web_search", "look", "excel_create", "excel_edit", "excel_read", "web_task", "web_batch", "file_read", "ui_list", "post_apps", "queue", "approvals", "schedule", "schedules", "report_number")
+    val infoActions = setOf("calendar", "weather", "lookup", "news", "stock", "sports", "read_sms", "call_log", "screen", "read_messages", "read_notifications", "read_app", "last_message", "sleep_mode", "sleep_report", "sleep_voice", "time_lock", "send_money", "money_setup", "web_search", "look", "excel_create", "excel_edit", "excel_read", "web_task", "web_batch", "file_read", "ui_list", "app_task", "goal", "post_apps", "queue", "approvals", "schedule", "schedules", "report_number")
 
     fun run(ctx: Context, name: String, a: JSONObject, apps: List<AppEntry>): ActionResult {
         // Time lock running: only harmless actions, so nothing can be used to get around the lock (also by voice)
@@ -224,7 +224,9 @@ object PhoneActions {
 
             "post" -> return SocialPoster.post(ctx, a, apps)
             "post_apps" -> return SocialPoster.supported(ctx)
-            "ui_tap", "ui_long_press", "ui_type", "ui_scroll", "ui_back", "ui_search", "ui_enter", "ui_list", "ui_wait" ->
+            "app_task" -> return AppTask.run(ctx, a, apps)
+            "goal" -> return Goals.handle(ctx, a, apps)
+            "ui_tap", "ui_tap_visual", "ui_long_press", "ui_type", "ui_scroll", "ui_back", "ui_search", "ui_enter", "ui_list", "ui_wait" ->
                 return UiDriver.exec(ctx, name, a, apps)
 
             "whatsapp_call" -> return WhatsAppCall.call(ctx, a.optString("to"), a.optBoolean("video", false), a.optBoolean("business", false))
@@ -342,21 +344,39 @@ object PhoneActions {
 
             "volume" -> {
                 val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-                val stream = if (a.optString("stream") == "ring") AudioManager.STREAM_RING else AudioManager.STREAM_MUSIC
+                val ring = a.optString("stream") == "ring"
+                val stream = if (ring) AudioManager.STREAM_RING else AudioManager.STREAM_MUSIC
                 val max = am.getStreamMaxVolume(stream).coerceAtLeast(1)
-                val fl = if (stream == AudioManager.STREAM_RING) AudioManager.FLAG_ALLOW_RINGER_MODES else 0
+                val fl = if (ring) AudioManager.FLAG_ALLOW_RINGER_MODES else 0
+                // Media volume goes past 100 % (to 200 %) with the same boost the volume buttons use.
+                val boostable = !ring
+                fun total() = (am.getStreamVolume(stream) * 100f / max).roundToInt() + (if (boostable) VolumeBoost.percent else 0)
                 try {
                     when {
-                        a.has("level") -> am.setStreamVolume(stream, (a.getInt("level") / 100f * max).roundToInt().coerceIn(0, max), fl)
-                        a.optString("direction") == "up" -> am.adjustStreamVolume(stream, AudioManager.ADJUST_RAISE, fl)
-                        a.optString("direction") == "down" -> am.adjustStreamVolume(stream, AudioManager.ADJUST_LOWER, fl)
-                        a.optString("direction") == "mute" -> am.setStreamVolume(stream, 0, fl)
+                        a.has("level") -> {
+                            val want = a.optInt("level", -1)
+                            if (want < 0) return "Tell me a volume from 0 to ${if (boostable) 200 else 100} percent"
+                            am.setStreamVolume(stream, (want.coerceAtMost(100) / 100f * max).roundToInt().coerceIn(0, max), fl)
+                            if (boostable) VolumeBoost.set(ctx, (want - 100).coerceIn(0, VolumeBoost.MAX))
+                        }
+                        a.optString("direction") == "up" -> {
+                            if (boostable && am.getStreamVolume(stream) >= max) VolumeBoost.change(ctx, VolumeBoost.STEP)
+                            if (!boostable || VolumeBoost.percent == 0) am.adjustStreamVolume(stream, AudioManager.ADJUST_RAISE, fl)
+                        }
+                        a.optString("direction") == "down" -> {
+                            if (boostable && VolumeBoost.percent > 0) VolumeBoost.change(ctx, -VolumeBoost.STEP)
+                            else am.adjustStreamVolume(stream, AudioManager.ADJUST_LOWER, fl)
+                        }
+                        a.optString("direction") == "mute" -> {
+                            if (boostable) VolumeBoost.set(ctx, 0)
+                            am.setStreamVolume(stream, 0, fl)
+                        }
                         else -> return "Unknown volume request"
                     }
                 } catch (e: SecurityException) {
                     return "Do Not Disturb is blocking the ringer volume: allow Do Not Disturb access for Neo Plus, or change the media volume instead"
                 }
-                return "Volume ${(am.getStreamVolume(stream) * 100f / max).roundToInt()}%"
+                return "Volume ${total()}%"
             }
 
             "brightness" -> {
@@ -1247,16 +1267,26 @@ object Llm {
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
             .put("contents", contents)
             .apply { if (search) put("tools", JSONArray().put(JSONObject().put("google_search", JSONObject()))) }
+            .apply { if (FastStart.enabled) put("generationConfig", JSONObject().put("thinkingConfig", JSONObject().put("thinkingLevel", "low"))) }
             .apply { if (token != null) put("continuationToken", token) }
             .toString()
         val text = StringBuilder()
         var token: String? = null
         // A long answer can stop with finishReason CONTINUATION: send the token back (same history) to carry on.
         for (hop in 0 until 4) {
-            val res = post(
-                "https://generativelanguage.googleapis.com/v1beta/models/${Uri.encode(model)}:generateContent",
-                mapOf("x-goog-api-key" to key), body(token)
-            )
+            val res = try {
+                post(
+                    "https://generativelanguage.googleapis.com/v1beta/models/${Uri.encode(model)}:generateContent",
+                    mapOf("x-goog-api-key" to key), body(token)
+                )
+            } catch (e: LlmException) {
+                // This model does not accept the low-thinking setting: switch it off for good and ask once more.
+                if (FastStart.enabled && e.message?.contains("think", ignoreCase = true) == true) {
+                    FastStart.enabled = false
+                    return geminiOnce(key, model, system, history, search, image)
+                }
+                throw e
+            }
             val cand = JSONObject(res).optJSONArray("candidates")?.optJSONObject(0)
             val parts = cand?.optJSONObject("content")?.optJSONArray("parts")
             for (i in 0 until (parts?.length() ?: 0)) {
@@ -1300,7 +1330,7 @@ timer {"seconds":300,"label":""}
 flashlight {"on":true}
 wifi / bluetooth / airplane / mobile_data / dark_mode / low_power (battery saver) / dnd  {"on":true}
 read_app {"app":"messages|whatsapp|whatsapp business|messenger|facebook|tiktok|instagram|gmail|email|gemini","from":"optional name"}   (reads the messages inside that app itself: opens it and reads the chat list, or the chat with "from")
-volume {"level":0-100} or {"direction":"up|down|mute"}, optional "stream":"ring"
+volume {"level":0-200} (above 100 = extra loudness boost, media only) or {"direction":"up|down|mute"}, optional "stream":"ring"
 brightness {"level":0-100}
 media {"cmd":"play|pause|next|previous"}
 play_music {}
@@ -1348,6 +1378,9 @@ ui_tap {"label":"Post","app":"optional app to open first"}   (taps a button, tab
 ui_long_press {"label":"..."}   ui_type {"text":"hello","into":"optional box name","replace":false}   (to log in or confirm in an app use "text":"{{username}}" or "{{password}}" with "account":"google.com": the phone types the saved login from Assistant settings → Websites into the box, you never see it; never ask the user to say a password in the chat, tell them to save it in Assistant settings → Websites)   ui_scroll {"finger":"up|down|left|right","times":1}   (finger = the way the finger moves: up shows lower content / next video)
 ui_search {"text":"cats","app":"YouTube"}   ui_enter {}   ui_back {"times":1}   ui_wait {"seconds":2}
 ui_list {}   (lists what can be tapped on the screen now, so you can pick the right label)
+goal {"do":"start","instruction":"the whole goal in plain words INCLUDING what to post and what counts as finished (e.g. 500 likes)","app":"Facebook Lite","every_minutes":60,"days":7}   (a LONG-RUNNING goal in a connected app that goes on for hours or days: the phone itself checks in every N minutes, posts the content once, counts likes, comments and shares, replies to every comment that has no reply, and only tells the user when the goal is met, time runs out, or it is stuck and needs them. Use it when the user gives a goal to reach, or says to keep doing something until it is done. Ask for anything missing first (what to post, what number means success). Also {"do":"list"}, {"do":"stop","id":"all"}, {"do":"resume"} after the user has sorted out what it needed.)
+app_task {"goal":"everything to do inside the app, in plain words","app":"app to open first"}   (USE THIS for any job inside a connected phone app that takes several steps: it looks at the screen, taps, types, scrolls and checks its own work, step by step, until the goal is done, then tells you what happened. It stops and tells you when it needs the user's OK (money, permanent deletion, anything the goal did not ask for), a CAPTCHA, a login or a PIN. Prefer it over chaining ui_tap actions yourself. If the result says it needs the user's OK, ask the user and only run it again after they say yes.)
+ui_tap_visual {"describe":"the red heart under the video","long":false}   (for apps whose buttons have no words and ui_list shows nothing: you first use look to see the screen, then describe the thing to tap; the phone finds it on a screenshot and touches it. ui_tap and ui_type already fall back to this by themselves. To control any connected app step by step: look or ui_list, do ONE action, look again to check it worked, repeat, and tell the user what you did. Before anything that sends money, deletes, or cannot be undone, ask the user to confirm first.)
 whatsapp {"to":"Mum or a number","text":"message or link","business":false}   (really sends a WhatsApp message; "business":true when the user says WhatsApp Business)
 messenger {"to":"name","text":"message or link","app":"messenger|messenger lite|facebook|facebook lite"}   (really sends a Messenger / Facebook message)
 message {"to":"name or number","text":"..."}   (plain SMS ONLY. NEVER use it when the user named WhatsApp, WhatsApp Business, Messenger or Facebook: use whatsapp or messenger instead. "Send this <link> to Sam on WhatsApp business" = whatsapp with "business":true and the link as "text".)

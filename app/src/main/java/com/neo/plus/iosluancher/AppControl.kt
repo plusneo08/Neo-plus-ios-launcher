@@ -216,6 +216,19 @@ object UiDriver {
         return tap(btn)
     }
 
+    /**
+     * For apps that draw their buttons without any text or description (so the label search finds nothing): photograph
+     * the screen, let the AI point at [what], and touch that spot. Costs one Gemini call and sends one screenshot of the
+     * app in front, which exec() has already checked is a connected app.
+     */
+    private fun visionTapFor(ctx: Context, apps: List<AppEntry>, what: String, pressMs: Long = 60L): Boolean {
+        val fg = foregroundPkg() ?: return false
+        if (fg == ctx.packageName) return false
+        val label = apps.firstOrNull { it.pkg == fg }?.shownLabel ?: fg
+        val spot = VisionTap.locate(ctx, label, what.removePrefix("~"), extra = "") ?: return false
+        return VisionTap.tap(spot, pressMs)
+    }
+
     /** Short list of what can be tapped on the screen now. */
     fun listTappable(root: AccessibilityNodeInfo): String {
         val seen = LinkedHashSet<String>()
@@ -227,7 +240,7 @@ object UiDriver {
             seen += if (n.isEditable) "$label (text box)" else label
             if (seen.size >= 30) break
         }
-        return if (seen.isEmpty()) "I can’t see any buttons here" else "On screen I can tap: " + seen.joinToString(", ")
+        return if (seen.isEmpty()) "I can’t read any buttons here: this app draws them without labels. Use look to see the screen, then ui_tap_visual with a description of what to tap" else "On screen I can tap: " + seen.joinToString(", ")
     }
 
     /* ---------------- assistant actions ---------------- */
@@ -295,8 +308,16 @@ object UiDriver {
                 val labels = labelsOf(a)
                 if (labels.isEmpty()) return "No button name given"
                 val long = name == "ui_long_press"
-                val node = waitFor(ctx, pkgs, if (a.optBoolean("optional")) 3500 else 9000) { r -> findAny(r, labels) }
-                    ?: return if (a.optBoolean("optional")) "Nothing to tap" else nothingOpen("“${labels[0]}”")
+                val node = waitFor(ctx, pkgs, if (a.optBoolean("optional")) 3500 else 6000) { r -> findAny(r, labels) }
+                if (node == null) {
+                    if (a.optBoolean("optional")) return "Nothing to tap"
+                    // No text or description matched: this app may draw its buttons without labels, so look at the screen.
+                    if (visionTapFor(ctx, apps, labels[0], if (long) 700L else 60L)) {
+                        try { Thread.sleep(550) } catch (e: InterruptedException) { }
+                        return (if (long) "Held" else "Tapped") + " “${labels[0].removePrefix("~")}” (found by looking at the screen)"
+                    }
+                    return nothingOpen("“${labels[0]}”")
+                }
                 val ok = if (long) longPress(node) else tap(node)
                 try { Thread.sleep(550) } catch (e: InterruptedException) { }
                 if (ok) (if (long) "Held “${labels[0]}”" else "Tapped “${labels[0]}”") else "Couldn’t tap “${labels[0]}”"
@@ -317,7 +338,14 @@ object UiDriver {
                         ?: return "No saved login for “${acct.ifBlank { "this account" }}”. Add it in Assistant settings → Websites with your username and password and switch it on, then ask again."
                     toType = text.replace("{{password}}", e.password).replace("{{username}}", e.username)
                 }
-                val field = waitFor(ctx, pkgs, 9000) { r -> if (wantsPw) findPassword(r) else findEditable(r, into) }
+                var found = waitFor(ctx, pkgs, 6000) { r -> if (wantsPw) findPassword(r) else findEditable(r, into) }
+                // No readable text box: touch the box the AI points at, then look for the focused one again.
+                if (found == null && !wantsPw && foregroundPkg() != ctx.packageName &&
+                    visionTapFor(ctx, apps, if (into.isNotBlank()) "the text box called $into" else "the text box where the text is typed")) {
+                    try { Thread.sleep(700) } catch (e: InterruptedException) { }
+                    found = waitFor(ctx, pkgs, 3000) { r -> findEditable(r, "") }
+                }
+                val field = found
                     ?: return if (foregroundPkg() == ctx.packageName) NO_APP
                     else if (wantsPw) "Couldn’t find a password box on the screen"
                     else "Couldn’t find a text box${if (into.isNotBlank()) " called “$into”" else ""} on the screen"
@@ -354,6 +382,16 @@ object UiDriver {
                 try { Thread.sleep(500) } catch (e: InterruptedException) { }
                 pressEnter(ctx, field)
                 "Searched for “$text”"
+            }
+
+            "ui_tap_visual" -> {
+                val d = a.optString("describe").ifBlank { a.optString("label") }.trim()
+                if (d.isEmpty()) return "Say what to tap, for example “the red heart under the video”"
+                if (foregroundPkg() == ctx.packageName) return NO_APP
+                if (visionTapFor(ctx, apps, d, if (a.optBoolean("long")) 700L else 60L)) {
+                    try { Thread.sleep(550) } catch (e: InterruptedException) { }
+                    "Tapped “${d.take(60)}” (found by looking at the screen)"
+                } else "I couldn’t see “${d.take(60)}” on the screen"
             }
 
             "ui_list" -> {

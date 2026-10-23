@@ -17,18 +17,18 @@ object VisionTap {
 {"found":true,"x":0-1000,"y":0-1000}
 x and y are the CENTRE of the button, as thousandths of the picture width (x) and height (y).
 Rules:
-- Only report a button that is clearly visible and clearly the one asked for (its words or its usual icon).
+- Only report a control that is clearly visible and clearly the one asked for (its words or its usual icon).
 - If it is not on this screen, or you are not sure, return {"found":false}. Never guess.
 - Never choose buttons that delete, block, report, log out or pay."""
 
     /** [name] e.g. "Share", "Post", "Your story". Null when the model could not see it (or the AI / screenshot is unavailable). */
-    fun locate(ctx: Context, appLabel: String, name: String): Spot? {
+    fun locate(ctx: Context, appLabel: String, name: String, extra: String = "It is the button that publishes or continues a post."): Spot? {
         val svc = IosControlService.instance ?: return null
         val key = ctx.applicationContext.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE).getString("key", "") ?: ""
         if (KeyPool.parse(key).isEmpty()) return null
         KeyPool.attach(ctx)
         val shot = svc.captureScreen() ?: return null
-        val ask = "App: $appLabel. Find the button that publishes or continues a post, named \"$name\" (it may be only an icon or an arrow). Write the JSON now."
+        val ask = "App: $appLabel. Find this control on the screen: \"$name\" (a button, icon, tab, link or text box; it may have no words, only an icon or an arrow). $extra Write the JSON now."
         val raw = try {
             Llm.chat(Provider.GEMINI, key, GeminiModels.FLASH, SYSTEM, listOf(true to ask), shot, search = false)
         } catch (e: Exception) { return null }
