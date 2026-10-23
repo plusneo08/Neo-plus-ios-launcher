@@ -157,8 +157,7 @@ object PhoneActions {
                 val q = a.optString("app")
                 val app = apps.findBest(q) ?: return "No app called “$q”"
                 if (!AppAccess.allowed(ctx, app.pkg)) return AppAccess.blockedMessage(app.shownLabel)
-                ctx.launchApp(app)
-                return "Opened ${app.shownLabel}"
+                return ctx.openAppVerified(app) ?: "Opened ${app.shownLabel}"
             }
 
             "call" -> {

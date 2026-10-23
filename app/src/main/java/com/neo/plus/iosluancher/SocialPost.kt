@@ -230,18 +230,38 @@ object SocialPoster {
         }
         // Also try the same share without a named screen (the app picks its own), and say WHY it failed if nothing opens.
         val failures = ArrayList<String>()
-        fun tryStart(i: Intent): Boolean = try {
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            ctx.startActivity(i)
+        fun tryStart(c: Context, i: Intent): Boolean = try {
+            c.startActivity(Intent(i).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             true
         } catch (e: Exception) {
             failures += (e.javaClass.simpleName + ": " + e.message.orEmpty().take(90))
             false
         }
         if (builtin != null && kind != "story" && items.isNotEmpty()) intents += Intent(share()).setPackage(pkg)
-        if (intents.none { tryStart(it) })
-            return "Couldn’t open $label (${failures.distinct().joinToString(" / ").ifBlank { "no way to open it" }})"
-        try { Thread.sleep(1200) } catch (e: InterruptedException) { }
+        // Android (and phone makers such as Xiaomi) can silently refuse to start an app from the background: startActivity does not
+        // fail, the app just never appears. So every start is CHECKED, and if it did not come to the front the next way is tried
+        // (the accessibility service is allowed to start apps from the background).
+        fun inFront(): Boolean {
+            if (UiDriver.foregroundPkg() in pkgs) return true
+            repeat(9) { nap(350); if (UiDriver.foregroundPkg() in pkgs) return true }
+            return false
+        }
+        val svc: Context = IosControlService.instance ?: ctx
+        var opened = false
+        var accepted = false
+        for (i in intents) {
+            for (c in listOf(ctx, svc).distinct()) {
+                if (tryStart(c, i)) { accepted = true; if (inFront()) { opened = true; break } }
+            }
+            if (opened) break
+        }
+        if (!opened) {
+            return if (accepted) "Couldn’t open $label: the phone accepted the request but $label never came to the front. " +
+                "On Xiaomi / Redmi / Vivo phones allow “Display pop-up windows while running in the background” and Autostart for Neo Plus " +
+                "(phone Settings > Apps > Neo Plus > Other permissions), and set its battery to “No restrictions”."
+            else "Couldn’t open $label (${failures.distinct().joinToString(" / ").ifBlank { "no way to open it" }})"
+        }
+        nap(900)
 
         val problem = runFlow(ctx, pkgs, stages, caption, 90_000L, finalName, extras)
         val songNote = when {

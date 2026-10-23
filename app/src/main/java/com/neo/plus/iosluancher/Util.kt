@@ -88,6 +88,38 @@ fun Context.launchApp(app: AppEntry, options: Bundle? = null) {
     }
 }
 
+/**
+ * Opens the app and CHECKS that it really came to the front. Android (and phone makers like Xiaomi) can silently refuse to start an app
+ * from the background: startActivity does not fail, the app just never appears. So each way of starting it is verified, and the next way is
+ * tried: the app's own context first, then the accessibility service (allowed to start apps from the background), then the standard
+ * launch intent. Returns null when the app is in front (or when that cannot be checked), otherwise the reason it did not open.
+ */
+fun Context.openAppVerified(app: AppEntry): String? {
+    val svc = IosControlService.instance
+    val flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+    val explicit = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        .setComponent(ComponentName(app.pkg, app.activity)).addFlags(flags)
+    val std = try { packageManager.getLaunchIntentForPackage(app.pkg)?.addFlags(flags) } catch (e: Exception) { null }
+    val tries = ArrayList<Pair<Context, Intent>>()
+    tries += this to explicit
+    if (svc != null) tries += svc to explicit
+    if (std != null) { if (svc != null) tries += svc to std; tries += this to std }
+    var accepted = false
+    for ((c, i) in tries) {
+        try { c.startActivity(Intent(i)); accepted = true } catch (e: Exception) { continue }
+        if (svc == null) return null                       // cannot check without the accessibility service
+        repeat(9) {
+            if (UiDriver.foregroundPkg() == app.pkg) return null
+            try { Thread.sleep(350) } catch (e: InterruptedException) { }
+        }
+    }
+    return if (accepted)
+        "Couldn’t open ${app.shownLabel}: the phone accepted the request but the app never came to the front. " +
+            "On Xiaomi / Redmi / Vivo phones allow “Display pop-up windows while running in the background” and Autostart for Neo Plus " +
+            "(phone Settings > Apps > Neo Plus > Other permissions), and set its battery to “No restrictions”."
+    else "Couldn’t open ${app.shownLabel}: the phone refused to start it (is it disabled?)"
+}
+
 fun Context.shortcutsFor(pkg: String): List<ShortcutInfo> = try {
     val la = getSystemService(LauncherApps::class.java)
     val q = LauncherApps.ShortcutQuery().setPackage(pkg).setQueryFlags(

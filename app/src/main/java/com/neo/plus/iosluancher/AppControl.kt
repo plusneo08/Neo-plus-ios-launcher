@@ -272,7 +272,7 @@ object UiDriver {
             if (!AppAccess.allowed(ctx, app.pkg)) return AppAccess.blockedMessage(app.shownLabel)
             pkgs = setOf(app.pkg)
             if (foregroundPkg() != app.pkg) {
-                ctx.launchApp(app)
+                ctx.openAppVerified(app)?.let { return it }
                 if (waitFor(ctx, pkgs, 9000) { true } == null) return "Couldn’t open ${app.shownLabel} in time"
                 try { Thread.sleep(700) } catch (e: InterruptedException) { }
             }
@@ -281,7 +281,10 @@ object UiDriver {
         // No app named: the action works on whatever is in front, so that app must be connected too.
         if (pkgs == null) {
             val fg = foregroundPkg()
-            if (!AppAccess.allowed(ctx, fg)) return AppAccess.blockedMessage(fg ?: "this app")
+            // Only a real phone app can be "not connected". The keyboard, the share sheet, the status bar and permission pop-ups are
+            // not in the app list, so they must never block a task inside a connected app.
+            val fgApp = apps.firstOrNull { it.pkg == fg }
+            if (fgApp != null && !AppAccess.allowed(ctx, fg)) return AppAccess.blockedMessage(fgApp.shownLabel)
         }
 
         fun nothingOpen(what: String) =
