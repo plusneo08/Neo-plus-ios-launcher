@@ -46,7 +46,8 @@ class MainActivity : ComponentActivity() {
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
             // runtime prompts done -> walk through the special-access screens one by one
             // onResume runs right after this and opens the first page
-            getSharedPreferences("neo_launcher", MODE_PRIVATE).edit().putInt("special_step", 0).apply()
+            val p = getSharedPreferences("neo_launcher", MODE_PRIVATE)
+            if (p.getBoolean("perm_first_walk", false)) p.edit().putBoolean("perm_first_walk", false).putInt("special_step", 0).apply()
         }
 
     // Keeps the launcher in sync when apps are installed / removed / updated
@@ -110,6 +111,10 @@ class MainActivity : ComponentActivity() {
         hideStatusBar()
         nextSpecialAccess()
         startKiosk()
+        askPermissionsOnce()
+        guardNextFix(intent?.getBooleanExtra("guard_fix", false) == true)
+        intent?.removeExtra("guard_fix")
+        PermissionGuard.arm(this)
     }
 
     /** Device-owner kiosk: hides Android's bars in every app opened from here. */
@@ -228,33 +233,36 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) { }
     }
 
+    /**
+     * Asks for every runtime permission that is off, not just on the first start: a permission switched off later (by the
+     * user, Android's "remove unused permissions" or a battery manager) used to stay off for ever. A permission Android
+     * will not ask for any more ("don't ask again") is opened on the app's Settings page instead, at most every 6 hours.
+     */
     private fun askPermissionsOnce() {
         val prefs = getSharedPreferences("neo_launcher", MODE_PRIVATE)
-        if (prefs.getBoolean("perms_asked_v3", false)) return
-        prefs.edit().putBoolean("perms_asked_v3", true).apply()
-        val list = mutableListOf(
-            Manifest.permission.CAMERA,
-            Manifest.permission.READ_CONTACTS,
-            Manifest.permission.CALL_PHONE,
-            Manifest.permission.SEND_SMS,           // assistant sends texts and reports delivery
-            Manifest.permission.READ_SMS,
-            Manifest.permission.READ_CALL_LOG,
-            Manifest.permission.READ_PHONE_STATE,   // SIM signal + network type in the iOS status bar
-            Manifest.permission.READ_CALENDAR,
-            Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.ACCESS_COARSE_LOCATION,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        )
-        if (Build.VERSION.SDK_INT >= 33) {
-            list += Manifest.permission.POST_NOTIFICATIONS
-            list += Manifest.permission.READ_MEDIA_AUDIO
-            list += Manifest.permission.READ_MEDIA_IMAGES
-            list += Manifest.permission.READ_MEDIA_VIDEO
-        } else {
-            list += Manifest.permission.READ_EXTERNAL_STORAGE
+        val first = !prefs.getBoolean("perms_asked_v3", false)
+        if (first) prefs.edit().putBoolean("perms_asked_v3", true).putBoolean("perm_first_walk", true).apply()
+        val missing = PermissionGuard.missingRuntime(this)
+        if (missing.isEmpty()) return
+        val now = System.currentTimeMillis()
+        if (!first && now - prefs.getLong("perm_ask_at", 0L) < 30 * 60_000L) return
+        prefs.edit().putLong("perm_ask_at", now).apply()
+        val lastPrompt = prefs.getLong("perm_prompted_at", 0L)
+        if (first || missing.any { shouldShowRequestPermissionRationale(it) } || now - lastPrompt > 6 * 3600_000L) {
+            prefs.edit().putLong("perm_prompted_at", now).apply()
+            permLauncher.launch(missing.toTypedArray())
+        } else if (now - lastPrompt > 60_000L && now - prefs.getLong("perm_settings_at", 0L) > 12 * 3600_000L) {
+            // Android showed no pop-up ("don't ask again"): the app's Settings page is the only place left, once every 12 hours
+            prefs.edit().putLong("perm_settings_at", now).apply()
+            safeStart(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
         }
-        if (Build.VERSION.SDK_INT >= 31) list += Manifest.permission.BLUETOOTH_CONNECT
-        if (Build.VERSION.SDK_INT <= 28) list += Manifest.permission.WRITE_EXTERNAL_STORAGE
-        permLauncher.launch(list.toTypedArray())
+    }
+
+    /** Opens the next special switch that is off (one page per 30 minutes, or at once after tapping the notification). */
+    private fun guardNextFix(force: Boolean) {
+        val step = getSharedPreferences("neo_launcher", MODE_PRIVATE).getInt("special_step", -1)
+        if (step in 0..3) return // the first-run walk is still going
+        PermissionGuard.repairSilently(this)
+        PermissionGuard.nextFix(this, force)?.let { safeStart(it) }
     }
 }

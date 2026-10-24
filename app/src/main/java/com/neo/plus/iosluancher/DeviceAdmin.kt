@@ -108,6 +108,7 @@ object Kiosk {
                 d.setLockTaskFeatures(admin, DevicePolicyManager.LOCK_TASK_FEATURE_HOME or DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS)
             }
             d.setPermissionPolicy(admin, DevicePolicyManager.PERMISSION_POLICY_AUTO_GRANT)
+            if (android.os.Build.VERSION.SDK_INT >= 30) attempt { d.setUserControlDisabledPackages(admin, listOf(ctx.packageName)); true }
             val info = ctx.packageManager.getPackageInfo(ctx.packageName, PackageManager.GET_PERMISSIONS)
             info.requestedPermissions?.forEach { perm ->
                 attempt { d.setPermissionGrantState(admin, ctx.packageName, perm, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED) }

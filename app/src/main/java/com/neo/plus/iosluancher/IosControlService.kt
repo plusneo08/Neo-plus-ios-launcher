@@ -195,6 +195,10 @@ class IosControlService : AccessibilityService() {
         /** Lets the assistant press Home / Back / Recents, lock the screen and take screenshots. */
         @Volatile
         var instance: IosControlService? = null
+
+        /** What the last volume button press did, for Assistant settings (empty = this service has not received a press yet). */
+        @Volatile
+        var lastVolumeNote: String = ""
     }
 
     private val shotExecutor = Executors.newSingleThreadExecutor()
@@ -409,6 +413,13 @@ class IosControlService : AccessibilityService() {
         } catch (e: Exception) { return false }
     }
 
+    private val frontExec = Executors.newSingleThreadExecutor()
+
+    /** Reading the front window is a call to another process and can take seconds in a busy app: never wait for it here. */
+    private fun frontKnownFast(): Boolean = try {
+        frontExec.submit<Boolean> { refreshFront() }.get(120, TimeUnit.MILLISECONDS)
+    } catch (e: Exception) { false }
+
     private fun adjust(dir: Int) {
         val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         // A mic beep-mute that has not been undone yet must never swallow a button press
@@ -416,7 +427,7 @@ class IosControlService : AccessibilityService() {
         // The ringer is only chosen when the home screen is KNOWN to be in front. If the front app cannot be read
         // (some apps give no window to read), or the last window event was missed, the media volume is used, so the
         // buttons never silently change the ringer while an app is open and look dead.
-        val onHome = refreshFront() && launcherFront
+        val onHome = frontKnownFast() && launcherFront
         var stream = when {
             am.mode == AudioManager.MODE_IN_CALL || am.mode == AudioManager.MODE_IN_COMMUNICATION -> AudioManager.STREAM_VOICE_CALL
             am.isMusicActive -> AudioManager.STREAM_MUSIC
@@ -432,9 +443,8 @@ class IosControlService : AccessibilityService() {
                 // the phone does not allow a boost: carry on as a normal press at maximum
             }
             if (dir == AudioManager.ADJUST_LOWER && VolumeBoost.percent > 0) {
-                VolumeBoost.change(this, -VolumeBoost.STEP)
-                showHud(1f, true)
-                return
+                // Down must always be heard: drop the boost completely and carry on to lower the real volume below.
+                VolumeBoost.set(this, 0)
             }
         }
         // The ringer needs FLAG_ALLOW_RINGER_MODES, otherwise Volume Up does nothing while the phone is on vibrate or silent
@@ -453,6 +463,9 @@ class IosControlService : AccessibilityService() {
             try { am.adjustVolume(dir, AudioManager.FLAG_SHOW_UI); return } catch (e: Exception) { }
         }
         val max = mxNow.coerceAtLeast(1)
+        lastVolumeNote = (if (dir == AudioManager.ADJUST_RAISE) "Up" else "Down") + " on " +
+            when (stream) { AudioManager.STREAM_MUSIC -> "media"; AudioManager.STREAM_RING -> "ringer"; else -> "call" } +
+            ": " + before + " to " + am.getStreamVolume(stream) + " of " + max + ", boost " + VolumeBoost.percent + "%"
         showHud(am.getStreamVolume(stream) / max.toFloat(), stream == AudioManager.STREAM_MUSIC)
     }
 

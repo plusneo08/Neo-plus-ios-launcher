@@ -184,7 +184,9 @@ object Goals {
 
                 val args = JSONObject().put("goal", checkinPrompt(g0)).put("app", g0.app)
                     .put("max_steps", CHECKIN_STEPS).put("max_minutes", CHECKIN_MINUTES)
+                PinVault.unattended = true   // a check-in runs on its own: no PIN is ever typed
                 val r = try { AppTask.run(app, args, apps) } catch (e: Exception) { "Couldn’t do that (${e.javaClass.simpleName})" }
+                finally { PinVault.unattended = false }
                 handleResult(app, g0, r)
             } finally {
                 try { wl?.let { if (it.isHeld) it.release() } } catch (e: Exception) { }

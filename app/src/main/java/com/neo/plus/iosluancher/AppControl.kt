@@ -331,6 +331,9 @@ object UiDriver {
                 // (switched on). The AI model only ever sees the placeholder, never the real value.
                 val wantsPw = text.contains("{{password}}")
                 val wantsUser = text.contains("{{username}}")
+                // {{pin:NAME}} is filled in from Assistant settings -> Saved PINs. The model only ever sees the placeholder.
+                val pinM = Regex("\\{\\{pin:([^}]{1,30})\\}\\}", RegexOption.IGNORE_CASE).find(text)
+                val wantsPin = pinM != null
                 var toType = text
                 if (wantsPw || wantsUser) {
                     val acct = a.optString("account").ifBlank { appQ }
@@ -338,9 +341,17 @@ object UiDriver {
                         ?: return "No saved login for “${acct.ifBlank { "this account" }}”. Add it in Assistant settings → Websites with your username and password and switch it on, then ask again."
                     toType = text.replace("{{password}}", e.password).replace("{{username}}", e.username)
                 }
-                var found = waitFor(ctx, pkgs, 6000) { r -> if (wantsPw) findPassword(r) else findEditable(r, into) }
+                if (pinM != null) {
+                    val real = PinVault.get(ctx, pinM.groupValues[1])
+                        ?: return if (PinVault.unattended) "PINs are only typed when you ask me yourself, not in scheduled jobs"
+                        else "No saved PIN called “${pinM.groupValues[1].trim()}”. Save it in Assistant settings → Saved PINs, then ask again."
+                    toType = text.replace(pinM.value, real)
+                }
+                var found = waitFor(ctx, pkgs, 6000) { r ->
+                    if (wantsPw) findPassword(r) else if (wantsPin) (findPassword(r) ?: findEditable(r, "pin")) else findEditable(r, into)
+                }
                 // No readable text box: touch the box the AI points at, then look for the focused one again.
-                if (found == null && !wantsPw && foregroundPkg() != ctx.packageName &&
+                if (found == null && !wantsPw && !wantsPin && foregroundPkg() != ctx.packageName &&
                     visionTapFor(ctx, apps, if (into.isNotBlank()) "the text box called $into" else "the text box where the text is typed")) {
                     try { Thread.sleep(700) } catch (e: InterruptedException) { }
                     found = waitFor(ctx, pkgs, 3000) { r -> findEditable(r, "") }
@@ -349,7 +360,7 @@ object UiDriver {
                     ?: return if (foregroundPkg() == ctx.packageName) NO_APP
                     else if (wantsPw) "Couldn’t find a password box on the screen"
                     else "Couldn’t find a text box${if (into.isNotBlank()) " called “$into”" else ""} on the screen"
-                val ok = setText(ctx, field, toType, a.optBoolean("replace", false) || wantsPw, secret = wantsPw)
+                val ok = setText(ctx, field, toType, a.optBoolean("replace", false) || wantsPw || wantsPin, secret = wantsPw || wantsPin)
                 try { Thread.sleep(400) } catch (e: InterruptedException) { }
                 if (ok) "Typed “${text.take(60)}”" else "Couldn’t type into that box"
             }

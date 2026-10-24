@@ -177,8 +177,10 @@ object Scheduler {
 
         val apps = try { OrbBridge.apps() } catch (e: Exception) { Approvals.lastApps }
         val seq0 = TaskReports.seq
+        PinVault.unattended = true
         val r = try { PhoneActions.run(app, job.action, JSONObject(job.args.toString()), apps) }
         catch (e: Exception) { ActionResult("Couldn’t do that (${e.javaClass.simpleName})", false, false) }
+        finally { PinVault.unattended = false }
         val line = (if (r.ok) "Done: " else "Couldn’t do: ") + job.summary + (if (r.note.isNotBlank()) " — " + r.note.take(160) else "")
         addHistory(app, line)
         // A website task reports itself through the task feed (text + counts towards the call): do not text twice.
@@ -244,6 +246,7 @@ class SchedulerBootReceiver : BroadcastReceiver() {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
             try { Scheduler.rearm(context) } catch (e: Exception) { }
             try { Goals.rearm(context) } catch (e: Exception) { }
+            try { PermissionGuard.arm(context); Thread { PermissionGuard.tick(context) }.start() } catch (e: Exception) { }
         }
     }
 }

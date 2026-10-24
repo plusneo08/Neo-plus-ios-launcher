@@ -33,6 +33,8 @@
     <!-- Sleep mode: wake-up call screen and re-arming after a restart -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <!-- iOS status bar: SIM signal, network type (5G/LTE), carrier -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
@@ -222,6 +224,7 @@
 
         <receiver android:name=".SchedulerReceiver" android:exported="false" />
         <receiver android:name=".GoalReceiver" android:exported="false" />
+        <receiver android:name=".GuardReceiver" android:exported="false" />
         <receiver android:name=".SchedulerBootReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

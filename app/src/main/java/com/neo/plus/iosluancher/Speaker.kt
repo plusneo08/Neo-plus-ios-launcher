@@ -199,12 +199,82 @@ object NaturalVoice {
     }
 
     /**
+     * Takes the hiss out of the whole spoken piece, not just its tail. The voice model leaves a steady high-frequency
+     * hiss under the words and between them. Three gentle steps, all done in memory in a few milliseconds:
+     *  1. a 60 Hz high-pass (rumble, DC offset),
+     *  2. a 7 kHz low-pass (hiss lives up there; speech keeps its clarity, "s" and "t" stay),
+     *  3. a soft noise gate: stretches that are only noise are turned down to about a third (not to silence, so the voice
+     *     never "pumps"), opening 3 ms before a word and closing slowly after it.
+     * Pieces that are already clean or very short are passed through untouched.
+     */
+    internal fun denoise(pcm: ByteArray): ByteArray {
+        val n = pcm.size / 2
+        val frame = RATE / 200 // 5 ms
+        if (n < frame * 20) return pcm
+        val x = DoubleArray(n) { ((pcm[2 * it + 1].toInt() shl 8) or (pcm[2 * it].toInt() and 0xFF)).toShort().toDouble() }
+
+        // biquad: direct form I, applied in place
+        fun biquad(b0: Double, b1: Double, b2: Double, a0: Double, a1: Double, a2: Double) {
+            var x1 = 0.0; var x2 = 0.0; var y1 = 0.0; var y2 = 0.0
+            val nb0 = b0 / a0; val nb1 = b1 / a0; val nb2 = b2 / a0; val na1 = a1 / a0; val na2 = a2 / a0
+            for (i in x.indices) {
+                val v = x[i]
+                val y = nb0 * v + nb1 * x1 + nb2 * x2 - na1 * y1 - na2 * y2
+                x2 = x1; x1 = v; y2 = y1; y1 = y
+                x[i] = y
+            }
+        }
+        fun lowHigh(fc: Double, high: Boolean) {
+            val w = 2.0 * Math.PI * fc / RATE
+            val c = Math.cos(w); val al = Math.sin(w) / (2.0 * 0.7071)
+            if (high) biquad((1 + c) / 2, -(1 + c), (1 + c) / 2, 1 + al, -2 * c, 1 - al)
+            else biquad((1 - c) / 2, 1 - c, (1 - c) / 2, 1 + al, -2 * c, 1 - al)
+        }
+        lowHigh(60.0, true)
+        lowHigh(7000.0, false)
+
+        // soft noise gate
+        val frames = n / frame
+        val rms = DoubleArray(frames)
+        for (f in 0 until frames) {
+            var acc = 0.0
+            for (i in f * frame until (f + 1) * frame) acc += x[i] * x[i]
+            rms[f] = sqrt(acc / frame)
+        }
+        val sorted = rms.sorted()
+        val floor = sorted[((frames - 1) * 0.08).toInt()].coerceAtLeast(8.0)
+        val speechLevel = sorted[((frames - 1) * 0.90).toInt()]
+        if (speechLevel > floor * 3.0) {
+            val thr = maxOf(floor * 2.4, speechLevel * 0.05)
+            var g = 1.0
+            val opn = 1.0 - Math.exp(-1.0 / (RATE * 0.003))   // 3 ms to open
+            val cls = 1.0 - Math.exp(-1.0 / (RATE * 0.060))  // 60 ms to close
+            for (f in 0 until frames) {
+                // open when this frame or a neighbour is above the threshold (so a word start is never clipped)
+                val loud = rms[f] >= thr || (f > 0 && rms[f - 1] >= thr) || (f + 1 < frames && rms[f + 1] >= thr)
+                val target = if (loud) 1.0 else 0.33
+                for (i in f * frame until (f + 1) * frame) {
+                    g += (target - g) * (if (target > g) opn else cls)
+                    x[i] *= g
+                }
+            }
+        }
+        val out = ByteArray(n * 2)
+        for (i in 0 until n) {
+            val v = x[i].toInt().coerceIn(-32768, 32767)
+            out[2 * i] = (v and 0xFF).toByte(); out[2 * i + 1] = (v shr 8).toByte()
+        }
+        return out
+    }
+
+    /**
      * Cleans the end of every spoken piece. The voice model adds a hissy / static tail after the last word (it sounds
      * like a radio switching off). Walking back from the end, every frame that is quiet, or noise-like (hiss: lots of
      * zero crossings, little energy), is cut. Only 30 ms is kept after the last real word, then a quick smooth fade
      * out, and 200 ms of true silence is added so the player never stops on a sound.
      */
-    internal fun polish(pcm: ByteArray): ByteArray {
+    internal fun polish(pcmIn: ByteArray): ByteArray {
+        val pcm = denoise(pcmIn)
         val n = pcm.size / 2
         val frame = RATE / 200 // 5 ms
         if (n < frame * 20) return pcm

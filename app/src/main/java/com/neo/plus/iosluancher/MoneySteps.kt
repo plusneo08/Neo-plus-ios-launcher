@@ -446,6 +446,29 @@ object UssdFlow {
             (if (charge.isNotEmpty()) ", service charge $charge" else "") + "."
         log(TaskLine.Kind.OK, "PIN screen reached: the amount and number match what you authorised")
         if (!feeAsked) log(TaskLine.Kind.WARN, "The network did not ask about the cashout fee, so your choice was not applied")
+        // The user saved this network's PIN on purpose, tapped Authorise, and the screen shows exactly the authorised amount
+        // and number (checked above): the phone types the PIN and presses Send once. Nothing is retried, so a wrong PIN
+        // cannot lock the account.
+        val pin = PinVault.moneyPin(app, p.network)
+        val edit = s.edit
+        val send = s.send
+        if (pin != null && edit != null && send != null) {
+            val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, pin) }
+            if (edit.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                main.postDelayed({
+                    val svc = IosControlService.instance
+                    val s2 = if (svc != null) read(svc.rootInActiveWindow, app.packageName) else null
+                    val send2 = s2?.send
+                    val same = s2 != null && s2.msg == s.msg && send2 != null
+                    val pressed = same && send2!!.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    val msg = if (pressed) "I entered your PIN and pressed Send: ${p.currency} ${p.amount} to $who$fee. The network will confirm by message."
+                        else "I typed your PIN but the screen changed, so I did not press Send. The screen is yours."
+                    TaskLog.endOwned("money", msg, pressed)
+                    Announcer.say(app, msg)
+                }, TYPE_MS)
+                return
+            }
+        }
         TaskLog.endOwned("money", ready, true)
         Announcer.say(app, ready)
     }

@@ -378,6 +378,8 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                     MenuRow("Voice", "Female or male voice, and hear it", 2)
                     MenuRow("Website authorisation", "Websites the assistant may operate, saved logins and the daily limit", 3)
                     MenuRow("Apps", "Choose which phone apps the assistant may open and control", 4)
+                    MenuRow("Volume buttons", IosControlService.lastVolumeNote.ifBlank { "No button press seen yet. If it stays empty after you press them, the controls service is not receiving the buttons" }, 0)
+                    MenuRow("Saved PINs", if (PinVault.names(ctx).isEmpty()) "Let the phone type a PIN for you, the AI never sees it" else PinVault.names(ctx).size.toString() + " saved", 6)
                     MenuRow("Task reports by text", if (TaskReports.smsNumber(ctx).isBlank()) "Add the number the assistant texts when a task is done" else "Texting " + TaskReports.smsNumber(ctx), 5)
                     Box(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.16f))
@@ -584,6 +586,8 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                         ) { Text("Save number", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
                     }
                 }
+
+                6 -> PinsPanel { page = 0 }
 
                 else -> {
                     Text("Website authorisation", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
@@ -1106,4 +1110,61 @@ internal fun noteFailed(n: String): Boolean {
     val t = n.trimStart().lowercase()
     return listOf("couldn’t", "couldn't", "could not", "i couldn", "i never saw", "no file", "no app", "no photo", "no words",
         "turn on", "failed", "error", "nothing is posted").any { t.startsWith(it) || t.contains("so nothing is posted") }
+}
+
+
+/** Saved PINs: stored encrypted on the phone, typed by the phone itself, never shown to the AI. */
+@Composable
+private fun PinsPanel(onBack: () -> Unit) {
+    val ctx = LocalContext.current
+    var names by remember { mutableStateOf(PinVault.names(ctx)) }
+    var name by remember { mutableStateOf("") }
+    var pin by remember { mutableStateOf("") }
+    var msg by remember { mutableStateOf("") }
+    val note = Color.White.copy(alpha = 0.7f)
+    Text("Saved PINs", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+    Text(
+        "A PIN saved here is encrypted on this phone and typed by the phone itself. The AI never sees the number, and nothing is sent anywhere. " +
+            "Say “use my <name> PIN” when you want it typed in an app. It is never typed in scheduled jobs or goals that run on their own.\n\n" +
+            "Airtel Money and Mpamba PINs work differently: after you tap Authorise for a transfer and the PIN screen shows exactly the amount and number you authorised, " +
+            "the phone types the PIN and presses Send for you. Do not save those two if you want to type them yourself.",
+        color = note, fontSize = 13.sp, lineHeight = 18.sp
+    )
+    if (names.isEmpty()) Text("No PINs saved yet.", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+    names.forEach { n ->
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.12f)).padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(n, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (PinVault.isMoney(n)) "Entered after you authorise a transfer" else "Typed only when you ask",
+                    color = Color.White.copy(alpha = 0.65f), fontSize = 12.sp
+                )
+            }
+            Text(
+                "Remove", color = Color(0xFFFF8A80), fontSize = 13.sp,
+                modifier = Modifier.clickable { PinVault.remove(ctx, n); names = PinVault.names(ctx) }.padding(4.dp)
+            )
+        }
+    }
+    Text("Add or change a PIN", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+    GlassField(name, { name = it.take(30); msg = "" }, "Name: Airtel Money, Mpamba, or an app name")
+    GlassField(pin, { pin = it.filter { c -> c.isDigit() }.take(10); msg = "" }, "PIN (digits only)", password = true)
+    if (msg.isNotBlank()) Text(msg, color = if (msg.startsWith("Saved")) Color(0xFF7DE08A) else Color(0xFFFFB347), fontSize = 13.sp)
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        Box(
+            Modifier.weight(1f).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.16f)).clickable { onBack() }.padding(vertical = 12.dp),
+            contentAlignment = Alignment.Center
+        ) { Text("Back", color = Color.White, fontSize = 15.sp) }
+        Box(
+            Modifier.weight(1f).clip(RoundedCornerShape(50)).background(UserBlueBottom)
+                .clickable {
+                    val err = PinVault.put(ctx, name, pin)
+                    if (err != null) msg = err else { msg = "Saved"; name = ""; pin = ""; names = PinVault.names(ctx) }
+                }.padding(vertical = 12.dp),
+            contentAlignment = Alignment.Center
+        ) { Text("Save PIN", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+    }
 }
