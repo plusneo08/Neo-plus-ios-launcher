@@ -199,6 +199,13 @@ class IosControlService : AccessibilityService() {
         /** What the last volume button press did, for Assistant settings (empty = this service has not received a press yet). */
         @Volatile
         var lastVolumeNote: String = ""
+
+        /** True = the volume buttons are left entirely to Android (no Neo Plus boost or on-screen bar). The escape hatch if they ever act dead. */
+        fun systemVolume(ctx: Context): Boolean = ctx.applicationContext.getSharedPreferences("neo_launcher", Context.MODE_PRIVATE).getBoolean("vol_system", false)
+
+        fun setSystemVolume(ctx: Context, on: Boolean) {
+            ctx.applicationContext.getSharedPreferences("neo_launcher", Context.MODE_PRIVATE).edit().putBoolean("vol_system", on).apply()
+        }
     }
 
     private val shotExecutor = Executors.newSingleThreadExecutor()
@@ -387,15 +394,31 @@ class IosControlService : AccessibilityService() {
             KeyEvent.KEYCODE_VOLUME_DOWN -> AudioManager.ADJUST_LOWER
             else -> return false
         }
+        // The escape hatch: Android handles the buttons itself
+        if (systemVolume(this)) return false
         if (e.action == KeyEvent.ACTION_DOWN) {
+            suspicious = false
             // If anything goes wrong, give the key back to Android so the button never ends up dead
             consumedDown = try { adjust(dir); true } catch (t: Throwable) { false }
+            // Two presses in a row that changed nothing (and were not at the top or bottom): the custom handling is not
+            // working on this phone, so hand the buttons back to Android for good instead of leaving them dead.
+            if (e.repeatCount == 0) {
+                noEffect = if (suspicious || !consumedDown) noEffect + 1 else 0
+                if (noEffect >= 2) {
+                    setSystemVolume(this, true)
+                    lastVolumeNote = "My volume handling changed nothing twice, so Android’s own buttons are used now"
+                    noEffect = 0
+                    consumedDown = false
+                }
+            }
             return consumedDown
         }
         return consumedDown
     }
 
     @Volatile private var consumedDown = true
+    @Volatile private var suspicious = false
+    private var noEffect = 0
 
     /**
      * Which window is in front right now (a missed window event used to leave the ringer selected inside an app).
@@ -460,6 +483,7 @@ class IosControlService : AccessibilityService() {
         val mxNow = am.getStreamMaxVolume(stream)
         val atLimit = (dir == AudioManager.ADJUST_RAISE && before >= mxNow) || (dir == AudioManager.ADJUST_LOWER && before <= 0)
         if (!atLimit && am.getStreamVolume(stream) == before) {
+            suspicious = true
             try { am.adjustVolume(dir, AudioManager.FLAG_SHOW_UI); return } catch (e: Exception) { }
         }
         val max = mxNow.coerceAtLeast(1)

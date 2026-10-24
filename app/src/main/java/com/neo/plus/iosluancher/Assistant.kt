@@ -126,7 +126,7 @@ object PhoneActions {
     )
 
     /** Actions that fetch something to tell the user (the note is the answer). */
-    val infoActions = setOf("calendar", "weather", "lookup", "news", "stock", "sports", "read_sms", "call_log", "screen", "read_messages", "read_notifications", "read_app", "last_message", "sleep_mode", "sleep_report", "sleep_voice", "time_lock", "send_money", "money_setup", "web_search", "look", "excel_create", "excel_edit", "excel_read", "web_task", "web_batch", "file_read", "ui_list", "app_task", "goal", "post_apps", "queue", "approvals", "schedule", "schedules", "report_number")
+    val infoActions = setOf("calendar", "weather", "lookup", "news", "stock", "sports", "read_sms", "call_log", "screen", "read_messages", "read_notifications", "read_app", "last_message", "sleep_mode", "sleep_report", "sleep_voice", "time_lock", "send_money", "money_setup", "web_search", "look", "excel_create", "excel_edit", "excel_read", "web_task", "web_batch", "file_read", "ui_list", "app_task", "goal", "call_assist", "post_apps", "queue", "approvals", "schedule", "schedules", "report_number")
 
     fun run(ctx: Context, name: String, a: JSONObject, apps: List<AppEntry>): ActionResult {
         // Time lock running: only harmless actions, so nothing can be used to get around the lock (also by voice)
@@ -163,7 +163,7 @@ object PhoneActions {
             "call" -> {
                 val to = a.optString("to")
                 val (label, number) = resolveNumber(ctx, to) ?: return "No contact or number for “$to”"
-                val sim = a.optInt("sim", 0)
+                val sim = if (a.optString("from").equals("assistant", true)) AssistantLine.lineSlot(ctx) else a.optInt("sim", 0)
                 val chosen = CallSim.pick(ctx, sim)
                 if (chosen.ask) return "Which SIM should I use for $label, SIM 1 or SIM 2? Say “SIM 1” or “SIM 2”."
                 val action = if (granted(ctx, Manifest.permission.CALL_PHONE)) Intent.ACTION_CALL else Intent.ACTION_DIAL
@@ -183,7 +183,8 @@ object PhoneActions {
                 if (target == null && to.isNotBlank()) return "No contact or number for “$to”"
                 // Real send + sent/delivered reports when SMS permission is granted and there is something to send
                 if (target != null && text.isNotBlank() && granted(ctx, Manifest.permission.SEND_SMS)) {
-                    return SmsSender.send(ctx, target.second, text, target.first)
+                    val slot = if (a.optString("from").equals("assistant", true)) AssistantLine.lineSlot(ctx) else a.optInt("sim", 0)
+                    return SmsSender.send(ctx, target.second, text, target.first, slot)
                 }
                 val i = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(target?.second ?: "")))
                     .putExtra("sms_body", text)
@@ -226,6 +227,7 @@ object PhoneActions {
             "post_apps" -> return SocialPoster.supported(ctx)
             "app_task" -> return AppTask.run(ctx, a, apps)
             "goal" -> return Goals.handle(ctx, a, apps)
+            "call_assist" -> return CallAssist.handle(ctx, a)
             "ui_tap", "ui_tap_visual", "ui_long_press", "ui_type", "ui_scroll", "ui_back", "ui_search", "ui_enter", "ui_list", "ui_wait" ->
                 return UiDriver.exec(ctx, name, a, apps)
 
@@ -1379,6 +1381,9 @@ ui_long_press {"label":"..."}   ui_type {"text":"hello","into":"optional box nam
 ui_search {"text":"cats","app":"YouTube"}   PINs: when the user says to use a saved PIN, type it with ui_type {"text":"{{pin:airtel money}}"} (the name they saved it under); the phone fills in the real digits, you never see them. Never ask for, repeat or guess a PIN. If the user types a PIN in the chat, do not repeat it and tell them to save it in Assistant settings → Saved PINs instead. Airtel Money / Mpamba PINs are entered by the phone itself after the user authorises a transfer: do not type those.
 ui_enter {}   ui_back {"times":1}   ui_wait {"seconds":2}
 ui_list {}   (lists what can be tapped on the screen now, so you can pick the right label)
+call_assist {"do":"line","sim":2,"action":"announce"|"greeting"|"speaker"|"decline_text"|"decline","sms":"on"|"off","brief":"what the assistant does with texts","info":"facts it may share, e.g. opening hours"}   (the assistant's OWN number = one SIM, default SIM 2 (TNM). Calls on it follow "action"; with sms on, texts that arrive on it are answered by the assistant itself, in the sender's language, using only brief and info; every reply is shown to the user. To send a text or make a call FROM the assistant's number add "from":"assistant" to message or call.) {"do":"line_log"} shows the last texts it answered.
+call_assist {"do":"answer"|"decline"|"decline_text"}   (while a call is RINGING: answer it, hang up on it, or hang up and text the caller; "speaker":true answers on the loudspeaker)
+call_assist {"do":"rule","who":"Mary"|"unknown"|"everyone","action":"announce"|"decline"|"decline_text"|"speaker"|"greeting","text":"optional text or greeting"}   (standing rule for incoming calls: speaker = answer on loudspeaker so the user can talk hands-free; greeting = answer on loudspeaker, play a short spoken greeting that says it is the assistant, then hang up; there is no spoken conversation with the caller, Android does not allow it). Also {"do":"owner","name":"the user's name"} for the greeting, {"do":"off"}, {"do":"on"}, {"do":"list"}. Incoming calls are announced by default.
 goal {"do":"start","instruction":"the whole goal in plain words INCLUDING what to post and what counts as finished (e.g. 500 likes)","app":"Facebook Lite","every_minutes":60,"days":7}   (a LONG-RUNNING goal in a connected app that goes on for hours or days: the phone itself checks in every N minutes, posts the content once, counts likes, comments and shares, replies to every comment that has no reply, and only tells the user when the goal is met, time runs out, or it is stuck and needs them. Use it when the user gives a goal to reach, or says to keep doing something until it is done. Ask for anything missing first (what to post, what number means success). Also {"do":"list"}, {"do":"stop","id":"all"}, {"do":"resume"} after the user has sorted out what it needed.)
 app_task {"goal":"everything to do inside the app, in plain words","app":"app to open first"}   (USE THIS for any job inside a connected phone app that takes several steps: it looks at the screen, taps, types, scrolls and checks its own work, step by step, until the goal is done, then tells you what happened. It stops and tells you when it needs the user's OK (money, permanent deletion, anything the goal did not ask for), a CAPTCHA, a login or a PIN. Prefer it over chaining ui_tap actions yourself. If the result says it needs the user's OK, ask the user and only run it again after they say yes.)
 ui_tap_visual {"describe":"the red heart under the video","long":false}   (for apps whose buttons have no words and ui_list shows nothing: you first use look to see the screen, then describe the thing to tap; the phone finds it on a screenshot and touches it. ui_tap and ui_type already fall back to this by themselves. To control any connected app step by step: look or ui_list, do ONE action, look again to check it worked, repeat, and tell the user what you did. Before anything that sends money, deletes, or cannot be undone, ask the user to confirm first.)

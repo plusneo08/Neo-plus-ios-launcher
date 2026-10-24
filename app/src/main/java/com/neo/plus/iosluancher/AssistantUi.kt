@@ -378,7 +378,18 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                     MenuRow("Voice", "Female or male voice, and hear it", 2)
                     MenuRow("Website authorisation", "Websites the assistant may operate, saved logins and the daily limit", 3)
                     MenuRow("Apps", "Choose which phone apps the assistant may open and control", 4)
-                    MenuRow("Volume buttons", IosControlService.lastVolumeNote.ifBlank { "No button press seen yet. If it stays empty after you press them, the controls service is not receiving the buttons" }, 0)
+                    var volSys by remember { mutableStateOf(IosControlService.systemVolume(ctx)) }
+                    Column(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.12f))
+                            .clickable { volSys = !volSys; IosControlService.setSystemVolume(ctx, volSys) }.padding(horizontal = 16.dp, vertical = 14.dp)
+                    ) {
+                        Text("Volume buttons: " + (if (volSys) "Android’s own" else "Neo Plus"), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Tap to switch. Use Android’s own if the buttons ever stop working. " +
+                                IosControlService.lastVolumeNote.ifBlank { "No Neo Plus press seen yet." },
+                            color = Color.White.copy(alpha = 0.65f), fontSize = 12.sp, lineHeight = 16.sp
+                        )
+                    }
                     MenuRow("Saved PINs", if (PinVault.names(ctx).isEmpty()) "Let the phone type a PIN for you, the AI never sees it" else PinVault.names(ctx).size.toString() + " saved", 6)
                     MenuRow("Task reports by text", if (TaskReports.smsNumber(ctx).isBlank()) "Add the number the assistant texts when a task is done" else "Texting " + TaskReports.smsNumber(ctx), 5)
                     Box(

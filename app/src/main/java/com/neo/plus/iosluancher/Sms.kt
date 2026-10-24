@@ -29,11 +29,11 @@ object SmsSender {
         var announcedSent = false
     }
 
-    fun send(ctx: Context, number: String, text: String, label: String): String {
+    fun send(ctx: Context, number: String, text: String, label: String, slot: Int = 0): String {
         val app = ctx.applicationContext
         val main = Handler(Looper.getMainLooper())
-        val sms: SmsManager =
-            if (Build.VERSION.SDK_INT >= 31) app.getSystemService(SmsManager::class.java)
+        val sms: SmsManager = AssistantLine.smsManagerFor(app, slot)
+            ?: if (Build.VERSION.SDK_INT >= 31) app.getSystemService(SmsManager::class.java)
             else @Suppress("DEPRECATION") SmsManager.getDefault()
 
         val parts = sms.divideMessage(text)
