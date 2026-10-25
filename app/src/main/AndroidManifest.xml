@@ -46,6 +46,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <!-- Floating assistant (orb) listens through the microphone while it is shown -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 
     <!-- Control Center music player: control any media session -->
@@ -167,6 +168,12 @@
         <service
             android:name=".SleepService"
             android:exported="false" />
+
+        <!-- Keeps the assistant working while other apps are open -->
+        <service
+            android:name=".TaskService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <service
             android:name=".OrbService"
