@@ -364,7 +364,7 @@ fun TodayPage(widgets: WidgetController, onAddWidget: () -> Unit) {
             Text("Today View", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold, style = ShadowStyle)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 GlassPill(if (editing) "Done" else "Edit") { editing = !editing }
-                GlassPill("＋", onAddWidget)
+                GlassPill("＋", onClick = onAddWidget)
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
