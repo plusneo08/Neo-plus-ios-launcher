@@ -23,6 +23,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -230,9 +232,10 @@ private val CloudDark = Color(0xFFB4BAC6)
 private val SunTop = Color(0xFFFFE27A)
 private val SunBottom = Color(0xFFFFB300)
 
-private fun DrawScope.sun(c: Offset, r: Float) {
+private fun DrawScope.sun(c: Offset, r: Float, spin: Float = 0f, glow: Float = 1f) {
+    drawCircle(SunTop.copy(alpha = 0.22f * glow), r * 2.1f, c)
     for (i in 0 until 8) {
-        val a = Math.toRadians(i * 45.0)
+        val a = Math.toRadians(i * 45.0 + spin)
         val p1 = Offset(c.x + (cos(a) * r * 1.45f).toFloat(), c.y + (sin(a) * r * 1.45f).toFloat())
         val p2 = Offset(c.x + (cos(a) * r * 1.92f).toFloat(), c.y + (sin(a) * r * 1.92f).toFloat())
         drawLine(SunBottom, p1, p2, strokeWidth = r * 0.28f, cap = StrokeCap.Round)
@@ -259,50 +262,65 @@ private fun DrawScope.cloud(x: Float, y: Float, w: Float, color: Color) {
 
 @Composable
 fun WeatherGlyph(kind: WKind, modifier: Modifier = Modifier) {
+    val t = rememberFrameSeconds()
     Canvas(modifier) {
         val w = size.width
+        val time = t.value
+        val bob = (sin(time * 1.6f) * w * 0.012f)
+        val spin = time * 18f
+        val glow = 0.8f + 0.2f * sin(time * 2f)
         when (kind) {
-            WKind.CLEAR_DAY -> sun(Offset(w * 0.5f, w * 0.5f), w * 0.21f)
-            WKind.CLEAR_NIGHT -> moon(Offset(w * 0.5f, w * 0.5f), w * 0.30f)
+            WKind.CLEAR_DAY -> sun(Offset(w * 0.5f, w * 0.5f), w * 0.21f, spin, glow)
+            WKind.CLEAR_NIGHT -> {
+                moon(Offset(w * 0.5f, w * 0.5f), w * 0.30f)
+                for (i in 0..2) {
+                    val a = 0.4f + 0.6f * (0.5f + 0.5f * sin(time * 2.2f + i * 2f))
+                    drawCircle(Color.White.copy(alpha = a), w * 0.018f, Offset(w * (0.18f + 0.62f * i / 2f), w * (0.18f + 0.1f * (i % 2))))
+                }
+            }
             WKind.PARTLY_DAY -> {
-                sun(Offset(w * 0.36f, w * 0.36f), w * 0.15f)
-                cloud(w * 0.20f, w * 0.34f, w * 0.74f, CloudLight)
+                sun(Offset(w * 0.36f, w * 0.36f), w * 0.15f, spin, glow)
+                translate(left = sin(time * 0.9f) * w * 0.02f, top = bob) { cloud(w * 0.20f, w * 0.34f, w * 0.74f, CloudLight) }
             }
             WKind.PARTLY_NIGHT -> {
                 moon(Offset(w * 0.37f, w * 0.36f), w * 0.21f)
-                cloud(w * 0.20f, w * 0.34f, w * 0.74f, CloudLight)
+                translate(left = sin(time * 0.9f) * w * 0.02f, top = bob) { cloud(w * 0.20f, w * 0.34f, w * 0.74f, CloudLight) }
             }
-            WKind.CLOUDY -> cloud(w * 0.08f, w * 0.26f, w * 0.84f, CloudLight)
+            WKind.CLOUDY -> translate(left = sin(time * 0.9f) * w * 0.025f, top = bob) { cloud(w * 0.08f, w * 0.26f, w * 0.84f, CloudLight) }
             WKind.FOG -> {
-                val line = Color.White.copy(alpha = 0.88f)
                 listOf(0.34f to 0.70f, 0.50f to 0.56f, 0.66f to 0.70f).forEachIndexed { i, (y, len) ->
-                    val x0 = if (i == 1) w * 0.30f else w * 0.15f
-                    drawLine(line, Offset(x0, w * y), Offset(x0 + w * len, w * y), strokeWidth = w * 0.075f, cap = StrokeCap.Round)
+                    val x0 = (if (i == 1) w * 0.30f else w * 0.15f) + sin(time * 1.1f + i * 1.5f) * w * 0.05f
+                    drawLine(Color.White.copy(alpha = 0.88f), Offset(x0, w * y), Offset(x0 + w * len, w * y), strokeWidth = w * 0.075f, cap = StrokeCap.Round)
                 }
             }
             WKind.RAIN -> {
-                cloud(w * 0.10f, w * 0.14f, w * 0.80f, CloudLight)
+                translate(top = bob) { cloud(w * 0.10f, w * 0.14f, w * 0.80f, CloudLight) }
                 val drop = Color(0xFF63B3FF)
                 for (i in 0..2) {
+                    val f = (time * 1.1f + i * 0.33f) % 1f
                     val x = w * (0.33f + 0.17f * i)
-                    drawLine(drop, Offset(x, w * 0.68f), Offset(x - w * 0.05f, w * 0.88f), strokeWidth = w * 0.065f, cap = StrokeCap.Round)
+                    val y = w * (0.64f + 0.20f * f)
+                    drawLine(drop.copy(alpha = 1f - f * 0.8f), Offset(x - w * 0.05f * f, y), Offset(x - w * 0.05f * f - w * 0.04f, y + w * 0.13f), strokeWidth = w * 0.065f, cap = StrokeCap.Round)
                 }
             }
             WKind.SNOW -> {
-                cloud(w * 0.10f, w * 0.14f, w * 0.80f, CloudLight)
+                translate(top = bob) { cloud(w * 0.10f, w * 0.14f, w * 0.80f, CloudLight) }
                 for (i in 0..2) {
-                    val x = w * (0.32f + 0.18f * i)
-                    drawCircle(Color.White, w * 0.045f, Offset(x, w * (if (i == 1) 0.84f else 0.74f)))
+                    val f = (time * 0.5f + i * 0.33f) % 1f
+                    val x = w * (0.32f + 0.18f * i) + sin(time * 2f + i) * w * 0.02f
+                    drawCircle(Color.White.copy(alpha = 1f - f * 0.7f), w * 0.045f, Offset(x, w * (0.68f + 0.24f * f)))
                 }
             }
             WKind.STORM -> {
-                cloud(w * 0.10f, w * 0.12f, w * 0.80f, CloudDark)
+                translate(top = bob) { cloud(w * 0.10f, w * 0.12f, w * 0.80f, CloudDark) }
+                val c = time % 3f
+                val on = if (c < 0.12f || c in 0.26f..0.36f) 1f else 0.55f
                 val bolt = Path().apply {
                     moveTo(w * 0.54f, w * 0.56f); lineTo(w * 0.40f, w * 0.78f); lineTo(w * 0.51f, w * 0.78f)
                     lineTo(w * 0.45f, w * 0.96f); lineTo(w * 0.67f, w * 0.69f); lineTo(w * 0.56f, w * 0.69f)
                     lineTo(w * 0.62f, w * 0.56f); close()
                 }
-                drawPath(bolt, Color(0xFFFFD60A))
+                drawPath(bolt, Color(0xFFFFD60A).copy(alpha = on))
             }
         }
     }

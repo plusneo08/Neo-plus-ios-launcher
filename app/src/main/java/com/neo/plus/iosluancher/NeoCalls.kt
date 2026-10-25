@@ -27,6 +27,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +40,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
@@ -325,6 +329,69 @@ class NeoDialerActivity : ComponentActivity() {
     }
 }
 
+private val DialLetters = mapOf(
+    '2' to "ABC", '3' to "DEF", '4' to "GHI", '5' to "JKL", '6' to "MNO", '7' to "PQRS", '8' to "TUV", '9' to "WXYZ", '0' to "+"
+)
+
+/** A round glass button with a 3x3 dial-pad grid: opens the Neo Plus dialer from the home screen. */
+@Composable
+fun NeoDialButton(size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
+    val t = rememberFrameSeconds()
+    Box(modifier.size(size), contentAlignment = Alignment.Center) {
+        // slow pulsing ring so the button reads as "live"
+        androidx.compose.foundation.Canvas(Modifier.requiredSize(size * 1.5f)) {
+            val p = (t.value * 0.5f) % 1f
+            drawCircle(NeoCallColors.Cyan.copy(alpha = 0.45f * (1f - p)), this.size.minDimension / 2f * (0.66f + 0.34f * p), center,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5.dp.toPx()))
+        }
+        androidx.compose.foundation.Canvas(
+            Modifier.size(size).clip(CircleShape)
+                .background(Brush.linearGradient(listOf(NeoCallColors.Cyan, NeoCallColors.Blue, Color(0xFF1D4ED8))))
+                .border(0.9.dp, Color.White.copy(alpha = 0.55f), CircleShape)
+                .semantics { contentDescription = "Neo Plus Dialer" }
+        ) {
+            val w = this.size.width
+            val step = w * 0.19f
+            val r = w * 0.055f
+            val start = w / 2 - step
+            for (row in 0..2) for (col in 0..2) {
+                drawCircle(Color.White, r, androidx.compose.ui.geometry.Offset(start + col * step, start + row * step))
+            }
+        }
+    }
+}
+
+@Composable
+private fun DialKey(c: Char, onKey: (Char) -> Unit) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    var down by remember { mutableStateOf(false) }
+    val scale by androidx.compose.animation.core.animateFloatAsState(if (down) 0.92f else 1f, label = "key")
+    Box(
+        Modifier.size(76.dp).graphicsLayer { scaleX = scale; scaleY = scale }
+            .clip(CircleShape)
+            .background(
+                if (down) Brush.verticalGradient(listOf(NeoCallColors.Blue.copy(alpha = 0.55f), NeoCallColors.Blue.copy(alpha = 0.25f)))
+                else Brush.verticalGradient(listOf(Color(0xFF12223D), Color(0xFF08111F)))
+            )
+            .border(1.dp, Brush.verticalGradient(listOf(NeoCallColors.Cyan.copy(alpha = 0.65f), NeoCallColors.Blue.copy(alpha = 0.25f))), CircleShape)
+            .pointerInput(c) {
+                detectTapGestures(
+                    onPress = { down = true; tryAwaitRelease(); down = false },
+                    onTap = { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove); onKey(c) },
+                    onLongPress = { if (c == '0') { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); onKey('+') } }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(c.toString(), color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Light)
+            val sub = DialLetters[c]
+            if (sub != null && c != '0') Text(sub, color = NeoCallColors.Cyan.copy(alpha = 0.85f), fontSize = 9.sp, letterSpacing = 1.6.sp, fontWeight = FontWeight.SemiBold)
+            else if (c == '0') Text("+", color = NeoCallColors.Cyan.copy(alpha = 0.85f), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
 @Composable
 private fun DialerScreen(initial: String, onClose: () -> Unit) {
     val ctx = LocalContext.current
@@ -341,45 +408,53 @@ private fun DialerScreen(initial: String, onClose: () -> Unit) {
         }
         if (NeoDialer.place(ctx, number)) onClose()
     }
+    val ready = number.isNotBlank()
 
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF020611), Color.Black, Color(0xFF020B1A))))) {
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF040C1C), Color.Black, Color(0xFF020B1A))))) {
+        // soft blue glow behind the logo
+        Box(
+            Modifier.fillMaxWidth().height(320.dp).background(
+                Brush.radialGradient(listOf(NeoCallColors.Blue.copy(alpha = 0.22f), Color.Transparent), center = androidx.compose.ui.geometry.Offset(540f, 260f), radius = 700f)
+            )
+        )
         Column(
             Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Image(painterResource(R.drawable.neo_art_connected), null, Modifier.height(140.dp).fillMaxWidth(), contentScale = ContentScale.Fit)
-            Box(Modifier.fillMaxWidth().height(56.dp), contentAlignment = Alignment.Center) {
+            Image(painterResource(R.drawable.neo_art_connected), null, Modifier.height(120.dp).fillMaxWidth(), contentScale = ContentScale.Fit)
+            Text("N E O   P L U S   D I A L E R", color = NeoCallColors.Cyan.copy(alpha = 0.8f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Box(Modifier.fillMaxWidth().height(72.dp), contentAlignment = Alignment.Center) {
                 Text(
-                    number, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Light, textAlign = TextAlign.Center, maxLines = 1,
+                    number, color = Color.White, fontSize = if (number.length > 14) 24.sp else if (number.length > 10) 30.sp else 38.sp,
+                    fontWeight = FontWeight.Light, textAlign = TextAlign.Center, maxLines = 1,
                     modifier = Modifier.semantics { contentDescription = "Number" }
                 )
             }
-            Spacer(Modifier.height(10.dp))
+            Box(Modifier.fillMaxWidth(0.7f).height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, NeoCallColors.Blue.copy(alpha = 0.7f), Color.Transparent))))
+            Spacer(Modifier.height(18.dp))
             Column(verticalArrangement = Arrangement.spacedBy(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 for (row in listOf("123", "456", "789", "*0#")) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-                        row.forEach { c ->
-                            Box(
-                                Modifier.size(72.dp).clip(CircleShape).background(Color(0xFF0A1628))
-                                    .border(1.5.dp, NeoCallColors.Blue.copy(alpha = 0.55f), CircleShape).clickable { number += c },
-                                contentAlignment = Alignment.Center
-                            ) { Text(c.toString(), color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Light) }
-                        }
+                    Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                        row.forEach { c -> DialKey(c) { number += it } }
                     }
                 }
             }
             Spacer(Modifier.weight(1f))
-            Row(Modifier.fillMaxWidth().padding(bottom = 20.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(bottom = 22.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 Text("Close", color = Color.White.copy(alpha = 0.8f), fontSize = 16.sp, modifier = Modifier.clickable { onClose() }.padding(12.dp))
                 Box(
-                    Modifier.size(76.dp).clip(CircleShape).background(NeoCallColors.Green).clickable { call() }
+                    Modifier.size(78.dp).clip(CircleShape)
+                        .background(Brush.verticalGradient(listOf(Color(0xFF4ADE80), NeoCallColors.Green, Color(0xFF15803D))).let { if (ready) it else Brush.verticalGradient(listOf(Color(0xFF1F3B2B), Color(0xFF16291F))) })
+                        .clickable { call() }
                         .semantics { contentDescription = "Call" },
                     contentAlignment = Alignment.Center
-                ) { Icon(Icons.Filled.Call, "Call", tint = Color.White, modifier = Modifier.size(36.dp)) }
+                ) { Icon(Icons.Filled.Call, "Call", tint = Color.White.copy(alpha = if (ready) 1f else 0.5f), modifier = Modifier.size(36.dp)) }
                 Box(
-                    Modifier.size(56.dp).clip(CircleShape).clickable { if (number.isNotEmpty()) number = number.dropLast(1) },
+                    Modifier.size(56.dp).clip(CircleShape).pointerInput(Unit) {
+                        detectTapGestures(onTap = { if (number.isNotEmpty()) number = number.dropLast(1) }, onLongPress = { number = "" })
+                    },
                     contentAlignment = Alignment.Center
-                ) { Icon(Icons.Filled.Backspace, "Delete", tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(26.dp)) }
+                ) { Icon(Icons.Filled.Backspace, "Delete", tint = Color.White.copy(alpha = if (ready) 0.85f else 0.25f), modifier = Modifier.size(26.dp)) }
             }
         }
     }

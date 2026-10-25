@@ -155,6 +155,7 @@ fun LauncherRoot(
                 )
             }
     ) {
+        WeatherScene(rememberSkyKind(), Modifier.then(if (blurDp > 0.dp) Modifier.blur(blurDp) else Modifier))
         Column(
             Modifier.fillMaxSize()
                 .then(if (blurDp > 0.dp) Modifier.blur(blurDp) else Modifier)
@@ -217,6 +218,8 @@ fun LauncherRoot(
                         }
                     }
                     Row(Modifier.fillMaxWidth().height(44.dp), Arrangement.Center, Alignment.CenterVertically) {
+                        NeoDialButton(34.dp, Modifier.noRipple { rootCtx.safeStart(Intent(rootCtx, NeoDialerActivity::class.java)) })
+                        Spacer(Modifier.width(10.dp))
                         Row(
                             Modifier.glass(RoundedCornerShape(50), 0.22f)
                                 .clickable { overlay = Overlay.Search }
