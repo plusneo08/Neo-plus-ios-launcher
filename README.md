@@ -1,3 +1,22 @@
+## Neo lock: PIN, password or pattern, replacing Android's lock (new)
+- Assistant settings > Lock > "Neo lock": choose PIN (4 or 6 digits), Password or Pattern. Neo Plus keeps only a salted hash. Every 5 wrong tries add a wait (30 s, 60 s ... up to 30 min), and the count survives restarts. The same prompt also opens locked apps and confirms changes to the lock settings.
+- "Replace Android's lock with the Neo lock" (device owner only): Android's lock screen is switched off (DevicePolicyManager.setKeyguardDisabled) and the clock screen + Neo PIN pad / password / pattern is the phone's lock. It closes when the screen turns off and after every restart. While it is up the home button and notification shade are off. Wake-up and approval calls still appear above it.
+- Limits, by design of Android: setKeyguardDisabled only works when Android's own lock is removed first; fingerprint and face unlock exist only together with an Android lock, so they are NOT available while the Neo lock replaces it (the fingerprint button appears only if the phone reports an enrolled fingerprint or face). With the replacement OFF, the clock screen opens Android's real unlock, which takes every type including fingerprint and face.
+- Weak points to know: files are not protected by the Neo PIN at the phone's deepest level; safe mode skips the Neo lock; a forgotten Neo PIN has no reset from the phone and may need a factory reset. No Emergency call button is offered on the lock.
+
+## Wake-up call: summary ready before you pick up (new)
+- Sleep mode now prepares the night summary 5 minutes before the wake-up time: it goes through the night log, writes the summary and makes the assistant's voice for it. When you answer, it speaks at once instead of searching first.
+- If something new arrives after that (a message in the last minutes), the summary and voice are redone in the background, so what you hear is always complete.
+- If the preparation could not run (phone off, alarm missed), answering the call builds the summary then, exactly as before. Needs the exact-alarm permission already used for the wake-up call; without it Android may run the preparation a little late.
+
+## iOS-style widget gallery and edit mode (new)
+- Today View → "＋" opens a bottom sheet like iOS: search box, the apps that have widgets (with their icons), then a swipeable preview of each widget with its size (Small / Medium / Large) and a blue "Add Widget" button.
+- Today View → Edit: widgets wiggle and added widgets get the red "−" badge to remove them.
+
+## iOS-style lock screen (new)
+- Assistant settings → Lock → "Show the Neo Plus lock screen". When the screen turns on it shows a big clock, the date and how many notifications wait (never their text). Swipe up: Android opens its OWN unlock (fingerprint, face, PIN, pattern or password, whatever the phone uses). Neo Plus never checks them, so every lock type works and none can be bypassed. Needs the NEO PLUS iOS Controls service on and "Display over other apps".
+- Android does not let an app replace the real lock screen: this sits in front of it, and Android's lock is still behind it.
+
 ## Money: steps checked against screen recordings (v3.11.14)
 - Airtel Money now handles the extra "1.Enter Phone Number / 2.Favourites" screen and the "Enter Phone Number:" prompt (it used to stop there).
 - TNM Mpamba now also works when the recipient is on Airtel Money: it picks "Airtel Money" on the "Please Select" menu and accepts "Enter Airtel Number:".

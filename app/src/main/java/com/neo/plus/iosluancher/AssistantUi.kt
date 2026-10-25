@@ -1190,6 +1190,12 @@ private fun LockPanel(apps: List<AppEntry>, onBack: () -> Unit) {
     val note = Color.White.copy(alpha = 0.7f)
     var on by remember { mutableStateOf(AppLock.enabled(ctx)) }
     var screenOff by remember { mutableStateOf(AppLock.lockOnScreenOff(ctx)) }
+    var lockScreen by remember { mutableStateOf(AppLock.lockScreenOn(ctx)) }
+    var credType by remember { mutableStateOf(NeoLock.type(ctx)) }
+    var replace by remember { mutableStateOf(NeoLock.replaceOn(ctx)) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        while (true) { credType = NeoLock.type(ctx); replace = NeoLock.replaceOn(ctx); kotlinx.coroutines.delay(700) }
+    }
     var timeout by remember { mutableStateOf(AppLock.timeoutMin(ctx)) }
     var locked by remember { mutableStateOf(AppLock.lockedApps(ctx)) }
     var voice by remember { mutableStateOf(AppLock.voiceOn(ctx)) }
@@ -1251,6 +1257,66 @@ private fun LockPanel(apps: List<AppEntry>, onBack: () -> Unit) {
         Text("Lock when the screen turns off", color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
         Pill(if (screenOff) "On" else "Off", screenOff) { needStrong { screenOff = !screenOff; AppLock.setLockOnScreenOff(ctx, screenOff) } }
     }
+
+    Text("iOS-style lock screen", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+    Text(
+        "Shows a big clock, the date and how many notifications wait when the screen turns on. Swipe up and Android opens its own unlock: " +
+            "fingerprint, face, PIN, pattern or password, whichever your phone uses. Neo Plus never checks them itself, and it shows no " +
+            "notification text before you unlock. Needs “Display over other apps” on.",
+        color = note, fontSize = 13.sp, lineHeight = 18.sp
+    )
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.12f)).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text("Show the Neo Plus lock screen", color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
+        Pill(if (lockScreen) "On" else "Off", lockScreen) { lockScreen = !lockScreen; AppLock.setLockScreenOn(ctx, lockScreen) }
+    }
+
+    Text("Neo lock: PIN, password or pattern", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+    Text(
+        "Choose a PIN, password or pattern that Neo Plus checks itself (only a scrambled copy is kept). Current: ${NeoLock.label(credType)}. " +
+            "It opens the lock screen above and your locked apps. Every 5 wrong tries add a longer wait.",
+        color = note, fontSize = 13.sp, lineHeight = 18.sp
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(NeoLock.PIN6 to "PIN 6", NeoLock.PIN4 to "PIN 4", NeoLock.PASSWORD to "Password", NeoLock.PATTERN to "Pattern").forEach { (t, label) ->
+            Pill(label, credType == t) {
+                if (NeoLock.hasCredential(ctx)) needStrong { NeoLockScreenActivity.setup(ctx, t) } else NeoLockScreenActivity.setup(ctx, t)
+            }
+        }
+    }
+    if (NeoLock.hasCredential(ctx) && !replace) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Pill("Remove Neo lock", false) { needStrong { NeoLock.clear(ctx); credType = NeoLock.type(ctx) } }
+        }
+    }
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.12f)).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Replace Android’s lock with the Neo lock", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (replace) "On: the Neo lock is the phone’s only lock" else "Off: Android’s own lock stays", color = note, fontSize = 12.sp)
+        }
+        Pill(if (replace) "On" else "Off", replace) {
+            if (!replace) {
+                needStrong {
+                    val m = NeoLock.enableReplace(ctx)
+                    replace = NeoLock.replaceOn(ctx)
+                    if (m.isNotEmpty()) android.widget.Toast.makeText(ctx, m, android.widget.Toast.LENGTH_LONG).show()
+                }
+            } else needStrong { NeoLock.disableReplace(ctx); replace = false }
+        }
+    }
+    Text(
+        "Read before switching on. Needs device-owner mode (setup-on-phone.txt, step 5) and Android’s own lock removed first " +
+            "(Settings > Security > Screen lock > None). Fingerprint and face unlock only exist together with an Android lock, so they stop " +
+            "working while this is on: the Neo lock takes PIN, password or pattern. Your files are then not protected by a PIN at the " +
+            "phone’s deepest level, and restarting in safe mode skips the Neo lock. Write the Neo PIN down: if you forget it there is no reset " +
+            "from the phone itself, and the way out may be a factory reset. To get Android’s lock back, switch this off while you know it.",
+        color = note, fontSize = 12.sp, lineHeight = 17.sp
+    )
 
     Text("Voice unlock", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
     Text(

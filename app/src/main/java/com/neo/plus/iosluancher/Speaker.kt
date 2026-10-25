@@ -353,6 +353,15 @@ object Speaker {
     private val pool = Executors.newFixedThreadPool(5)
 
     /** Warms up the cloud voice in the background (once per run). Safe to call when there is no key. */
+    /** Makes the voice for a whole text ahead of time (the wake-up summary), so it starts at once when it is spoken. Blocks until done. */
+    fun prewarmSpeech(ctx: Context, text: String) {
+        val cfg = NaturalVoice.config(ctx.applicationContext) ?: return
+        if (text.isBlank() || LangGuess.isChichewa(text)) return
+        chunk(split(text)).forEachIndexed { i, c ->
+            try { NaturalVoice.synth(cfg.key, c, cfg.voice, fast = i == 0) } catch (e: Exception) { }
+        }
+    }
+
     fun prewarm(ctx: Context) {
         val cfg = NaturalVoice.config(ctx.applicationContext) ?: return
         pool.execute { try { NaturalVoice.prewarm(cfg.key, cfg.voice) } catch (e: Exception) { } }

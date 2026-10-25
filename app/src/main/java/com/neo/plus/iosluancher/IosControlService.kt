@@ -445,11 +445,18 @@ class IosControlService : AccessibilityService() {
     private fun registerLockReceivers() {
         if (lockReceiversOn) return
         lockReceiversOn = true
-        val f = IntentFilter().apply { addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT) }
+        val f = IntentFilter().apply { addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT); addAction(Intent.ACTION_SCREEN_ON) }
         ContextCompat.registerReceiver(this, object : android.content.BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 when (intent.action) {
-                    Intent.ACTION_SCREEN_OFF -> AppLock.onScreenOff(context)
+                    Intent.ACTION_SCREEN_OFF -> {
+                        AppLock.onScreenOff(context)
+                        // The Neo lock that replaces Android's closes now, and is already on screen when the screen comes back
+                        if (NeoLock.replaceOn(context)) { NeoLock.lock(); NeoLock.showIfNeeded(context) }
+                    }
+                    Intent.ACTION_SCREEN_ON ->
+                        if (NeoLock.needsLock(context)) NeoLock.showIfNeeded(context)
+                        else if (NeoLockScreenActivity.shouldShow(context)) NeoLockScreenActivity.start(context)
                     Intent.ACTION_USER_PRESENT -> Thread {
                         val front = try { rootInActiveWindow?.packageName?.toString() } catch (e: Exception) { null }
                         main.post { AppLock.onUserPresent(context, front) }

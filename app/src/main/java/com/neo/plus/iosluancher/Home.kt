@@ -228,7 +228,7 @@ fun LauncherRoot(
             CategorySheet(cat ?: "", groups.firstOrNull { it.name == cat }?.apps ?: emptyList(), vm) { category = null }
         }
 
-        AnimatedVisibility(showPicker, enter = fadeIn(), exit = fadeOut()) {
+        AnimatedVisibility(showPicker, enter = slideInVertically { it / 3 } + fadeIn(), exit = slideOutVertically { it / 3 } + fadeOut()) {
             WidgetPicker(widgets) { showPicker = false }
         }
 
@@ -256,16 +256,16 @@ fun TodayPage(widgets: WidgetController, onAddWidget: () -> Unit) {
             Text("Today View", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold, style = ShadowStyle)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 GlassPill(if (editing) "Done" else "Edit") { editing = !editing }
-                GlassPill("+ Widget", onAddWidget)
+                GlassPill("＋", onAddWidget)
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            ClockWidget(Modifier.weight(1f).aspectRatio(1f))
-            BatteryWidget(Modifier.weight(1f).aspectRatio(1f))
+            ClockWidget(Modifier.weight(1f).aspectRatio(1f).jiggle(editing, 0))
+            BatteryWidget(Modifier.weight(1f).aspectRatio(1f).jiggle(editing, 1))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            CalendarWidget(Modifier.weight(1f).aspectRatio(1f))
-            StorageWidget(Modifier.weight(1f).aspectRatio(1f))
+            CalendarWidget(Modifier.weight(1f).aspectRatio(1f).jiggle(editing, 2))
+            StorageWidget(Modifier.weight(1f).aspectRatio(1f).jiggle(editing, 3))
         }
         HostedWidgets(widgets, editing)
         Spacer(Modifier.height(24.dp))

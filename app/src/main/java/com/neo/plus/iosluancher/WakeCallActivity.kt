@@ -67,6 +67,7 @@ class WakeCallActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        NeoLock.callUp++
         @Suppress("DEPRECATION")
         window.addFlags(
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
@@ -80,6 +81,8 @@ class WakeCallActivity : ComponentActivity() {
 
     override fun onDestroy() {
         if (isFinishing) session?.shutdown()
+        NeoLock.callUp = maxOf(0, NeoLock.callUp - 1)
+        if (isFinishing) NeoLock.showIfNeeded(applicationContext)
         super.onDestroy()
     }
 }
@@ -104,7 +107,7 @@ private class CallSession(val act: WakeCallActivity) {
         SleepMode.answered(ctx)
         phase = 1
         io.execute {
-            val r = SleepMode.report(ctx)
+            val r = SleepPrep.ready(ctx)   // already written (and its voice made) 5 minutes earlier, if nothing new came in
             main.post {
                 if (!alive) return@post
                 hist += true to "[A phone call just started. I woke up. Tell me what happened overnight.]"

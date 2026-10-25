@@ -41,6 +41,9 @@ object AppLock {
         if (on) s.add(pkg) else s.remove(pkg)
         p(ctx).edit().putStringSet("apps", s).apply()
     }
+    /** The iOS-style lock screen ([NeoLockScreenActivity]) shown over the phone's own lock when the screen turns on. Independent of the app lock. */
+    fun lockScreenOn(ctx: Context) = p(ctx).getBoolean("lockscreen_on", false)
+    fun setLockScreenOn(ctx: Context, on: Boolean) { p(ctx).edit().putBoolean("lockscreen_on", on).apply() }
     fun voiceOn(ctx: Context) = p(ctx).getBoolean("voice_on", false) && hasPhrase(ctx)
     fun setVoiceOn(ctx: Context, on: Boolean) { p(ctx).edit().putBoolean("voice_on", on).apply() }
     fun hasPhrase(ctx: Context) = p(ctx).getString("phrase_hash", "").orEmpty().isNotBlank()
@@ -96,7 +99,7 @@ object AppLock {
 
     /** Called for every new window that comes to the front (not the keyboard, not system dialogs). */
     fun onForeground(ctx: Context, pkg: String, cls: String) {
-        if (!enabled(ctx) || cls == LockActivity::class.java.name) return
+        if (!enabled(ctx) || cls == LockActivity::class.java.name || cls == NeoLockScreenActivity::class.java.name) return
         val prev = lastPkg
         if (pkg == prev) return
         if (prev.isNotBlank() && appLeft.containsKey(prev)) appLeft[prev] = System.currentTimeMillis()

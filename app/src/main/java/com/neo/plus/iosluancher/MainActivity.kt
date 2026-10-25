@@ -109,6 +109,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (AppLock.neoLocked(this)) LockActivity.start(this, "")
+        NeoLock.showIfNeeded(this)   // the lock that replaces Android's: also right after a restart
         hideStatusBar()
         nextSpecialAccess()
         startKiosk()

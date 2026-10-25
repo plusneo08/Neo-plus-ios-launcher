@@ -215,6 +215,17 @@
             android:taskAffinity=""
             android:excludeFromRecents="true" />
 
+        <!-- iOS-style lock screen drawn above Android's own lock; swipe up asks Android for its real unlock (all lock types) -->
+        <activity
+            android:name=".NeoLockScreenActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/Theme.Neo" />
+
         <activity
             android:name=".WakeCallActivity"
             android:exported="false"
@@ -249,6 +260,7 @@
         </receiver>
 
         <receiver android:name=".SleepWakeReceiver" android:exported="false" />
+        <receiver android:name=".SleepPrepReceiver" android:exported="false" />
 
         <!-- Money: the screen where the user must tap Authorise before any transfer -->
         <activity

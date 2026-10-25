@@ -183,6 +183,7 @@ class ApprovalCallActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        NeoLock.callUp++
         @Suppress("DEPRECATION")
         window.addFlags(
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
@@ -198,6 +199,8 @@ class ApprovalCallActivity : ComponentActivity() {
 
     override fun onDestroy() {
         if (isFinishing) { ApprovalCall.stop(applicationContext); session?.shutdown() }
+        NeoLock.callUp = maxOf(0, NeoLock.callUp - 1)
+        if (isFinishing) NeoLock.showIfNeeded(applicationContext)
         super.onDestroy()
     }
 }

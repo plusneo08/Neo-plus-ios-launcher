@@ -104,7 +104,7 @@ object SleepMode {
         }
         if (cal.timeInMillis <= System.currentTimeMillis() + 60_000) cal.add(Calendar.DAY_OF_YEAR, 1)
         prefs(app).edit().putBoolean("on", true).putLong("wake_at", cal.timeInMillis).putLong("started", System.currentTimeMillis())
-            .putString("activity", act).putString("log", "[]").putString("replied", "{}").putString("replied_n", "{}").putInt("retries", 0).putString("report", "").apply()
+            .putString("activity", act).putString("log", "[]").putString("replied", "{}").putString("replied_n", "{}").putInt("retries", 0).putString("report", "").putInt("prep_n", -1).apply()
         synchronized(seen) { seen.clear() }
         NotifStore.convoClear()
         // Capture what is already waiting in the notification shade, so nothing that arrived just before bed is missed
@@ -116,6 +116,7 @@ object SleepMode {
             } catch (e: Exception) { }
         }
         schedule(app, cal.timeInMillis)
+        SleepPrep.schedule(app, cal.timeInMillis)   // the summary and its voice are made 5 minutes before the call
         SleepService.start(app)
         var battery = false
         try {
@@ -164,6 +165,7 @@ object SleepMode {
     }
 
     internal fun cancelAlarm(ctx: Context) {
+        SleepPrep.cancel(ctx)
         try { (ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(wakeIntent(ctx)) } catch (e: Exception) { }
     }
 
@@ -173,7 +175,7 @@ object SleepMode {
         if (!isOn(app)) return
         SleepService.start(app)
         val at = prefs(app).getLong("wake_at", 0L)
-        if (at > System.currentTimeMillis()) schedule(app, at) else ring(app)
+        if (at > System.currentTimeMillis()) { schedule(app, at); SleepPrep.schedule(app, at) } else ring(app)
     }
 
     fun ring(ctx: Context) {

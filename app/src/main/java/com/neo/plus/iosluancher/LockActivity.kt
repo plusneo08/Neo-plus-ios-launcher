@@ -88,6 +88,13 @@ class LockActivity : ComponentActivity() {
     companion object {
         fun start(ctx: Context, pkg: String = "", mode: String = "unlock") {
             if (mode == "unlock" && AppLock.showing && AppLock.showingPkg == pkg) return
+            // The Neo PIN / password / pattern is asked for when it replaces Android's lock, or the phone has no lock of its own
+            if (NeoLock.preferred(ctx)) {
+                when {
+                    mode == "unlock" -> { NeoLockScreenActivity.app(ctx, pkg); return }
+                    mode == "confirm" || (mode == "setphrase" && !AppLock.strongOk()) -> { NeoLockScreenActivity.confirm(ctx); return }
+                }
+            }
             val i = Intent(ctx.applicationContext, LockActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NO_ANIMATION)
                 .putExtra("pkg", pkg).putExtra("mode", mode)
@@ -170,6 +177,7 @@ class LockActivity : ComponentActivity() {
     } catch (e: Exception) { pkg }
 
     private fun systemAuth() {
+        if (NeoLock.preferred(this) && AppLock.strongOk()) { onStrong(); return }   // the Neo lock was just entered
         val km = getSystemService(KeyguardManager::class.java)
         if (km == null || !km.isDeviceSecure) {
             noLock = true

@@ -104,7 +104,7 @@ object Kiosk {
             val admin = DeviceAdmin.component(ctx)
             val pkgs = ctx.packageManager.getInstalledApplications(0).map { it.packageName }.toTypedArray()
             d.setLockTaskPackages(admin, pkgs)
-            if (android.os.Build.VERSION.SDK_INT >= 28) {
+            if (android.os.Build.VERSION.SDK_INT >= 28 && !NeoLock.needsLock(ctx)) {
                 d.setLockTaskFeatures(admin, DevicePolicyManager.LOCK_TASK_FEATURE_HOME or DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS)
             }
             d.setPermissionPolicy(admin, DevicePolicyManager.PERMISSION_POLICY_AUTO_GRANT)

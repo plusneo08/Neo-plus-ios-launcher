@@ -67,6 +67,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.TextStyle
+import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -314,51 +332,185 @@ fun HostedWidgets(wc: WidgetController, editing: Boolean) {
     wc.ids.toList().forEach { id ->
         val info = wc.manager.getAppWidgetInfo(id) ?: return@forEach
         val h = with(density) { info.minHeight.toDp() }.coerceIn(80.dp, 360.dp)
-        Box(Modifier.fillMaxWidth().height(h).clip(RoundedCornerShape(24.dp))) {
+        Box(Modifier.fillMaxWidth().height(h).jiggle(editing, id % 3).clip(RoundedCornerShape(24.dp))) {
             AndroidView(
                 factory = { c -> wc.host.createView(c, id, info) },
                 modifier = Modifier.fillMaxSize()
             )
             if (editing) {
+                // iOS: a red "−" badge on the corner removes the widget
                 Box(
-                    Modifier.align(Alignment.TopEnd).padding(8.dp).size(28.dp).clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.6f)).clickable { wc.remove(id) },
+                    Modifier.align(Alignment.TopStart).padding(8.dp).size(26.dp).clip(CircleShape)
+                        .background(Color(0xFFFF3B30)).clickable { wc.remove(id) },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Filled.Close, contentDescription = "Remove", tint = Color.White,
-                        modifier = Modifier.size(16.dp))
+                    Box(Modifier.size(width = 12.dp, height = 2.5.dp).clip(RoundedCornerShape(50)).background(Color.White))
                 }
             }
         }
     }
 }
 
+/** iOS edit mode: widgets wiggle slightly while you are editing. */
+@Composable
+fun Modifier.jiggle(on: Boolean, phase: Int = 0): Modifier {
+    if (!on) return this
+    val t = rememberInfiniteTransition(label = "jiggle")
+    val deg by t.animateFloat(
+        initialValue = -1.2f, targetValue = 1.2f,
+        animationSpec = infiniteRepeatable(tween(130 + phase * 25, easing = LinearEasing), RepeatMode.Reverse),
+        label = "deg"
+    )
+    return this.graphicsLayer { rotationZ = deg }
+}
+
+private class WidgetApp(val pkg: String, val name: String, val providers: List<AppWidgetProviderInfo>)
+
+private val SheetBg = Color(0xFF1C1C1E)
+private val FieldBg = Color(0xFF2C2C2E)
+private val IosBlue = Color(0xFF0A84FF)
+
+/** iOS-style widget gallery: a sheet with search, apps that have widgets, then a swipeable preview with "Add Widget". */
 @Composable
 fun WidgetPicker(wc: WidgetController, onClose: () -> Unit) {
-    val pm = LocalContext.current.packageManager
-    val providers = remember { wc.providers() }
-    Column(
-        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f))
-            .consumeTouches()
-            .windowInsetsPadding(safeInsets()).padding(16.dp)
+    val ctx = LocalContext.current
+    val pm = ctx.packageManager
+    val apps = remember {
+        wc.providers().groupBy { it.provider.packageName }.map { (pkg, list) ->
+            val name = try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() } catch (e: Exception) { pkg }
+            WidgetApp(pkg, name, list)
+        }.sortedBy { it.name.lowercase() }
+    }
+    var query by remember { mutableStateOf("") }
+    var open by remember { mutableStateOf<WidgetApp?>(null) }
+
+    Box(
+        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f))
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClose() }
     ) {
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-            Text("Add Widget", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            Text("Done", color = Color(0xFF7DB8FF), fontSize = 17.sp,
-                modifier = Modifier.clickable { onClose() }.padding(8.dp))
-        }
-        Spacer(Modifier.height(10.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(providers) { p ->
-                Column(
-                    Modifier.fillMaxWidth().glass(RoundedCornerShape(16.dp), 0.2f)
-                        .clickable { wc.add(p); onClose() }.padding(14.dp)
+        Column(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.92f)
+                .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)).background(SheetBg.copy(alpha = 0.98f))
+                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { }   // taps on the sheet do not close it
+                .padding(horizontal = 16.dp)
+        ) {
+            Box(Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp, bottom = 10.dp)
+                .size(width = 36.dp, height = 5.dp).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.3f)))
+
+            val a = open
+            if (a == null) {
+                Box(Modifier.fillMaxWidth().padding(bottom = 12.dp), contentAlignment = Alignment.Center) {
+                    Text("Widgets", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    Box(
+                        Modifier.align(Alignment.CenterEnd).size(30.dp).clip(CircleShape).background(FieldBg).clickable { onClose() },
+                        contentAlignment = Alignment.Center
+                    ) { Icon(Icons.Filled.Close, "Close", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(16.dp)) }
+                }
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(FieldBg).padding(horizontal = 10.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(p.loadLabel(pm) ?: "Widget", color = Color.White, fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold)
-                    Text(p.provider.packageName, color = Color.White.copy(alpha = 0.65f), fontSize = 11.sp)
+                    Icon(Icons.Filled.Search, null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(18.dp))
+                    Box(Modifier.weight(1f)) {
+                        if (query.isEmpty()) Text("Search Widgets", color = Color.White.copy(alpha = 0.45f), fontSize = 16.sp)
+                        BasicTextField(
+                            value = query, onValueChange = { query = it }, singleLine = true,
+                            textStyle = TextStyle(color = Color.White, fontSize = 16.sp),
+                            cursorBrush = SolidColor(IosBlue), modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                val shown = apps.filter { query.isBlank() || it.name.contains(query.trim(), ignoreCase = true) }
+                LazyColumn(Modifier.fillMaxSize()) {
+                    items(shown) { app ->
+                        val icon = remember(app.pkg) {
+                            try { renderIcon(pm.getApplicationIcon(app.pkg), 120).asImageBitmap() } catch (e: Exception) { null }
+                        }
+                        Row(
+                            Modifier.fillMaxWidth().clickable { open = app }.padding(vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            if (icon != null) Image(icon, app.name, Modifier.size(44.dp).clip(Squircle))
+                            else Box(Modifier.size(44.dp).clip(Squircle).background(FieldBg))
+                            Column(Modifier.weight(1f)) {
+                                Text(app.name, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                Text(
+                                    if (app.providers.size == 1) (app.providers[0].loadLabel(pm) ?: "1 widget") else "${app.providers.size} widgets",
+                                    color = Color.White.copy(alpha = 0.55f), fontSize = 13.sp, maxLines = 1
+                                )
+                            }
+                            Text("›", color = Color.White.copy(alpha = 0.35f), fontSize = 22.sp)
+                        }
+                    }
+                }
+            } else {
+                WidgetDetail(a, wc, onBack = { open = null }, onAdded = onClose)
+            }
+        }
+    }
+}
+
+private fun sizeName(p: AppWidgetProviderInfo): String {
+    val cols = ((p.minWidth + 30) / 70).coerceAtLeast(1)
+    val rows = ((p.minHeight + 30) / 70).coerceAtLeast(1)
+    val name = if (cols >= 3 && rows >= 3) "Large" else if (cols >= 3) "Medium" else "Small"
+    return "$name · $cols×$rows"
+}
+
+@Composable
+private fun ColumnScope.WidgetDetail(app: WidgetApp, wc: WidgetController, onBack: () -> Unit, onAdded: () -> Unit) {
+    val ctx = LocalContext.current
+    val pm = ctx.packageManager
+    val pager = rememberPagerState { app.providers.size }
+    val current = app.providers[pager.currentPage.coerceIn(0, app.providers.size - 1)]
+
+    Box(Modifier.fillMaxWidth().padding(bottom = 6.dp), contentAlignment = Alignment.CenterStart) {
+        Text("‹ Widgets", color = IosBlue, fontSize = 17.sp, modifier = Modifier.clickable { onBack() }.padding(vertical = 6.dp, horizontal = 2.dp))
+    }
+    Text(app.name, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+    Spacer(Modifier.height(16.dp))
+
+    HorizontalPager(pager, contentPadding = PaddingValues(horizontal = 28.dp), pageSpacing = 14.dp) { i ->
+        val p = app.providers[i]
+        val preview = remember(p) {
+            try { p.loadPreviewImage(ctx, 0)?.toBitmap()?.asImageBitmap() } catch (e: Exception) { null }
+        }
+        val fallback = remember(p) {
+            try { renderIcon(pm.getApplicationIcon(p.provider.packageName), 160).asImageBitmap() } catch (e: Exception) { null }
+        }
+        Box(
+            Modifier.fillMaxWidth().height(230.dp).clip(RoundedCornerShape(24.dp)).background(FieldBg).padding(14.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            if (preview != null) Image(preview, p.loadLabel(pm), Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+            else if (fallback != null) Image(fallback, p.loadLabel(pm), Modifier.size(72.dp).clip(Squircle))
+        }
+    }
+
+    Spacer(Modifier.height(16.dp))
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(current.loadLabel(pm) ?: "Widget", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+        Text(sizeName(current), color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp, textAlign = TextAlign.Center)
+        val desc = if (android.os.Build.VERSION.SDK_INT >= 31) try { current.loadDescription(ctx)?.toString() } catch (e: Exception) { null } else null
+        if (!desc.isNullOrBlank()) {
+            Spacer(Modifier.height(4.dp))
+            Text(desc, color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp, textAlign = TextAlign.Center, maxLines = 3)
+        }
+        if (app.providers.size > 1) {
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                repeat(app.providers.size) { i ->
+                    Box(Modifier.size(7.dp).clip(CircleShape)
+                        .background(Color.White.copy(alpha = if (i == pager.currentPage) 0.9f else 0.28f)))
                 }
             }
         }
     }
+    Spacer(Modifier.weight(1f))
+    Box(
+        Modifier.fillMaxWidth().padding(bottom = 22.dp).height(50.dp).clip(RoundedCornerShape(50)).background(IosBlue)
+            .clickable { wc.add(current); onAdded() },
+        contentAlignment = Alignment.Center
+    ) { Text("Add Widget", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
 }

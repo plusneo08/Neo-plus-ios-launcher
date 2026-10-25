@@ -105,4 +105,5 @@ Emotional or personal topics (a relationship, someone upset, sad or angry, an ar
             .put("text", text.take(300)).put("reply", reply.take(300)))
         val trimmed = if (arr.length() > MAX_LOG) JSONArray().also { o -> for (i in arr.length() - MAX_LOG until arr.length()) o.put(arr.get(i)) } else arr
         prefs(ctx).edit().putString("log", trimmed.toString()).apply()
+        SleepPrep.onLogChanged(ctx.applicationContext)   // after the 5-minutes-before preparation, keep the ready summary complete
     }
