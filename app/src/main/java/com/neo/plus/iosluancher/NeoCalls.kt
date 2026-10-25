@@ -20,6 +20,7 @@ import android.telecom.InCallService
 import android.telecom.TelecomManager
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -325,7 +326,7 @@ class NeoDialerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val pre = try { intent?.data?.schemeSpecificPart.orEmpty() } catch (e: Exception) { "" }
-        androidx.activity.enableEdgeToEdge()
+        enableEdgeToEdge()
         setContent { DialerScreen(pre) { finish() } }
     }
 }
