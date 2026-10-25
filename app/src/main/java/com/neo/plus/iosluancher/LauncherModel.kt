@@ -40,7 +40,9 @@ data class AppEntry(
     val installTime: Long,
     val icon: ImageBitmap,
     val system: Boolean = false,
-    val role: Role? = null
+    val role: Role? = null,
+    /** Just the logo of the app (no coloured background), drawn inside the transparent neon tile. Null = use the full icon. */
+    val glyph: ImageBitmap? = null
 ) {
     /** Name shown under the icon: default apps use their iPhone names (Phone, Messages, Safari, Camera). */
     val shownLabel: String get() = role?.label ?: label
@@ -99,13 +101,39 @@ fun renderIcon(d: Drawable, px: Int): Bitmap {
     return bmp
 }
 
+/** The app's logo without its background, for the transparent icon tiles. Null when the icon is a solid full-bleed picture. */
+fun renderGlyph(d: Drawable, px: Int): Bitmap? {
+    val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
+    val c = Canvas(bmp)
+    if (d is AdaptiveIconDrawable) {
+        val fg = d.foreground ?: return null
+        val off = (px * 0.25f).toInt()
+        fg.setBounds(-off, -off, px + off, px + off); fg.draw(c)
+        val m = (px * 0.06f).toInt()
+        val pts = listOf(m to m, px - 1 - m to m, m to px - 1 - m, px - 1 - m to px - 1 - m)
+        if (pts.all { (x, y) -> android.graphics.Color.alpha(bmp.getPixel(x, y)) > 200 }) return null
+        return bmp
+    }
+    val pad = (px * 0.12f).toInt()
+    d.setBounds(pad, pad, px - pad, px - pad)
+    d.draw(c)
+    return bmp
+}
+
 /** Loads every launchable app. Icons are rendered in parallel on all cores, sized to the screen density. */
 private suspend fun queryApps(ctx: Context): List<AppEntry> = coroutineScope {
     val pm = ctx.packageManager
     val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
     val px = (ctx.resources.displayMetrics.density * 78f).toInt().coerceIn(180, 320)
+    // Neo Plus' own phone app: always on the launcher as "Phone" (the other dialer apps are replaced by it)
+    val neoPhone = AppEntry(
+        "Phone", ctx.packageName, NeoDialerActivity::class.java.name, Cat.OTHER, 0L,
+        renderIcon(try { pm.getApplicationIcon(ctx.packageName) } catch (e: Exception) { pm.defaultActivityIcon }, px).asImageBitmap(),
+        system = true, role = Role.PHONE
+    )
     pm.queryIntentActivities(intent, 0)
         .filter { it.activityInfo != null && it.activityInfo.packageName != ctx.packageName }
+        .filter { iosKindOf(it.activityInfo.packageName, it.loadLabel(pm)?.toString() ?: "") != IosKind.PHONE }
         .map { ri ->
             async(Dispatchers.Default) {
                 val ai = ri.activityInfo
@@ -121,12 +149,14 @@ private suspend fun queryApps(ctx: Context): List<AppEntry> = coroutineScope {
                     (flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0
                 AppEntry(
                     label, ai.packageName, ai.name, categoryOf(ai.applicationInfo), time,
-                    bmp.asImageBitmap(), system = isSystem
+                    bmp.asImageBitmap(), system = isSystem,
+                    glyph = try { renderGlyph(ri.loadIcon(pm), px)?.asImageBitmap() } catch (e: Exception) { null }
                 )
             }
         }
         .awaitAll()
         .distinctBy { it.pkg + "/" + it.activity }
+        .let { it + neoPhone }
         .sortedBy { it.label.lowercase() }
 }
 
@@ -145,7 +175,7 @@ private fun defaultRoles(ctx: Context, apps: List<AppEntry>): LinkedHashMap<Stri
     }
     val result = LinkedHashMap<String, Role>()
     fun put(role: Role, pkg: String?) { if (pkg != null && pkg !in result) result[pkg] = role }
-    put(Role.PHONE, pkgOf(Intent(Intent.ACTION_DIAL)))
+    put(Role.PHONE, ctx.packageName.takeIf { it in installed })
     put(Role.MESSAGES, pkgOf(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_MESSAGING)))
     put(
         Role.SAFARI,
@@ -190,7 +220,16 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             val list = raw.map { a -> roles[a.pkg]?.let { a.copy(role = it) } ?: a }
             apps = list
             val saved = prefs.getString("dock", null)
-            dock = if (saved != null) saved.split(",").filter { it.isNotBlank() } else roles.keys.toList()
+            var d = if (saved != null) saved.split(",").filter { it.isNotBlank() } else roles.keys.toList()
+            // one time: put Neo Plus' own Phone app first in the dock of phones that already had a dock
+            if (!prefs.getBoolean("dock_neo_phone", false)) {
+                prefs.edit().putBoolean("dock_neo_phone", true).apply()
+                if (saved != null) {
+                    d = listOf(ctx.packageName) + d.filter { it != ctx.packageName }
+                    prefs.edit().putString("dock", d.joinToString(",")).apply()
+                }
+            }
+            dock = d
         }
     }
 

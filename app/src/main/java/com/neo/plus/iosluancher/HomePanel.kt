@@ -21,6 +21,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -89,93 +92,66 @@ fun HomePanel(modifier: Modifier = Modifier) {
     val weekday = SimpleDateFormat("EEEE", loc).format(date)
     val dayMonth = SimpleDateFormat("d MMMM", loc).format(date)
 
-    Row(
-        modifier
-            .glass(RoundedCornerShape(30.dp), 0.20f)
-            .padding(horizontal = 20.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // ---- time + date
+    val w = weather
+    val card = RoundedCornerShape(26.dp)
+    val shortDate = SimpleDateFormat("EEE, d MMM", loc).format(date)
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        // ---- clock card
         Column(
-            Modifier.weight(1.2f).fillMaxHeight().clickable {
-                ctx.safeStart(Intent(AlarmClock.ACTION_SHOW_ALARMS))
-            },
+            Modifier.weight(1f).fillMaxHeight().neonGlass(card, 9.dp)
+                .clickable { ctx.safeStart(Intent(AlarmClock.ACTION_SHOW_ALARMS)) }
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.Center
         ) {
-            Text(
-                weekday.uppercase(loc), color = Color.White.copy(alpha = 0.66f),
-                fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 2.sp
-            )
             Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    time, color = Color.White, fontSize = 64.sp, fontWeight = FontWeight.Thin,
-                    letterSpacing = (-2).sp, style = ShadowStyle, maxLines = 1
-                )
+                Text(time, color = Color.White, fontSize = 50.sp, fontWeight = FontWeight.Light, letterSpacing = (-1).sp, style = ShadowStyle, maxLines = 1)
                 if (ampm.isNotEmpty()) {
-                    Text(
-                        ampm, color = Color.White.copy(alpha = 0.8f), fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 5.dp, bottom = 13.dp)
-                    )
+                    Text(ampm, color = Color.White.copy(alpha = 0.85f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 4.dp, bottom = 9.dp))
                 }
             }
             Text(
-                dayMonth, color = Color.White.copy(alpha = 0.92f), fontSize = 17.sp, fontWeight = FontWeight.Medium,
+                shortDate, color = Color.White.copy(alpha = 0.92f), fontSize = 16.sp, fontWeight = FontWeight.Medium,
                 modifier = Modifier.clickable {
-                    val uri = CalendarContract.CONTENT_URI.buildUpon().appendPath("time")
-                        .appendPath(System.currentTimeMillis().toString()).build()
+                    val uri = CalendarContract.CONTENT_URI.buildUpon().appendPath("time").appendPath(System.currentTimeMillis().toString()).build()
                     ctx.safeStart(Intent(Intent.ACTION_VIEW, uri))
                 }
             )
         }
 
-        Box(Modifier.padding(horizontal = 14.dp).width(0.8.dp).fillMaxHeight(0.62f).background(Color.White.copy(alpha = 0.22f)))
-
-        // ---- weather
-        val w = weather
+        // ---- weather card
         Column(
-            Modifier.weight(0.95f).fillMaxHeight().clickable {
-                when {
-                    w != null -> ctx.safeStart(
-                        Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=" + Uri.encode("weather")))
-                    )
-                    !permitted -> askLocation.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
-                    else -> tick++
+            Modifier.weight(1f).fillMaxHeight().neonGlass(card, 9.dp)
+                .clickable {
+                    when {
+                        w != null -> ctx.safeStart(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=" + Uri.encode("weather"))))
+                        !permitted -> askLocation.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+                        else -> tick++
+                    }
                 }
-            },
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.Center
         ) {
             if (w != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    WeatherGlyph(weatherKind(w.code, w.isDay), Modifier.size(38.dp))
+                    WeatherGlyph(weatherKind(w.code, w.isDay), Modifier.size(52.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("${w.temp}°", color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Light, style = ShadowStyle)
+                    Column {
+                        Text("${w.temp}°", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Light, style = ShadowStyle)
+                        Text(weatherText(w.code), color = Color.White.copy(alpha = 0.94f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
-                Text(
-                    weatherText(w.code), color = Color.White.copy(alpha = 0.94f), fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-                Text(
-                    "H:${w.hi}°  L:${w.lo}°", color = Color.White.copy(alpha = 0.70f), fontSize = 12.sp,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
                 if (w.place.isNotBlank()) {
-                    Text(
-                        w.place, color = Color.White.copy(alpha = 0.70f), fontSize = 12.sp,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                        Icon(Icons.Filled.LocationOn, null, tint = Color(0xFF38BDF8), modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(3.dp))
+                        Text(w.place, color = Color(0xFF38BDF8), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
-            } else if (!permitted) {
-                Text("Weather", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                Text(
-                    "Tap to allow location", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp,
-                    modifier = Modifier.padding(top = 3.dp)
-                )
             } else {
                 Text("Weather", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 Text(
-                    "Getting forecast…", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp,
-                    modifier = Modifier.padding(top = 3.dp)
+                    if (!permitted) "Tap to allow location" else "Getting forecast…",
+                    color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp)
                 )
             }
         }

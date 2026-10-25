@@ -72,7 +72,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -105,6 +108,7 @@ fun LauncherRoot(
     var editing by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var showGlass by remember { mutableStateOf(false) }
+    var goLibrary by remember { mutableStateOf(0) }
     val rootCtx = LocalContext.current
     val roleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
     LaunchedEffect(Unit) { GlassPrefs.load(rootCtx) }
@@ -177,12 +181,13 @@ fun LauncherRoot(
                 val rowH = iconSize + 36.dp
                 val rows = ((maxHeight - 72.dp) / rowH).toInt().coerceIn(3, 7)
                 val perPage = rows * 4
-                val firstCap = ((rows - 2) * 4).coerceAtLeast(4)
+                val firstCap = ((maxHeight - 72.dp - 120.dp - 200.dp) / rowH).toInt().coerceIn(1, 3) * 4
                 val homeList = vm.homeApps
                 val homePages = remember(homeList, perPage, firstCap) {
                     listOf(homeList.take(firstCap)) + homeList.drop(firstCap).chunked(perPage)
                 }
                 val pager = rememberPagerState(initialPage = 1) { homePages.size + 2 }
+                LaunchedEffect(goLibrary) { if (goLibrary > 0) pager.animateScrollToPage(homePages.size + 1) }
 
                 LaunchedEffect(homeTick) {
                     if (homeTick > 0) {
@@ -214,14 +219,14 @@ fun LauncherRoot(
                     }
                     Box(Modifier.fillMaxWidth().height(28.dp), contentAlignment = Alignment.Center) {
                         Row(
-                            Modifier.glass(RoundedCornerShape(50), 0.16f).padding(horizontal = 10.dp, vertical = 5.dp),
+                            Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             repeat(pager.pageCount) { i ->
                                 val sel = pager.currentPage == i
                                 Box(
-                                    Modifier.padding(horizontal = 3.dp).size(if (sel) 8.dp else 6.dp).clip(CircleShape)
-                                        .background(Color.White.copy(alpha = if (sel) 0.98f else 0.50f))
+                                    Modifier.padding(horizontal = 4.dp).size(if (sel) 9.dp else 8.dp).clip(CircleShape)
+                                        .background(if (sel) Color(0xFF1AA7FF) else Color.White.copy(alpha = 0.32f))
                                 )
                             }
                         }
@@ -244,7 +249,7 @@ fun LauncherRoot(
                     }
                 }
             }
-            Dock(vm)
+            Dock(vm) { goLibrary++ }
         }
 
         AnimatedVisibility(
@@ -396,8 +401,8 @@ fun TodayPage(widgets: WidgetController, onAddWidget: () -> Unit) {
 fun HomeGrid(apps: List<AppEntry>, vm: LauncherViewModel, iconSize: Dp, rowH: Dp, withWidgets: Boolean = false) {
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp)) {
         if (withWidgets) {
-            HomePanel(Modifier.fillMaxWidth().height((rowH * 2 - 12.dp).coerceAtLeast(160.dp)).padding(horizontal = 4.dp))
-            Spacer(Modifier.height(12.dp))
+            HomePanel(Modifier.fillMaxWidth().height(112.dp).padding(horizontal = 4.dp, vertical = 4.dp))
+            Spacer(Modifier.weight(1f))   // the wallpaper's logo shows here
         }
         apps.chunked(4).forEach { row ->
             Row(Modifier.fillMaxWidth().height(rowH)) {
@@ -407,6 +412,7 @@ fun HomeGrid(apps: List<AppEntry>, vm: LauncherViewModel, iconSize: Dp, rowH: Dp
                 repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
+        if (withWidgets) Spacer(Modifier.height(4.dp))
     }
 }
 
@@ -497,18 +503,29 @@ fun AppCell(app: AppEntry, vm: LauncherViewModel, size: Dp = 60.dp, showLabel: B
 }
 
 @Composable
-fun Dock(vm: LauncherViewModel) {
-    val items = vm.dock.mapNotNull { p -> vm.apps.firstOrNull { it.pkg == p } }.take(4)
+fun Dock(vm: LauncherViewModel, onLibrary: () -> Unit = {}) {
+    val items = vm.dock.mapNotNull { p -> vm.apps.firstOrNull { it.pkg == p } }.take(3)
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val icon = ((maxWidth - 28.dp - 24.dp) / 4 * 0.80f).coerceIn(52.dp, 80.dp)
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp)
-                .glass(RoundedCornerShape(40.dp), 0.30f)
+                .neonGlass(RoundedCornerShape(34.dp), 12.dp)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            items.forEach { AppCell(it, vm, icon, showLabel = false) }
+            items.take(2).forEach { AppCell(it, vm, icon, showLabel = false) }
+            // the round "all apps" button: opens the App Library
+            Box(
+                Modifier.size(icon).neonGlass(CircleShape, 7.dp).noRipple { onLibrary() }.semantics { contentDescription = "All apps" },
+                contentAlignment = Alignment.Center
+            ) {
+                androidx.compose.foundation.Canvas(Modifier.size(icon * 0.5f)) {
+                    val step = size.width / 3f
+                    for (r in 0..2) for (c in 0..2) drawCircle(Color.White.copy(alpha = 0.92f), size.width * 0.075f, Offset(step * (c + 0.5f), step * (r + 0.5f)))
+                }
+            }
+            items.drop(2).forEach { AppCell(it, vm, icon, showLabel = false) }
             if (items.isEmpty()) Spacer(Modifier.height(icon + 6.dp))
         }
     }

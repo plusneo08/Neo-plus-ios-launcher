@@ -7,6 +7,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material3.Icon
@@ -165,26 +167,58 @@ fun IosArt(kind: IosKind, modifier: Modifier = Modifier) {
     }
 }
 
-/** Home-screen / dock / library icon: iPhone art for known apps, full-bleed squircle for the rest, plus a glass sheen. */
+private val NeoBlue = Color(0xFF0A84FF)
+private val NeoCyan = Color(0xFF38BDF8)
+
+/** Dark translucent glass with a glowing neon-blue edge (widgets, dock, icon tiles). */
+fun Modifier.neonGlass(shape: Shape, glow: Dp = 8.dp): Modifier = this
+    .shadow(glow, shape, clip = false, ambientColor = NeoBlue, spotColor = NeoCyan)
+    .clip(shape)
+    .background(Brush.verticalGradient(listOf(Color(0xFF0A1B38).copy(alpha = 0.50f), Color(0xFF020712).copy(alpha = 0.66f))))
+    .border(1.3.dp, Brush.linearGradient(listOf(NeoCyan.copy(alpha = 0.95f), NeoBlue.copy(alpha = 0.40f), NeoCyan.copy(alpha = 0.85f))), shape)
+
+/** Logo-only drawings for the three system apps, so they float on the glass like the other app logos. */
+@Composable
+private fun SystemGlyph(kind: IosKind, modifier: Modifier) {
+    when (kind) {
+        IosKind.PHONE -> Icon(Icons.Filled.Call, null, tint = Color(0xFF34D058), modifier = modifier)
+        IosKind.MESSAGES -> Canvas(modifier) {
+            val w = size.width
+            val h = size.height
+            val blue = Brush.verticalGradient(listOf(Color(0xFF5AB0FF), Color(0xFF1C6FE8)))
+            drawOval(blue, Offset(w * 0.04f, h * 0.08f), Size(w * 0.92f, h * 0.72f))
+            drawPath(Path().apply { moveTo(w * 0.22f, h * 0.66f); lineTo(w * 0.12f, h * 0.94f); lineTo(w * 0.46f, h * 0.76f); close() }, Color(0xFF1C6FE8))
+            for (i in 0..2) drawCircle(Color.White, w * 0.065f, Offset(w * (0.32f + 0.18f * i), h * 0.44f))
+        }
+        else -> Canvas(modifier) {
+            val w = size.width
+            val c = Offset(w / 2f, size.height / 2f)
+            drawCircle(Brush.verticalGradient(listOf(Color(0xFFE4E7EC), Color(0xFF8A9099))), w * 0.48f, c)
+            drawCircle(Color(0xFF0B1220), w * 0.36f, c)
+            drawCircle(Brush.radialGradient(listOf(Color(0xFF3B82F6), Color(0xFF0B2A6B)), center = c, radius = w * 0.28f), w * 0.28f, c)
+            drawCircle(Color.White.copy(alpha = 0.7f), w * 0.05f, Offset(w * 0.42f, w * 0.40f))
+        }
+    }
+}
+
+/** Home-screen / dock / library icon: a transparent neon-glass tile with the app's logo floating on it. */
 @Composable
 fun AppIcon(app: AppEntry, size: Dp, modifier: Modifier = Modifier) {
     val kind = remember(app.pkg, app.label, app.role) {
         when (app.role) {
             Role.PHONE -> IosKind.PHONE
             Role.MESSAGES -> IosKind.MESSAGES
-            Role.SAFARI -> IosKind.SAFARI
             Role.CAMERA -> IosKind.CAMERA
-            null -> iosKindOf(app.pkg, app.label)
+            else -> iosKindOf(app.pkg, app.label).takeIf { it == IosKind.PHONE || it == IosKind.MESSAGES || it == IosKind.CAMERA }
         }
     }
-    Box(modifier.size(size).shadow(5.dp, Squircle, clip = false).clip(Squircle)) {
-        if (kind != null) IosArt(kind, Modifier.fillMaxSize())
-        else Image(app.icon, app.shownLabel, Modifier.fillMaxSize())
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.20f), Color.Transparent, Color.Black.copy(alpha = 0.05f)))
-            )
-        )
-        Box(Modifier.fillMaxSize().border(0.8.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = 0.55f), Color.White.copy(alpha = 0.06f), Color.White.copy(alpha = 0.28f))), Squircle))
+    val shape = RoundedCornerShape(size * 0.27f)
+    Box(modifier.size(size).neonGlass(shape, 7.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.13f), Color.Transparent, Color.Transparent))))
+        when {
+            kind != null -> SystemGlyph(kind, Modifier.size(size * if (kind == IosKind.PHONE) 0.54f else 0.60f))
+            app.glyph != null -> Image(app.glyph, app.shownLabel, Modifier.fillMaxSize(0.86f))
+            else -> Image(app.icon, app.shownLabel, Modifier.fillMaxSize(0.70f).clip(RoundedCornerShape(size * 0.18f)))
+        }
     }
 }
