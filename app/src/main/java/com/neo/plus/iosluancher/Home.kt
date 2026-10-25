@@ -442,6 +442,8 @@ fun AppCell(app: AppEntry, vm: LauncherViewModel, size: Dp = 60.dp, showLabel: B
                         } else null
                         if (app.role == Role.PHONE || iosKindOf(app.pkg, app.label) == IosKind.PHONE) {
                             ctx.safeStart(Intent(ctx, NeoDialerActivity::class.java))
+                        } else if (app.role == Role.MESSAGES && app.pkg.contains('#')) {
+                            ctx.safeStart(Intent(ctx, NeoMessagesActivity::class.java))
                         } else ctx.launchApp(app, opts)
                     },
                     onLongClick = {
@@ -504,7 +506,7 @@ fun AppCell(app: AppEntry, vm: LauncherViewModel, size: Dp = 60.dp, showLabel: B
 
 @Composable
 fun Dock(vm: LauncherViewModel, onLibrary: () -> Unit = {}) {
-    val items = vm.dock.mapNotNull { p -> vm.apps.firstOrNull { it.pkg == p } }.take(3)
+    val items = vm.dock.mapNotNull { p -> vm.apps.firstOrNull { it.pkg == p } }.take(4)
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val icon = ((maxWidth - 28.dp - 24.dp) / 4 * 0.80f).coerceIn(52.dp, 80.dp)
         Row(
@@ -514,18 +516,7 @@ fun Dock(vm: LauncherViewModel, onLibrary: () -> Unit = {}) {
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            items.take(2).forEach { AppCell(it, vm, icon, showLabel = false) }
-            // the round "all apps" button: opens the App Library
-            Box(
-                Modifier.size(icon).neonGlass(CircleShape, 7.dp).noRipple { onLibrary() }.semantics { contentDescription = "All apps" },
-                contentAlignment = Alignment.Center
-            ) {
-                androidx.compose.foundation.Canvas(Modifier.size(icon * 0.5f)) {
-                    val step = size.width / 3f
-                    for (r in 0..2) for (c in 0..2) drawCircle(Color.White.copy(alpha = 0.92f), size.width * 0.075f, Offset(step * (c + 0.5f), step * (r + 0.5f)))
-                }
-            }
-            items.drop(2).forEach { AppCell(it, vm, icon, showLabel = false) }
+            items.forEach { AppCell(it, vm, icon, showLabel = false) }
             if (items.isEmpty()) Spacer(Modifier.height(icon + 6.dp))
         }
     }

@@ -101,7 +101,7 @@ fun Context.safeStart(intent: Intent): Boolean = try {
 fun Context.launchApp(app: AppEntry, options: Bundle? = null) {
     val intent = Intent(Intent.ACTION_MAIN)
         .addCategory(Intent.CATEGORY_LAUNCHER)
-        .setComponent(ComponentName(app.pkg, app.activity))
+        .setComponent(ComponentName(app.realPkg, app.activity))
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
     try {
         val bundle = options
@@ -122,8 +122,8 @@ fun Context.openAppVerified(app: AppEntry): String? {
     val svc = IosControlService.instance
     val flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
     val explicit = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        .setComponent(ComponentName(app.pkg, app.activity)).addFlags(flags)
-    val std = try { packageManager.getLaunchIntentForPackage(app.pkg)?.addFlags(flags) } catch (e: Exception) { null }
+        .setComponent(ComponentName(app.realPkg, app.activity)).addFlags(flags)
+    val std = try { packageManager.getLaunchIntentForPackage(app.realPkg)?.addFlags(flags) } catch (e: Exception) { null }
     val tries = ArrayList<Pair<Context, Intent>>()
     tries += this to explicit
     if (svc != null) tries += svc to explicit
@@ -133,7 +133,7 @@ fun Context.openAppVerified(app: AppEntry): String? {
         try { c.startActivity(Intent(i)); accepted = true } catch (e: Exception) { continue }
         if (svc == null) return null                       // cannot check without the accessibility service
         repeat(9) {
-            if (UiDriver.foregroundPkg() == app.pkg) return null
+            if (UiDriver.foregroundPkg() == app.realPkg) return null
             try { Thread.sleep(350) } catch (e: InterruptedException) { }
         }
     }

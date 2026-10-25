@@ -45,7 +45,10 @@ data class AppEntry(
     val glyph: ImageBitmap? = null
 ) {
     /** Name shown under the icon: default apps use their iPhone names (Phone, Messages, Safari, Camera). */
-    val shownLabel: String get() = role?.label ?: label
+    /** The real Android package: Neo Plus' own Phone and Messages apps carry a "#name" suffix so they have separate ids. */
+    val realPkg: String get() = pkg.substringBefore('#')
+
+    val shownLabel: String get() = if (label.startsWith("Neo ")) label else role?.label ?: label
 
     fun matches(q: String): Boolean =
         label.contains(q, ignoreCase = true) || shownLabel.contains(q, ignoreCase = true)
@@ -127,9 +130,14 @@ private suspend fun queryApps(ctx: Context): List<AppEntry> = coroutineScope {
     val px = (ctx.resources.displayMetrics.density * 78f).toInt().coerceIn(180, 320)
     // Neo Plus' own phone app: always on the launcher as "Phone" (the other dialer apps are replaced by it)
     val neoPhone = AppEntry(
-        "Phone", ctx.packageName, NeoDialerActivity::class.java.name, Cat.OTHER, 0L,
+        "Phone", ctx.packageName + "#phone", NeoDialerActivity::class.java.name, Cat.OTHER, 0L,
         renderIcon(try { pm.getApplicationIcon(ctx.packageName) } catch (e: Exception) { pm.defaultActivityIcon }, px).asImageBitmap(),
         system = true, role = Role.PHONE
+    )
+    val neoMessages = AppEntry(
+        "Neo Messages", ctx.packageName + "#messages", NeoMessagesActivity::class.java.name, Cat.OTHER, 0L,
+        renderIcon(try { pm.getApplicationIcon(ctx.packageName) } catch (e: Exception) { pm.defaultActivityIcon }, px).asImageBitmap(),
+        system = true, role = Role.MESSAGES
     )
     pm.queryIntentActivities(intent, 0)
         .filter { it.activityInfo != null && it.activityInfo.packageName != ctx.packageName }
@@ -156,7 +164,7 @@ private suspend fun queryApps(ctx: Context): List<AppEntry> = coroutineScope {
         }
         .awaitAll()
         .distinctBy { it.pkg + "/" + it.activity }
-        .let { it + neoPhone }
+        .let { it + neoPhone + neoMessages }
         .sortedBy { it.label.lowercase() }
 }
 
@@ -175,8 +183,8 @@ private fun defaultRoles(ctx: Context, apps: List<AppEntry>): LinkedHashMap<Stri
     }
     val result = LinkedHashMap<String, Role>()
     fun put(role: Role, pkg: String?) { if (pkg != null && pkg !in result) result[pkg] = role }
-    put(Role.PHONE, ctx.packageName.takeIf { it in installed })
-    put(Role.MESSAGES, pkgOf(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_MESSAGING)))
+    put(Role.PHONE, (ctx.packageName + "#phone").takeIf { it in installed })
+    put(Role.MESSAGES, (ctx.packageName + "#messages").takeIf { it in installed })
     put(
         Role.SAFARI,
         pkgOf(
@@ -221,13 +229,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             apps = list
             val saved = prefs.getString("dock", null)
             var d = if (saved != null) saved.split(",").filter { it.isNotBlank() } else roles.keys.toList()
-            // one time: put Neo Plus' own Phone app first in the dock of phones that already had a dock
-            if (!prefs.getBoolean("dock_neo_phone", false)) {
-                prefs.edit().putBoolean("dock_neo_phone", true).apply()
-                if (saved != null) {
-                    d = listOf(ctx.packageName) + d.filter { it != ctx.packageName }
-                    prefs.edit().putString("dock", d.joinToString(",")).apply()
-                }
+            // one time: the dock becomes Phone, Messages, Safari, Camera (Neo Plus' own Phone and Messages first)
+            if (!prefs.getBoolean("dock_v2", false)) {
+                prefs.edit().putBoolean("dock_v2", true).apply()
+                d = roles.keys.toList()
+                prefs.edit().putString("dock", d.joinToString(",")).apply()
             }
             dock = d
         }
