@@ -215,6 +215,7 @@ object Goals {
                     replied = it.replied + (replied.toIntOrNull() ?: 0), lastStats = line,
                     log = it.log + "$stamp: $line, replied $replied")
             } ?: return
+            SleepHooks.note(ctx, "NOTE", "Goal in ${n.app}", n.instruction.take(60), "Check-in ${n.checkins}: $line, replied to $replied comments", if (met) "Goal reached" else "")
             if (met) { finish(ctx, n, "done", r.removePrefix("Done.").trim()); return }
             val at = System.currentTimeMillis() + n.everyMin * 60_000L
             update(ctx, g.id) { it.copy(nextAt = at) }

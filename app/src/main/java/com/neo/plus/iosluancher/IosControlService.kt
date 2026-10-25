@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Canvas
@@ -251,6 +252,7 @@ class IosControlService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        registerLockReceivers()
         BeepMute.recover(this)   // a stream left muted by a killed process
         VolumeBoost.load(this)
         VolumeBoost.set(this, 0)   // a stale saved boost made Volume Down look dead (it lowered the boost first)
@@ -359,6 +361,7 @@ class IosControlService : AccessibilityService() {
 
     /** Remembers which app is in front, and pulls the user straight back if the stock Android home screen ever shows. */
     private fun trackForeground(pkg: String, cls: String) {
+        if (pkg != "android" && pkg !in imePackages()) AppLock.onForeground(this, pkg, cls)
         if (pkg == packageName) { launcherFront = true; refreshOverlay(); return }
         if (pkg == "android" || pkg in imePackages()) return
         if ("$pkg/$cls" in otherHomeActivities()) {
@@ -434,6 +437,26 @@ class IosControlService : AccessibilityService() {
             launcherFront = p == packageName
             return true
         } catch (e: Exception) { return false }
+    }
+
+    private var lockReceiversOn = false
+
+    /** The lock needs to know when the screen turns off and when the phone is unlocked again. */
+    private fun registerLockReceivers() {
+        if (lockReceiversOn) return
+        lockReceiversOn = true
+        val f = IntentFilter().apply { addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT) }
+        ContextCompat.registerReceiver(this, object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                when (intent.action) {
+                    Intent.ACTION_SCREEN_OFF -> AppLock.onScreenOff(context)
+                    Intent.ACTION_USER_PRESENT -> Thread {
+                        val front = try { rootInActiveWindow?.packageName?.toString() } catch (e: Exception) { null }
+                        main.post { AppLock.onUserPresent(context, front) }
+                    }.start()
+                }
+            }
+        }, f, ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
     private val frontExec = Executors.newSingleThreadExecutor()

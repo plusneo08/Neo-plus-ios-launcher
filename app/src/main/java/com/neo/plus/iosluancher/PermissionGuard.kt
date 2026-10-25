@@ -115,6 +115,13 @@ object PermissionGuard {
         val names = missingRuntime(app).map { it.substringAfterLast('.').lowercase().replace('_', ' ') } + gaps(app).map { it.label }
         val nm = app.getSystemService(NotificationManager::class.java) ?: return
         if (names.isEmpty()) { nm.cancel(NOTIF_ID); return }
+        // Tell the night summary once per change, not every 30 minutes
+        val sig = names.joinToString("|")
+        val gp = app.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+        if (gp.getString("guard_last_names", "") != sig) {
+            gp.edit().putString("guard_last_names", sig).apply()
+            SleepHooks.note(app, "NOTE", "Permissions", "Neo Plus", "Switched off: " + names.take(5).joinToString(", "), "")
+        }
         try {
             if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CH) == null) {
                 nm.createNotificationChannel(NotificationChannel(CH, "Permissions", NotificationManager.IMPORTANCE_DEFAULT))
@@ -145,11 +152,25 @@ object PermissionGuard {
         return g.fix
     }
 
+    /** Puts the controls service back the moment it is switched off in Settings (needs the secure-settings grant or device owner). */
+    fun watchAccessibility(ctx: Context) {
+        val app = ctx.applicationContext
+        try {
+            app.contentResolver.registerContentObserver(
+                Settings.Secure.getUriFor(Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES), false,
+                object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+                    override fun onChange(selfChange: Boolean) { Thread { try { repairSilently(app) } catch (e: Exception) { } }.start() }
+                })
+        } catch (e: Exception) { }
+    }
+
     fun arm(ctx: Context) {
         val app = ctx.applicationContext
         val am = app.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val pi = PendingIntent.getBroadcast(app, 7732, Intent(app, GuardReceiver::class.java).setAction("neo.guard.tick"), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val at = System.currentTimeMillis() + EVERY_MS
+        // With device owner or the secure-settings grant the app repairs things by itself, so it can look more often
+        val canRepair = try { Kiosk.isOwner(app) || SecureAccess.has(app) } catch (e: Exception) { false }
+        val at = System.currentTimeMillis() + (if (canRepair) 5 * 60_000L else EVERY_MS)
         try {
             if (Build.VERSION.SDK_INT >= 23) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi) else am.setExact(AlarmManager.RTC_WAKEUP, at, pi)
         } catch (e: SecurityException) {

@@ -128,6 +128,7 @@ object AssistantLine {
             if (parts.size == 1) sms.sendTextMessage(sender, null, reply, null, null) else sms.sendMultipartTextMessage(sender, null, parts, null, null)
         } catch (e: Exception) { return }
         record(app, sender, body, reply)
+        SleepHooks.note(app, "REPLIED", "Text on the assistant line (${label(app, slot)})", sender, body, reply)
     }
 
     private fun draft(ctx: Context, incoming: String): String {

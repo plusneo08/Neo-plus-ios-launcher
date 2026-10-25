@@ -18,6 +18,11 @@ pm grant com.neo.plus.iosluancher android.permission.RECORD_AUDIO
 pm grant com.neo.plus.iosluancher android.permission.ACCESS_FINE_LOCATION
 pm grant com.neo.plus.iosluancher android.permission.ACCESS_COARSE_LOCATION
 pm grant com.neo.plus.iosluancher android.permission.POST_NOTIFICATIONS
+pm grant com.neo.plus.iosluancher android.permission.ANSWER_PHONE_CALLS
+pm grant com.neo.plus.iosluancher android.permission.RECEIVE_SMS
+appops set com.neo.plus.iosluancher SCHEDULE_EXACT_ALARM allow
+appops set com.neo.plus.iosluancher AUTO_REVOKE_PERMISSIONS_IF_UNUSED ignore
+cmd deviceidle whitelist +com.neo.plus.iosluancher
 appops set com.neo.plus.iosluancher MANAGE_EXTERNAL_STORAGE allow
 appops set com.neo.plus.iosluancher WRITE_SETTINGS allow
 cmd notification allow_listener com.neo.plus.iosluancher/com.neo.plus.iosluancher.NeoNotificationService

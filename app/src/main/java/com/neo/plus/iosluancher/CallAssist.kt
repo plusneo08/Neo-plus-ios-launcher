@@ -110,6 +110,9 @@ object CallAssist {
             ((name.isNotBlank() && name.contains(r.first, ignoreCase = true)) || sameNumber(r.first, number)) }
         val (action, text) = if (onLine && !specific) AssistantLine.lineAction(app) else picked
         val via = if (onLine) " on your assistant line (${AssistantLine.label(app, slot)})" else ""
+        SleepHooks.note(app, "NOTE", "Phone call" + (if (onLine) " (assistant line)" else ""), who, "Incoming call",
+            when (action) { "decline" -> "I declined it"; "decline_text" -> "I declined it and texted them"; "speaker" -> "I answered on speaker"
+                "greeting" -> "I answered and played the greeting"; else -> "I announced it, it was not answered by me" })
         when (action) {
             "decline" -> { endCall(app); notify(app, "Declined a call", "Declined the call from $who", false) }
             "decline_text" -> {

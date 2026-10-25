@@ -390,6 +390,7 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                             color = Color.White.copy(alpha = 0.65f), fontSize = 12.sp, lineHeight = 16.sp
                         )
                     }
+                    MenuRow("Lock", if (AppLock.enabled(ctx)) "On: Neo Plus and ${AppLock.lockedApps(ctx).size} app(s) are locked" else "Lock Neo Plus and chosen apps with your phone’s unlock or your voice", 7)
                     MenuRow("Saved PINs", if (PinVault.names(ctx).isEmpty()) "Let the phone type a PIN for you, the AI never sees it" else PinVault.names(ctx).size.toString() + " saved", 6)
                     MenuRow("Task reports by text", if (TaskReports.smsNumber(ctx).isBlank()) "Add the number the assistant texts when a task is done" else "Texting " + TaskReports.smsNumber(ctx), 5)
                     Box(
@@ -599,6 +600,7 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                 }
 
                 6 -> PinsPanel { page = 0 }
+                7 -> LockPanel(apps) { page = 0 }
 
                 else -> {
                     Text("Website authorisation", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
@@ -1177,5 +1179,122 @@ private fun PinsPanel(onBack: () -> Unit) {
                 }.padding(vertical = 12.dp),
             contentAlignment = Alignment.Center
         ) { Text("Save PIN", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+    }
+}
+
+
+/** Lock settings. Switching the lock off or weakening it needs the phone's own unlock first (see AppLock). */
+@Composable
+private fun LockPanel(apps: List<AppEntry>, onBack: () -> Unit) {
+    val ctx = LocalContext.current
+    val note = Color.White.copy(alpha = 0.7f)
+    var on by remember { mutableStateOf(AppLock.enabled(ctx)) }
+    var screenOff by remember { mutableStateOf(AppLock.lockOnScreenOff(ctx)) }
+    var timeout by remember { mutableStateOf(AppLock.timeoutMin(ctx)) }
+    var locked by remember { mutableStateOf(AppLock.lockedApps(ctx)) }
+    var voice by remember { mutableStateOf(AppLock.voiceOn(ctx)) }
+    var hasPhrase by remember { mutableStateOf(AppLock.hasPhrase(ctx)) }
+    var strong by remember { mutableStateOf(AppLock.strongOk()) }
+    var query by remember { mutableStateOf("") }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        while (true) {
+            strong = AppLock.strongOk(); hasPhrase = AppLock.hasPhrase(ctx); voice = AppLock.voiceOn(ctx)
+            kotlinx.coroutines.delay(600)
+        }
+    }
+    fun needStrong(block: () -> Unit) { if (strong) block() else LockActivity.confirm(ctx) }
+
+    @Composable
+    fun Pill(text: String, active: Boolean, onClick: () -> Unit) {
+        Box(
+            Modifier.clip(RoundedCornerShape(50)).background(if (active) UserBlueBottom else Color.White.copy(alpha = 0.18f))
+                .clickable { onClick() }.padding(horizontal = 14.dp, vertical = 8.dp)
+        ) { Text(text, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+    }
+
+    Text("Lock", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+    Text(
+        "A second lock on top of your phone’s own: it covers Neo Plus and the apps you choose. It opens with your phone’s own unlock " +
+            "(fingerprint, face, PIN, pattern or password; Neo Plus never sees them) or with your voice phrase if you set one. " +
+            "To switch it off or weaken it, the phone asks for your own unlock first.",
+        color = note, fontSize = 13.sp, lineHeight = 18.sp
+    )
+    if (!strong) {
+        Box(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.14f))
+                .clickable { LockActivity.confirm(ctx) }.padding(12.dp)
+        ) { Text("Tap to unlock these settings with your phone’s own unlock", color = Color.White, fontSize = 14.sp) }
+    }
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.12f)).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Lock Neo Plus and chosen apps", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (on) "On" else "Off", color = Color.White.copy(alpha = 0.65f), fontSize = 12.sp)
+        }
+        Pill(if (on) "On" else "Off", on) {
+            if (!on) { AppLock.setEnabled(ctx, true); AppLock.unlocked(ctx, "", false); on = true }
+            else needStrong { AppLock.setEnabled(ctx, false); on = false }
+        }
+    }
+    Text("Lock again after leaving", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(0 to "At once", 1 to "1 min", 2 to "2 min", 5 to "5 min", 15 to "15 min").forEach { (m, label) ->
+            Pill(label, timeout == m) { needStrong { AppLock.setTimeoutMin(ctx, m); timeout = m } }
+        }
+    }
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.12f)).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text("Lock when the screen turns off", color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
+        Pill(if (screenOff) "On" else "Off", screenOff) { needStrong { screenOff = !screenOff; AppLock.setLockOnScreenOff(ctx, screenOff) } }
+    }
+
+    Text("Voice unlock", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+    Text(
+        "Say a phrase you choose to open the lock. It only checks the words, not whose voice it is, so anyone who hears your phrase can use it. " +
+            "It is never offered for money apps, it pauses for 5 minutes after 3 wrong tries, and it cannot change these settings.",
+        color = note, fontSize = 13.sp, lineHeight = 18.sp
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        Pill(if (hasPhrase) "Change phrase" else "Set phrase", false) { LockActivity.setPhrase(ctx) }
+        if (hasPhrase) {
+            Pill(if (voice) "Voice: On" else "Voice: Off", voice) {
+                if (voice) { AppLock.setVoiceOn(ctx, false); voice = false } else needStrong { AppLock.setVoiceOn(ctx, true); voice = true }
+            }
+            Pill("Remove phrase", false) { needStrong { AppLock.clearPhrase(ctx); hasPhrase = false; voice = false } }
+        }
+    }
+
+    Text("Locked apps", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+    GlassField(query, { query = it }, "Search apps")
+    apps.filter { query.isBlank() || it.shownLabel.contains(query.trim(), ignoreCase = true) }
+        .sortedBy { it.shownLabel.lowercase() }
+        .forEach { app ->
+            val isOn = app.pkg in locked
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.12f)).padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                androidx.compose.foundation.Image(app.icon, app.shownLabel, Modifier.size(36.dp).clip(RoundedCornerShape(9.dp)))
+                Text(app.shownLabel, color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f), maxLines = 1)
+                Pill(if (isOn) "Locked" else "Off", isOn) {
+                    if (!isOn) { AppLock.setApp(ctx, app.pkg, true); locked = AppLock.lockedApps(ctx) }
+                    else needStrong { AppLock.setApp(ctx, app.pkg, false); locked = AppLock.lockedApps(ctx) }
+                }
+            }
+        }
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        Box(
+            Modifier.weight(1f).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.16f)).clickable { onBack() }.padding(vertical = 12.dp),
+            contentAlignment = Alignment.Center
+        ) { Text("Back", color = Color.White, fontSize = 15.sp) }
+        Box(
+            Modifier.weight(1f).clip(RoundedCornerShape(50)).background(UserBlueBottom)
+                .clickable { if (on) AppLock.lockNow(ctx) }.padding(vertical = 12.dp),
+            contentAlignment = Alignment.Center
+        ) { Text("Lock now", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
     }
 }

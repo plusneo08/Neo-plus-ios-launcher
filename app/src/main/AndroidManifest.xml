@@ -207,6 +207,14 @@
         </receiver>
 
         <!-- Sleep mode: the incoming call from the assistant at the wake-up time -->
+        <!-- Neo Plus lock screen: its own task, never in Recents -->
+        <activity
+            android:name=".LockActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:excludeFromRecents="true" />
+
         <activity
             android:name=".WakeCallActivity"
             android:exported="false"

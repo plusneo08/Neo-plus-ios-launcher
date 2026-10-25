@@ -108,6 +108,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (AppLock.neoLocked(this)) LockActivity.start(this, "")
         hideStatusBar()
         nextSpecialAccess()
         startKiosk()
@@ -115,6 +116,7 @@ class MainActivity : ComponentActivity() {
         guardNextFix(intent?.getBooleanExtra("guard_fix", false) == true)
         intent?.removeExtra("guard_fix")
         PermissionGuard.arm(this)
+        if (!guardWatching) { guardWatching = true; PermissionGuard.watchAccessibility(this) }
     }
 
     /** Device-owner kiosk: hides Android's bars in every app opened from here. */
@@ -196,6 +198,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        AppLock.neoLeftAt = System.currentTimeMillis()
         widgets.stop()
         super.onStop()
     }
@@ -259,6 +262,8 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Opens the next special switch that is off (one page per 30 minutes, or at once after tapping the notification). */
+    private var guardWatching = false
+
     private fun guardNextFix(force: Boolean) {
         val step = getSharedPreferences("neo_launcher", MODE_PRIVATE).getInt("special_step", -1)
         if (step in 0..3) return // the first-run walk is still going

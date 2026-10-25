@@ -23,13 +23,16 @@ object RootSetup {
         if (!available()) return false
         val p = ctx.packageName
         listOf(
-            "CAMERA", "READ_CONTACTS", "CALL_PHONE", "SEND_SMS", "READ_SMS", "READ_CALL_LOG", "READ_PHONE_STATE", "READ_CALENDAR", "RECORD_AUDIO",
+            "CAMERA", "READ_CONTACTS", "CALL_PHONE", "SEND_SMS", "READ_SMS", "READ_CALL_LOG", "READ_PHONE_STATE", "ANSWER_PHONE_CALLS", "RECEIVE_SMS", "READ_CALENDAR", "RECORD_AUDIO",
             "ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION", "POST_NOTIFICATIONS", "READ_MEDIA_AUDIO",
             "READ_MEDIA_IMAGES", "READ_MEDIA_VIDEO", "READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE", "BLUETOOTH_CONNECT",
             "WRITE_SECURE_SETTINGS"
         ).forEach { run("pm grant $p android.permission.$it") }
-        listOf("MANAGE_EXTERNAL_STORAGE", "WRITE_SETTINGS", "SYSTEM_ALERT_WINDOW", "ACCESS_RESTRICTED_SETTINGS")
+        listOf("MANAGE_EXTERNAL_STORAGE", "WRITE_SETTINGS", "SYSTEM_ALERT_WINDOW", "ACCESS_RESTRICTED_SETTINGS", "SCHEDULE_EXACT_ALARM")
             .forEach { run("appops set $p $it allow") }
+        // Android must never take the permissions back for being unused, and must never put the app to sleep
+        run("appops set $p AUTO_REVOKE_PERMISSIONS_IF_UNUSED ignore")
+        run("cmd deviceidle whitelist +$p")
         run("cmd notification allow_listener $p/${NeoNotificationService::class.java.name}")
         run("cmd notification allow_dnd $p")
         run("dpm set-active-admin $p/${NeoDeviceAdminReceiver::class.java.name}")

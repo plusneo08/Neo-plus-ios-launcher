@@ -126,9 +126,13 @@ object PhoneActions {
     )
 
     /** Actions that fetch something to tell the user (the note is the answer). */
-    val infoActions = setOf("calendar", "weather", "lookup", "news", "stock", "sports", "read_sms", "call_log", "screen", "read_messages", "read_notifications", "read_app", "last_message", "sleep_mode", "sleep_report", "sleep_voice", "time_lock", "send_money", "money_setup", "web_search", "look", "excel_create", "excel_edit", "excel_read", "web_task", "web_batch", "file_read", "ui_list", "app_task", "goal", "call_assist", "post_apps", "queue", "approvals", "schedule", "schedules", "report_number")
+    val infoActions = setOf("calendar", "weather", "lookup", "news", "stock", "sports", "read_sms", "call_log", "screen", "read_messages", "read_notifications", "read_app", "last_message", "sleep_mode", "sleep_report", "sleep_voice", "time_lock", "send_money", "money_setup", "web_search", "look", "excel_create", "excel_edit", "excel_read", "web_task", "web_batch", "file_read", "ui_list", "app_task", "goal", "call_assist", "lock_app", "post_apps", "queue", "approvals", "schedule", "schedules", "report_number")
 
     fun run(ctx: Context, name: String, a: JSONObject, apps: List<AppEntry>): ActionResult {
+        // Neo Plus lock: while it is locked nothing is done for whoever is holding the phone (jobs the owner set up to run alone are not blocked)
+        if (name != "lock_app" && !PinVault.unattended && AppLock.neoLocked(ctx)) {
+            return ActionResult("Neo Plus is locked: unlock it first.", false, false, info = true)
+        }
         // Time lock running: only harmless actions, so nothing can be used to get around the lock (also by voice)
         if (TimeLock.active(ctx) && name !in TimeLock.allowedActions) {
             return ActionResult("Couldn’t do that: the phone is time-locked until ${TimeLock.untilText(ctx)}.", false, false, info = true)
@@ -228,6 +232,7 @@ object PhoneActions {
             "app_task" -> return AppTask.run(ctx, a, apps)
             "goal" -> return Goals.handle(ctx, a, apps)
             "call_assist" -> return CallAssist.handle(ctx, a)
+            "lock_app" -> return AppLock.handle(ctx, a)
             "ui_tap", "ui_tap_visual", "ui_long_press", "ui_type", "ui_scroll", "ui_back", "ui_search", "ui_enter", "ui_list", "ui_wait" ->
                 return UiDriver.exec(ctx, name, a, apps)
 
@@ -1382,6 +1387,7 @@ ui_search {"text":"cats","app":"YouTube"}   PINs: when the user says to use a sa
 ui_enter {}   ui_back {"times":1}   ui_wait {"seconds":2}
 ui_list {}   (lists what can be tapped on the screen now, so you can pick the right label)
 call_assist {"do":"line","sim":2,"action":"announce"|"greeting"|"speaker"|"decline_text"|"decline","sms":"on"|"off","brief":"what the assistant does with texts","info":"facts it may share, e.g. opening hours"}   (the assistant's OWN number = one SIM, default SIM 2 (TNM). Calls on it follow "action"; with sms on, texts that arrive on it are answered by the assistant itself, in the sender's language, using only brief and info; every reply is shown to the user. To send a text or make a call FROM the assistant's number add "from":"assistant" to message or call.) {"do":"line_log"} shows the last texts it answered.
+lock_app {"do":"now"}   (lock Neo Plus at once: "lock Neo Plus"); {"do":"status"}. The lock's settings (apps, voice phrase, switching it off) can only be changed by the user in Assistant settings → Lock, never by you.
 call_assist {"do":"answer"|"decline"|"decline_text"}   (while a call is RINGING: answer it, hang up on it, or hang up and text the caller; "speaker":true answers on the loudspeaker)
 call_assist {"do":"rule","who":"Mary"|"unknown"|"everyone","action":"announce"|"decline"|"decline_text"|"speaker"|"greeting","text":"optional text or greeting"}   (standing rule for incoming calls: speaker = answer on loudspeaker so the user can talk hands-free; greeting = answer on loudspeaker, play a short spoken greeting that says it is the assistant, then hang up; there is no spoken conversation with the caller, Android does not allow it). Also {"do":"owner","name":"the user's name"} for the greeting, {"do":"off"}, {"do":"on"}, {"do":"list"}. Incoming calls are announced by default.
 goal {"do":"start","instruction":"the whole goal in plain words INCLUDING what to post and what counts as finished (e.g. 500 likes)","app":"Facebook Lite","every_minutes":60,"days":7}   (a LONG-RUNNING goal in a connected app that goes on for hours or days: the phone itself checks in every N minutes, posts the content once, counts likes, comments and shares, replies to every comment that has no reply, and only tells the user when the goal is met, time runs out, or it is stuck and needs them. Use it when the user gives a goal to reach, or says to keep doing something until it is done. Ask for anything missing first (what to post, what number means success). Also {"do":"list"}, {"do":"stop","id":"all"}, {"do":"resume"} after the user has sorted out what it needed.)

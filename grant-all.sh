@@ -6,7 +6,7 @@
 #   sh grant-all.sh --gesture  -> also switches Android to gesture navigation (thinnest system nav bar)
 P=com.neo.plus.iosluancher
 A="adb shell"
-for perm in CAMERA READ_CONTACTS CALL_PHONE SEND_SMS READ_SMS READ_CALL_LOG READ_PHONE_STATE READ_CALENDAR RECORD_AUDIO \
+for perm in CAMERA READ_CONTACTS CALL_PHONE SEND_SMS READ_SMS READ_CALL_LOG READ_PHONE_STATE ANSWER_PHONE_CALLS RECEIVE_SMS READ_CALENDAR RECORD_AUDIO \
             ACCESS_COARSE_LOCATION ACCESS_FINE_LOCATION POST_NOTIFICATIONS READ_MEDIA_AUDIO \
             READ_MEDIA_IMAGES READ_MEDIA_VIDEO READ_EXTERNAL_STORAGE WRITE_EXTERNAL_STORAGE BLUETOOTH_CONNECT; do
   $A pm grant $P android.permission.$perm 2>/dev/null
@@ -16,6 +16,10 @@ $A appops set $P MANAGE_EXTERNAL_STORAGE allow
 $A appops set $P WRITE_SETTINGS allow
 $A appops set $P SYSTEM_ALERT_WINDOW allow
 $A appops set $P ACCESS_RESTRICTED_SETTINGS allow 2>/dev/null
+$A appops set $P SCHEDULE_EXACT_ALARM allow 2>/dev/null
+# never let Android take the permissions back ("remove permissions if app isn't used") and never put the app to sleep
+$A appops set $P AUTO_REVOKE_PERMISSIONS_IF_UNUSED ignore 2>/dev/null
+$A cmd deviceidle whitelist +$P 2>/dev/null
 $A cmd notification allow_listener $P/$P.NeoNotificationService
 $A cmd notification allow_dnd $P
 $A dpm set-active-admin $P/$P.NeoDeviceAdminReceiver
