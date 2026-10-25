@@ -1580,6 +1580,23 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         persist()
     }
 
+    /**
+     * Runs one request inside a foreground service, so it keeps going when the user opens another app or the screen turns off.
+     * If it took a while, the result is also posted as a notification.
+     */
+    private fun track(what: String, block: suspend () -> Unit) {
+        viewModelScope.launch {
+            val start = System.currentTimeMillis()
+            TaskService.begin(ctx, what)
+            try { block() } finally {
+                TaskService.end(ctx)
+                if (System.currentTimeMillis() - start > 8_000L) {
+                    messages.lastOrNull { !it.fromUser }?.text?.takeIf { it.isNotBlank() }?.let { TaskService.notifyDone(ctx, it) }
+                }
+            }
+        }
+    }
+
     fun send(raw: String, apps: List<AppEntry>) {
         val text = raw.trim()
         if (text.isEmpty()) return
@@ -1593,7 +1610,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         val plan = LocalCommands.plan(text, apps, configured)
         if (plan != null) {
             busy = true
-            viewModelScope.launch {
+            track(text) {
                 val results = withContext(Dispatchers.IO) { plan.actions.map { PhoneActions.run(ctx, it.first, it.second, apps) } }
                 finish(plan.reply, results)
             }
@@ -1602,7 +1619,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
         if (!configured) {
             busy = true
-            viewModelScope.launch {
+            track(text) {
                 val out = try { withContext(Dispatchers.IO) { Keyless.answer(ctx, text, apps) } } catch (e: Exception) { "Something went wrong." }
                 finish(out, emptyList())
             }
@@ -1610,7 +1627,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         }
 
         busy = true
-        viewModelScope.launch {
+        track(text) {
             // The reply is shown (and spoken, when "read replies aloud" is on) while it is still being written.
             val live = LiveReply(ctx, speak)
             try {
