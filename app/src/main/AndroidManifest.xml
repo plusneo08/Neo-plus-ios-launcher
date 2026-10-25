@@ -299,6 +299,27 @@
             </intent-filter>
         </activity>
 
+        <!-- Neo Messages: the Neo Plus text-message app, with themes -->
+        <activity
+            android:name=".NeoMessagesActivity"
+            android:exported="true"
+            android:label="Neo Messages"
+            android:icon="@mipmap/ic_launcher"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Neo">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SENDTO" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="sms" />
+                <data android:scheme="smsto" />
+            </intent-filter>
+        </activity>
+
         <receiver android:name=".SchedulerReceiver" android:exported="false" />
         <receiver android:name=".GoalReceiver" android:exported="false" />
         <receiver android:name=".GuardReceiver" android:exported="false" />
