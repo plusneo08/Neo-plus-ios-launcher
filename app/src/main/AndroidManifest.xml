@@ -267,8 +267,14 @@
         <activity
             android:name=".NeoDialerActivity"
             android:exported="true"
+            android:label="Phone"
+            android:icon="@mipmap/ic_launcher"
             android:launchMode="singleTask"
             android:theme="@style/Theme.Neo">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.DIAL" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -341,3 +347,4 @@
         </service>
     </application>
 </manifest>
+            
