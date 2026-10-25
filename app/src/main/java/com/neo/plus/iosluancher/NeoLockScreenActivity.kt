@@ -386,10 +386,7 @@ private fun PinPad(len: Int, resetTick: Int, error: Boolean, enabled: Boolean, b
 
     @Composable
     fun Key(label: String, onClick: () -> Unit) {
-        Box(
-            Modifier.size(78.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.14f)).clickable(enabled = enabled) { onClick() },
-            contentAlignment = Alignment.Center
-        ) { Text(label, color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Light) }
+        PadKey(label[0], 78.dp) { onClick() }
     }
 
     fun digit(d: String) {
