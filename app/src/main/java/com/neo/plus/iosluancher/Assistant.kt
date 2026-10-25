@@ -173,6 +173,7 @@ object PhoneActions {
                 val action = if (granted(ctx, Manifest.permission.CALL_PHONE)) Intent.ACTION_CALL else Intent.ACTION_DIAL
                 val intent = Intent(action, Uri.parse("tel:" + Uri.encode(number)))
                 chosen.handle?.let { intent.putExtra(android.telecom.TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, it) }
+                if (action == Intent.ACTION_DIAL) intent.setClass(ctx, NeoDialerActivity::class.java)
                 val ok = ctx.safeStart(intent)
                 return if (ok) "Calling $label" + (chosen.slot?.let { " on SIM $it" } ?: "") else "Couldn’t start the call"
             }

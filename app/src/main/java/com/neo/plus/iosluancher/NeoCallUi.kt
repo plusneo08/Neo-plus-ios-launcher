@@ -288,7 +288,7 @@ private fun ConnectedScreen(m: NeoCallModel, ctx: Context, extra: @Composable ()
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
             RoundTool(Icons.Filled.Add, "ADD CALL", false) {
-                try { ctx.startActivity(Intent(Intent.ACTION_DIAL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
+                try { ctx.startActivity(Intent(ctx, NeoDialerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
             }
             RoundTool(if (m.held) Icons.Filled.PlayArrow else Icons.Filled.Pause, if (m.held) "RESUME" else "HOLD", m.held) { m.onHold() }
             RoundTool(Icons.Filled.Contacts, "CONTACTS", false) {
@@ -312,17 +312,9 @@ private fun ConnectedScreen(m: NeoCallModel, ctx: Context, extra: @Composable ()
 /** Number keys sent as tones into the live call (for menus like "press 1 for ..."). */
 @Composable
 private fun DtmfPad(onKey: (Char) -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(Modifier.fillMaxWidth().padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         for (row in listOf("123", "456", "789", "*0#")) {
-            Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
-                row.forEach { c ->
-                    Box(
-                        Modifier.size(width = 64.dp, height = 40.dp).clip(RoundedCornerShape(50)).background(Color(0xFF0A1628))
-                            .border(1.dp, NeoCallColors.Blue.copy(alpha = 0.5f), RoundedCornerShape(50)).clickable { onKey(c) },
-                        contentAlignment = Alignment.Center
-                    ) { Text(c.toString(), color = Color.White, fontSize = 20.sp) }
-                }
-            }
+            Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) { row.forEach { c -> PadKey(c, 48.dp, true, onKey) } }
         }
     }
 }

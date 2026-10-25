@@ -108,6 +108,15 @@ fun LauncherRoot(
     val rootCtx = LocalContext.current
     val roleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
     LaunchedEffect(Unit) { GlassPrefs.load(rootCtx) }
+    // First start: ask once to make Neo Plus the phone's default Phone app (also in the touch-and-hold menu and the dialer)
+    LaunchedEffect(Unit) {
+        val sp = rootCtx.getSharedPreferences("neo_launcher", android.content.Context.MODE_PRIVATE)
+        if (!NeoDialer.isDefault(rootCtx) && !sp.getBoolean("asked_default_dialer", false)) {
+            sp.edit().putBoolean("asked_default_dialer", true).apply()
+            kotlinx.coroutines.delay(1500)
+            NeoDialer.requestIntent(rootCtx)?.let { try { roleLauncher.launch(it) } catch (e: Exception) { } }
+        }
+    }
     val scope = rememberCoroutineScope()
     SecureSetupDialog()
     val groups = remember(vm.apps) { buildGroups(vm.apps) }
@@ -425,7 +434,9 @@ fun AppCell(app: AppEntry, vm: LauncherViewModel, size: Dp = 60.dp, showLabel: B
                             val p = c.positionInRoot()
                             ActivityOptions.makeScaleUpAnimation(view, p.x.toInt(), p.y.toInt(), c.size.width, c.size.height).toBundle()
                         } else null
-                        ctx.launchApp(app, opts)
+                        if (app.role == Role.PHONE || iosKindOf(app.pkg, app.label) == IosKind.PHONE) {
+                            ctx.safeStart(Intent(ctx, NeoDialerActivity::class.java))
+                        } else ctx.launchApp(app, opts)
                     },
                     onLongClick = {
                         if (editing) return@combinedClickable
