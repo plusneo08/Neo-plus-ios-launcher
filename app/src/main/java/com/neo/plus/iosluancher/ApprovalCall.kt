@@ -218,6 +218,10 @@ private class ApprovalSession(val act: ApprovalCallActivity) {
     var secs by mutableStateOf(0)
     var heard by mutableStateOf("")
     var micDenied by mutableStateOf(false)
+    var muted by mutableStateOf(false)
+    var held by mutableStateOf(false)
+    var loud by mutableStateOf(false)
+    var declined by mutableStateOf(false)
     var items by mutableStateOf(Approvals.list(ctx))
     val lines = mutableStateListOf<Pair<Boolean, String>>()   // true = me, false = assistant
 
@@ -252,8 +256,25 @@ private class ApprovalSession(val act: ApprovalCallActivity) {
 
     fun decline() {
         ApprovalCall.stop(ctx)
-        act.finish()
+        declined = true
     }
+
+    fun callBack() { declined = false; answer() }
+
+    fun toggleMute() {
+        muted = !muted
+        if (muted) { try { recognizer?.cancel() } catch (e: Exception) { }; BeepMute.restore(ctx) } else if (phase == 3 && !held) listen()
+    }
+
+    fun toggleHold() {
+        held = !held
+        if (held) { Speaker.stop(); try { recognizer?.cancel() } catch (e: Exception) { }; BeepMute.restore(ctx) }
+        else if (phase >= 2) listen()
+    }
+
+    fun toggleLoud() { loud = !loud; NeoLoud.toggle(ctx, loud) }
+
+    fun typed(text: String) { if (alive && text.isNotBlank()) { Speaker.stop(); try { recognizer?.cancel() } catch (e: Exception) { }; BeepMute.restore(ctx); handle(text) } }
 
     fun end() {
         shutdown()
@@ -262,6 +283,7 @@ private class ApprovalSession(val act: ApprovalCallActivity) {
 
     fun shutdown() {
         alive = false
+        if (loud) { loud = false; NeoLoud.toggle(ctx, false) }
         main.removeCallbacksAndMessages(null)
         try { recognizer?.cancel() } catch (e: Exception) { }
         try { recognizer?.destroy() } catch (e: Exception) { }
@@ -284,6 +306,7 @@ private class ApprovalSession(val act: ApprovalCallActivity) {
 
     private fun say(text: String) {
         if (!alive) return
+        if (held) { phase = 3; return }
         phase = 2
         val spoken = SpokenText.clean(text)
         var at = -1
@@ -313,6 +336,7 @@ private class ApprovalSession(val act: ApprovalCallActivity) {
         if (!alive) return
         phase = 3
         heard = ""
+        if (muted || held) return
         refresh()
         if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED ||
             !SpeechRecognizer.isRecognitionAvailable(ctx)
@@ -336,7 +360,7 @@ private class ApprovalSession(val act: ApprovalCallActivity) {
     }
 
     private fun retry(ms: Long) {
-        main.postDelayed({ if (alive && phase == 3 && !micDenied) listen() }, ms)
+        main.postDelayed({ if (alive && phase == 3 && !micDenied && !muted && !held) listen() }, ms)
     }
 
     private val listener = object : RecognitionListener {
@@ -469,110 +493,37 @@ private class ApprovalSession(val act: ApprovalCallActivity) {
 
 @Composable
 private fun ApprovalCallScreen(s: ApprovalSession) {
-    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) s.listen()
-    }
-    val scroll = rememberScrollState()
-
-    LaunchedEffect(s.phase) {
-        if (s.phase == 0) {
+    LaunchedEffect(s.phase, s.declined) {
+        if (s.phase == 0 && !s.declined) {
             while (ApprovalCall.ringing) delay(500)
-            if (s.phase == 0) s.act.finish()   // nobody answered: the ringing timed out (a missed-call notification remains)
+            if (s.phase == 0 && !s.declined) s.act.finish()   // nobody answered: the ringing timed out (a missed-call notification remains)
         }
     }
-    LaunchedEffect(Unit) { while (true) { delay(1000); if (s.phase >= 1) s.secs++ } }
+    LaunchedEffect(Unit) { while (true) { delay(1000); if (s.phase >= 1 && !s.declined) s.secs++ } }
     LaunchedEffect(Unit) { while (true) { delay(1500); s.refresh() } }
-    LaunchedEffect(s.lines.size, s.lines.lastOrNull()?.second?.length, s.heard) { scroll.animateScrollTo(scroll.maxValue) }
 
-    val clock = "%02d:%02d".format(s.secs / 60, s.secs % 60)
-    val status = when (s.phase) {
-        0 -> if (ApprovalCall.urgent) "urgent call…" else "incoming call…"
-        1 -> "connecting…"
-        2 -> "$clock · speaking"
-        3 -> "$clock · listening…"
-        else -> "$clock · thinking…"
-    }
-
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF0B1220), Color(0xFF000000))))) {
-        Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Image(painterResource(R.drawable.neo_icon), null, Modifier.size(96.dp).clip(CircleShape), contentScale = ContentScale.Crop)
-            Spacer(Modifier.height(14.dp))
-            Text("Neo Plus Assistant", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(4.dp))
-            Text(status, color = if (s.phase == 0 && ApprovalCall.urgent) Color(0xFFFF9F0A) else Color.White.copy(alpha = 0.7f), fontSize = 15.sp)
-            if (s.phase >= 1 && s.items.isNotEmpty()) {
-                Spacer(Modifier.height(4.dp))
-                Text("${s.items.size} waiting for your OK", color = Color(0xFFFFD60A), fontSize = 13.sp)
-            }
-            Spacer(Modifier.height(12.dp))
-
-            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (s.phase >= 1) {
-                    for (item in s.items) {
-                        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = 0.08f)).padding(12.dp)) {
-                            Text(item.summary, color = Color.White, fontSize = 14.sp, lineHeight = 19.sp)
-                            Spacer(Modifier.height(8.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                CallPill("Send", Color(0xFF34C759)) { s.tap(item.id, true) }
-                                CallPill("Skip", Color(0xFFFF3B30)) { s.tap(item.id, false) }
-                            }
-                        }
+    NeoCallScreen(
+        NeoCallModel(
+            phase = s.phase, secs = s.secs, urgent = ApprovalCall.urgent, declined = s.declined, muted = s.muted, held = s.held, loud = s.loud,
+            lines = s.lines.toList(), heard = s.heard, micDenied = s.micDenied,
+            waitingText = if (s.phase >= 1 && s.items.isNotEmpty()) "${s.items.size} waiting for your OK" else "",
+            onAnswer = { s.answer() }, onDecline = { s.decline() }, onEnd = { s.end() },
+            onMute = { s.toggleMute() }, onHold = { s.toggleHold() }, onSpeaker = { s.toggleLoud() },
+            onType = { s.typed(it) }, onCallBack = { s.callBack() }, onClose = { s.act.finish() },
+            onMicGranted = { s.listen() }
+        )
+    ) {
+        if (s.phase >= 1) {
+            for (item in s.items) {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = 0.08f)).padding(12.dp)) {
+                    Text(item.summary, color = Color.White, fontSize = 14.sp, lineHeight = 19.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        NeoCallPill("Send", Color(0xFF34C759)) { s.tap(item.id, true) }
+                        NeoCallPill("Skip", Color(0xFFFF3B30)) { s.tap(item.id, false) }
                     }
-                }
-                for ((me, line) in s.lines) {
-                    Row(Modifier.fillMaxWidth(), if (me) Arrangement.End else Arrangement.Start) {
-                        Text(
-                            line, color = Color.White, fontSize = 16.sp, lineHeight = 22.sp,
-                            modifier = Modifier.clip(RoundedCornerShape(16.dp))
-                                .background(if (me) Color(0xFF2563EB) else Color.White.copy(alpha = 0.12f))
-                                .padding(horizontal = 14.dp, vertical = 9.dp)
-                        )
-                    }
-                }
-                if (s.phase == 3 && s.heard.isNotBlank()) {
-                    Row(Modifier.fillMaxWidth(), Arrangement.End) {
-                        Text(s.heard, color = Color.White.copy(alpha = 0.6f), fontSize = 16.sp, fontStyle = FontStyle.Italic)
-                    }
-                }
-                if (s.micDenied) {
-                    Text(
-                        "Tap here and allow the microphone so I can hear you.",
-                        color = Color(0xFFFFD60A), fontSize = 15.sp,
-                        modifier = Modifier.clickable { micPermission.launch(Manifest.permission.RECORD_AUDIO) }
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(12.dp))
-            if (s.phase == 0) {
-                Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
-                    CallRoundButton(Color(0xFFFF3B30), false, "Decline") { s.decline() }
-                    CallRoundButton(Color(0xFF34C759), true, "Answer") { s.answer() }
-                }
-            } else {
-                Row(Modifier.fillMaxWidth(), Arrangement.Center) {
-                    CallRoundButton(Color(0xFFFF3B30), false, "End call") { s.end() }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun CallPill(label: String, color: Color, onClick: () -> Unit) {
-    Text(
-        label, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium,
-        modifier = Modifier.clip(RoundedCornerShape(50)).background(color).clickable { onClick() }.padding(horizontal = 20.dp, vertical = 8.dp)
-    )
-}
-
-@Composable
-private fun CallRoundButton(color: Color, call: Boolean, label: String, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.size(72.dp).clip(CircleShape).background(color).clickable { onClick() }, contentAlignment = Alignment.Center) {
-            Icon(if (call) Icons.Filled.Call else Icons.Filled.CallEnd, label, tint = Color.White, modifier = Modifier.size(34.dp))
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(label, color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp)
     }
 }

@@ -100,6 +100,10 @@ private class CallSession(val act: WakeCallActivity) {
     var secs by mutableStateOf(0)
     var heard by mutableStateOf("")
     var micDenied by mutableStateOf(false)
+    var muted by mutableStateOf(false)
+    var held by mutableStateOf(false)
+    var loud by mutableStateOf(false)
+    var declined by mutableStateOf(false)
     val lines = mutableStateListOf<Pair<Boolean, String>>()   // true = me, false = assistant
 
     fun answer() {
@@ -120,8 +124,25 @@ private class CallSession(val act: WakeCallActivity) {
     fun decline() {
         WakeRinger.stop()
         SleepMode.answered(ctx)
-        act.finish()
+        declined = true
     }
+
+    fun callBack() { declined = false; answer() }
+
+    fun toggleMute() {
+        muted = !muted
+        if (muted) { try { recognizer?.cancel() } catch (e: Exception) { }; BeepMute.restore(ctx) } else if (phase == 3 && !held) listen()
+    }
+
+    fun toggleHold() {
+        held = !held
+        if (held) { Speaker.stop(); try { recognizer?.cancel() } catch (e: Exception) { }; BeepMute.restore(ctx) }
+        else if (phase >= 2) listen()
+    }
+
+    fun toggleLoud() { loud = !loud; NeoLoud.toggle(ctx, loud) }
+
+    fun typed(text: String) { if (alive && text.isNotBlank()) { Speaker.stop(); try { recognizer?.cancel() } catch (e: Exception) { }; BeepMute.restore(ctx); handle(text) } }
 
     fun end() {
         shutdown()
@@ -130,6 +151,7 @@ private class CallSession(val act: WakeCallActivity) {
 
     fun shutdown() {
         alive = false
+        if (loud) { loud = false; NeoLoud.toggle(ctx, false) }
         main.removeCallbacksAndMessages(null)
         try { recognizer?.cancel() } catch (e: Exception) { }
         try { recognizer?.destroy() } catch (e: Exception) { }
@@ -141,6 +163,7 @@ private class CallSession(val act: WakeCallActivity) {
 
     private fun say(text: String) {
         if (!alive) return
+        if (held) { phase = 3; return }
         phase = 2
         // The Gemini voice, or the phone's free voice when the user chose that. The text appears piece by piece at the
         // very moment each piece starts to be spoken, so the words on screen and the voice are always in step.
@@ -172,6 +195,7 @@ private class CallSession(val act: WakeCallActivity) {
         if (!alive) return
         phase = 3
         heard = ""
+        if (muted || held) return
         if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED ||
             !SpeechRecognizer.isRecognitionAvailable(ctx)
         ) { micDenied = true; return }
@@ -194,7 +218,7 @@ private class CallSession(val act: WakeCallActivity) {
     }
 
     private fun retry(ms: Long) {
-        main.postDelayed({ if (alive && phase == 3 && !micDenied) listen() }, ms)
+        main.postDelayed({ if (alive && phase == 3 && !micDenied && !muted && !held) listen() }, ms)
     }
 
     private val listener = object : RecognitionListener {
@@ -263,91 +287,22 @@ private class CallSession(val act: WakeCallActivity) {
 
 @Composable
 private fun CallScreen(s: CallSession) {
-    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) s.listen()
-    }
-    val scroll = rememberScrollState()
-
-    LaunchedEffect(s.phase) {
-        if (s.phase == 0) {
+    LaunchedEffect(s.phase, s.declined) {
+        if (s.phase == 0 && !s.declined) {
             while (WakeRinger.ringing) delay(500)
-            if (s.phase == 0) s.act.finish()   // nobody answered: the ringing timed out
+            if (s.phase == 0 && !s.declined) s.act.finish()   // nobody answered: the ringing timed out
         }
     }
-    LaunchedEffect(Unit) { while (true) { delay(1000); if (s.phase >= 1) s.secs++ } }
-    LaunchedEffect(s.lines.size, s.lines.lastOrNull()?.second?.length, s.heard) { scroll.animateScrollTo(scroll.maxValue) }
+    LaunchedEffect(Unit) { while (true) { delay(1000); if (s.phase >= 1 && !s.declined) s.secs++ } }
 
-    val clock = "%02d:%02d".format(s.secs / 60, s.secs % 60)
-    val status = when (s.phase) {
-        0 -> "incoming call…"
-        1 -> "connecting…"
-        2 -> "$clock · speaking"
-        3 -> "$clock · listening…"
-        else -> "$clock · thinking…"
-    }
-
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF0B1220), Color(0xFF000000))))) {
-        Column(
-            Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 48.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Image(painterResource(R.drawable.neo_icon), null, Modifier.size(96.dp).clip(CircleShape), contentScale = ContentScale.Crop)
-            Spacer(Modifier.height(14.dp))
-            Text("Neo Plus Assistant", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(4.dp))
-            Text(status, color = Color.White.copy(alpha = 0.7f), fontSize = 15.sp)
-            Spacer(Modifier.height(16.dp))
-
-            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                for ((me, line) in s.lines) {
-                    Row(Modifier.fillMaxWidth(), if (me) Arrangement.End else Arrangement.Start) {
-                        Text(
-                            line, color = Color.White, fontSize = 16.sp, lineHeight = 22.sp,
-                            modifier = Modifier.clip(RoundedCornerShape(16.dp))
-                                .background(if (me) Color(0xFF2563EB) else Color.White.copy(alpha = 0.12f))
-                                .padding(horizontal = 14.dp, vertical = 9.dp)
-                        )
-                    }
-                }
-                if (s.phase == 3 && s.heard.isNotBlank()) {
-                    Row(Modifier.fillMaxWidth(), Arrangement.End) {
-                        Text(s.heard, color = Color.White.copy(alpha = 0.6f), fontSize = 16.sp, fontStyle = FontStyle.Italic)
-                    }
-                }
-                if (s.micDenied) {
-                    Text(
-                        "Tap here and allow the microphone so I can hear you.",
-                        color = Color(0xFFFFD60A), fontSize = 15.sp,
-                        modifier = Modifier.clickable { micPermission.launch(Manifest.permission.RECORD_AUDIO) }
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-            if (s.phase == 0) {
-                Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
-                    CallButton(Color(0xFFFF3B30), false, "Decline") { s.decline() }
-                    CallButton(Color(0xFF34C759), true, "Answer") { s.answer() }
-                }
-            } else {
-                Row(Modifier.fillMaxWidth(), Arrangement.Center) {
-                    CallButton(Color(0xFFFF3B30), false, "End call") { s.end() }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CallButton(color: Color, call: Boolean, label: String, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            Modifier.size(72.dp).clip(CircleShape).background(color).clickable { onClick() },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(if (call) Icons.Filled.Call else Icons.Filled.CallEnd, label, tint = Color.White, modifier = Modifier.size(34.dp))
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(label, color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp)
-    }
+    NeoCallScreen(
+        NeoCallModel(
+            phase = s.phase, secs = s.secs, urgent = false, declined = s.declined, muted = s.muted, held = s.held, loud = s.loud,
+            lines = s.lines.toList(), heard = s.heard, micDenied = s.micDenied,
+            onAnswer = { s.answer() }, onDecline = { s.decline() }, onEnd = { s.end() },
+            onMute = { s.toggleMute() }, onHold = { s.toggleHold() }, onSpeaker = { s.toggleLoud() },
+            onType = { s.typed(it) }, onCallBack = { s.callBack() }, onClose = { s.act.finish() },
+            onMicGranted = { s.listen() }
+        )
+    )
 }

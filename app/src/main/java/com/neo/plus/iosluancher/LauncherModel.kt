@@ -204,19 +204,55 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         prefs.edit().putStringSet("hidden", set).apply()
     }
 
+    private class Snap(val dock: List<String>, val hidden: Set<String>)
+    private val undoStack = ArrayList<Snap>()
+    private val redoStack = ArrayList<Snap>()
+    var canUndo by mutableStateOf(false)
+        private set
+    var canRedo by mutableStateOf(false)
+        private set
+
+    private fun syncUndo() { canUndo = undoStack.isNotEmpty(); canRedo = redoStack.isNotEmpty() }
+
+    /** Called before every change to the dock or the home screen, so Undo can bring it back (iOS 27 Undo / Redo). */
+    private fun checkpoint() {
+        undoStack.add(Snap(dock, hidden))
+        if (undoStack.size > 30) undoStack.removeAt(0)
+        redoStack.clear()
+        syncUndo()
+    }
+
+    fun undo() {
+        if (undoStack.isEmpty()) return
+        val s = undoStack.removeAt(undoStack.size - 1)
+        redoStack.add(Snap(dock, hidden))
+        saveDock(s.dock); saveHidden(s.hidden)
+        syncUndo()
+    }
+
+    fun redo() {
+        if (redoStack.isEmpty()) return
+        val s = redoStack.removeAt(redoStack.size - 1)
+        undoStack.add(Snap(dock, hidden))
+        saveDock(s.dock); saveHidden(s.hidden)
+        syncUndo()
+    }
+
     /** "Delete" for the home screen: the app leaves the dock and the home pages but stays installed. */
     fun removeFromHome(pkg: String) {
+        checkpoint()
         if (pkg in dock) saveDock(dock - pkg)
         saveHidden(hidden + pkg)
     }
 
-    fun addToHome(pkg: String) = saveHidden(hidden - pkg)
+    fun addToHome(pkg: String) { checkpoint(); saveHidden(hidden - pkg) }
 
     fun pin(pkg: String) {
-        if (pkg in hidden) saveHidden(hidden - pkg)
         if (pkg in dock) return
+        checkpoint()
+        if (pkg in hidden) saveHidden(hidden - pkg)
         saveDock(if (dock.size < 4) dock + pkg else dock.dropLast(1) + pkg)
     }
 
-    fun unpin(pkg: String) = saveDock(dock - pkg)
+    fun unpin(pkg: String) { checkpoint(); saveDock(dock - pkg) }
 }

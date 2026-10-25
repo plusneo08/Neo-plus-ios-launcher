@@ -14,6 +14,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,15 +40,36 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 
-/** Frosted-glass panel that lets the wallpaper show through. */
-fun Modifier.glass(shape: Shape, alpha: Float = 0.26f): Modifier = this
-    .clip(shape)
-    .background(
-        Brush.verticalGradient(
-            listOf(Color.White.copy(alpha = alpha + 0.10f), Color.White.copy(alpha = alpha - 0.04f))
+/** iOS 27 glass transparency: 0 = frosted (more opaque), 1 = clear (more see-through). Saved on the phone. */
+object GlassPrefs {
+    var clarity by mutableStateOf(0.5f)
+    private var loaded = false
+    fun load(ctx: Context) {
+        if (loaded) return
+        loaded = true
+        clarity = ctx.applicationContext.getSharedPreferences("neo_launcher", Context.MODE_PRIVATE).getFloat("glass_clarity", 0.5f)
+    }
+    fun save(ctx: Context) {
+        ctx.applicationContext.getSharedPreferences("neo_launcher", Context.MODE_PRIVATE).edit().putFloat("glass_clarity", clarity).apply()
+    }
+}
+
+/**
+ * Liquid Glass panel, iOS 27 style: lets the wallpaper show through, with a still (non-moving) bright rim on the top
+ * left that fades round the edge. How see-through it is follows the Transparency slider (Edit > Customize).
+ */
+fun Modifier.glass(shape: Shape, alpha: Float = 0.26f): Modifier {
+    val k = 1.5f - GlassPrefs.clarity          // frosted 1.5x ... clear 0.5x
+    val a = (alpha * k).coerceIn(0.05f, 0.62f)
+    return this
+        .clip(shape)
+        .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = a + 0.10f), Color.White.copy(alpha = (a - 0.05f).coerceAtLeast(0.02f)))))
+        .border(
+            0.9.dp,
+            Brush.linearGradient(listOf(Color.White.copy(alpha = 0.60f), Color.White.copy(alpha = 0.08f), Color.White.copy(alpha = 0.32f))),
+            shape
         )
-    )
-    .border(0.6.dp, Color.White.copy(alpha = 0.22f), shape)
+}
 
 val ShadowStyle = TextStyle(
     shadow = Shadow(color = Color.Black.copy(alpha = 0.30f), offset = Offset(0f, 1f), blurRadius = 4f)

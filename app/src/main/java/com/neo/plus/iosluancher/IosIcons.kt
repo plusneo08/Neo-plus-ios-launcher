@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -176,14 +177,14 @@ fun AppIcon(app: AppEntry, size: Dp, modifier: Modifier = Modifier) {
             null -> iosKindOf(app.pkg, app.label)
         }
     }
-    Box(modifier.size(size).clip(Squircle)) {
+    Box(modifier.size(size).shadow(5.dp, Squircle, clip = false).clip(Squircle)) {
         if (kind != null) IosArt(kind, Modifier.fillMaxSize())
         else Image(app.icon, app.shownLabel, Modifier.fillMaxSize())
         Box(
             Modifier.fillMaxSize().background(
-                Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.14f), Color.Transparent, Color.Black.copy(alpha = 0.05f)))
+                Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.20f), Color.Transparent, Color.Black.copy(alpha = 0.05f)))
             )
         )
-        Box(Modifier.fillMaxSize().border(0.6.dp, Color.White.copy(alpha = 0.22f), Squircle))
+        Box(Modifier.fillMaxSize().border(0.8.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = 0.55f), Color.White.copy(alpha = 0.06f), Color.White.copy(alpha = 0.28f))), Squircle))
     }
 }

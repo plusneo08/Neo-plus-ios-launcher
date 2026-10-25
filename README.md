@@ -314,3 +314,22 @@ Say: “Find the best pic on my phone and post it on my Instagram story with a g
 - **Story**: `StoryEditor` (in `SocialPost.kt`) taps Text (caption) and Stickers > Music (searches the song, picks the first match) on Instagram and Facebook stories. Each step is best effort and the reply says what was and was not added. Other posts keep the song in the caption text.
 - You still get the OK card (Send / Skip) before anything is posted, and it pins the exact photo shown.
 - Button labels (“Stickers”, “Music”, “Text”, “Done”) are matched by name, so an app update can break a step: edit the label lists in `StoryEditor`.
+
+## NEO PLUS designed lock screen and call screens (new)
+- Lock screen: your NEO PLUS artwork with a live glowing clock and date, lock icon, notification count, and real buttons: fingerprint (opens Android's own unlock), flashlight (real torch), camera (opens above the lock), and swipe up to unlock.
+- Calls (wake-up call and approval call): Incoming (Decline / Accept), Connected (Mute = stop listening, Keypad = type to the assistant, Speaker = media volume to max, Add call = dialer, Hold = pause the assistant, Contacts = contacts app, End), Declined (Call back, Send message = opens Neo Plus, Remind me = 10 minute timer).
+- Art files: res/drawable-nodpi/neo_art_*.webp (cropped from the designs). Code: NeoCallUi.kt, NeoLockScreenActivity.kt (ClockScreen).
+
+## iOS 27 home screen (new)
+- Liquid Glass: dock, search pill, page dots and buttons are glass with a still bright rim (iOS 27 removed the moving highlights). Icons have a glass rim and soft shadow.
+- Touch and hold an empty spot: the Edit bubble (top left) with Edit Home Screen, Add Widget, Customize, Edit Wallpaper, Undo, Redo.
+- Customize: a Transparency slider (Frosted to Clear) for all the glass; it is saved.
+- Edit Home Screen: icons wiggle with a minus badge; top bar has + (add widget), Undo, Redo and Done.
+- Undo / Redo cover dock and home-screen app changes (add, remove, pin, unpin), up to 30 steps. Widgets are not covered.
+
+## Real phone calls with the NEO PLUS designs (new)
+- Touch and hold an empty spot on the Home screen > "Use Neo Plus for calls", then confirm Android's "default Phone app" question. From then on every call (in and out) uses the Neo Plus Incoming / Connected / Declined screens. To go back: phone Settings > Default apps > Phone app.
+- Real buttons: Accept / Decline, Mute, Speaker, Hold, Keypad (sends tones into the call), Add call (opens the Neo Plus dialer), Contacts, End. Declined screen: Call back, Send message (SMS to that number), Remind me (10 minute timer).
+- Neo Plus dialer: opened by Dial and tel: links; a number in the link is filled in, not dialled; "Call" button places the call.
+- Code: NeoCalls.kt (NeoInCallService, NeoCallActivity, NeoDialerActivity), NeoCallUi.kt (screens).
+- Not included: call history list, video calls, conference merge / swap screens (only the main call is shown). Call assistant rules (decline, greeting, ...) keep working as before.

@@ -1,6 +1,18 @@
 package com.neo.plus.iosluancher
 
 import android.app.Activity
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
+import android.provider.MediaStore
+import androidx.compose.foundation.Image
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.FlashlightOff
+import androidx.compose.material.icons.filled.FlashlightOn
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
@@ -483,15 +495,30 @@ private fun ClockScreen(onUnlock: () -> Unit) {
     LaunchedEffect(Unit) { while (true) { now = Date(); delay(1000) } }
 
     val is24 = DateFormat.is24HourFormat(ctx)
-    val time = SimpleDateFormat(if (is24) "H:mm" else "h:mm", Locale.getDefault()).format(now)
-    val date = SimpleDateFormat("EEEE, d MMMM", Locale.getDefault()).format(now)
+    val time = SimpleDateFormat(if (is24) "HH:mm" else "h:mm", Locale.getDefault()).format(now)
+    val date = SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()).format(now)
     val waiting = NeoNotificationService.items.size
     var drag by remember { mutableStateOf(0f) }
     var fired by remember { mutableStateOf(false) }
 
+    // Flashlight: a real torch switch (no permission needed)
+    val cm = remember { ctx.getSystemService(CameraManager::class.java) }
+    var torchOn by remember { mutableStateOf(false) }
+    fun toggleTorch() {
+        try {
+            val id = cm.cameraIdList.firstOrNull { cm.getCameraCharacteristics(it).get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true } ?: return
+            torchOn = !torchOn
+            cm.setTorchMode(id, torchOn)
+        } catch (e: Exception) { torchOn = false }
+    }
+    DisposableEffect(Unit) { onDispose { if (torchOn) { try { cm.cameraIdList.forEach { cm.setTorchMode(it, false) } } catch (e: Exception) { } } } }
+
+    val blue = Color(0xFF0A84FF)
+    val glow = Brush.verticalGradient(listOf(Color.White, Color(0xFF4DA3FF), Color(0xFF0A5CFF)))
+
     Box(
         Modifier.fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.35f), Color.Black.copy(alpha = 0.10f), Color.Black.copy(alpha = 0.45f))))
+            .background(Brush.verticalGradient(listOf(Color(0xFF000308), Color(0xFF000000), Color(0xFF020A18))))
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
                     onDragStart = { drag = 0f; fired = false },
@@ -503,19 +530,36 @@ private fun ClockScreen(onUnlock: () -> Unit) {
                     }
                 )
             }
-            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onUnlock() }
     ) {
+        // the NEO PLUS artwork in the middle, edges melted into black
+        Box(Modifier.align(Alignment.Center).fillMaxWidth().padding(top = 120.dp)) {
+            Image(painterResource(R.drawable.neo_art_lock), null, Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth)
+            Box(Modifier.fillMaxWidth().height(40.dp).align(Alignment.TopCenter)
+                .background(Brush.verticalGradient(listOf(Color.Black, Color.Transparent))))
+            Box(Modifier.fillMaxWidth().height(40.dp).align(Alignment.BottomCenter)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black))))
+        }
+
         Column(
-            Modifier.fillMaxWidth().statusBarsPadding().padding(top = 72.dp),
+            Modifier.fillMaxWidth().statusBarsPadding().padding(top = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(date, color = Color.White.copy(alpha = 0.9f), fontSize = 20.sp, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.height(2.dp))
-            Text(time, color = Color.White, fontSize = 96.sp, fontWeight = FontWeight.Light, textAlign = TextAlign.Center)
+            Icon(Icons.Filled.Lock, "Locked", tint = Color.White, modifier = Modifier.size(34.dp))
+            Spacer(Modifier.height(22.dp))
+            Text(date, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Medium, letterSpacing = 4.sp)
+            Text(
+                time,
+                style = TextStyle(
+                    brush = glow, fontSize = 92.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp,
+                    shadow = Shadow(blue.copy(alpha = 0.9f), Offset(0f, 0f), 36f)
+                ),
+                textAlign = TextAlign.Center
+            )
             if (waiting > 0) {
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(6.dp))
                 Box(
-                    Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.20f))
+                    Modifier.clip(RoundedCornerShape(50)).background(blue.copy(alpha = 0.25f))
+                        .border(1.dp, blue.copy(alpha = 0.7f), RoundedCornerShape(50))
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Text(
@@ -525,13 +569,48 @@ private fun ClockScreen(onUnlock: () -> Unit) {
                 }
             }
         }
+
         Column(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = 36.dp),
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("⌃", color = Color.White.copy(alpha = 0.8f), fontSize = 22.sp)
-            Text("Swipe up to unlock", color = Color.White.copy(alpha = 0.9f), fontSize = 16.sp, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.height(10.dp))
+            // fingerprint: opens Android's own unlock, which then shows the fingerprint / face / PIN the phone uses
+            Box(
+                Modifier.size(84.dp).clip(CircleShape).border(2.dp, blue.copy(alpha = 0.8f), CircleShape).clickable { onUnlock() },
+                contentAlignment = Alignment.Center
+            ) { Icon(Icons.Filled.Fingerprint, "Unlock", tint = blue, modifier = Modifier.size(50.dp)) }
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth().padding(horizontal = 36.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(58.dp).clip(CircleShape).background(if (torchOn) Color.White else Color(0xFF0A1220))
+                        .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape).clickable { toggleTorch() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(if (torchOn) Icons.Filled.FlashlightOn else Icons.Filled.FlashlightOff, "Flashlight",
+                        tint = if (torchOn) Color.Black else Color.White, modifier = Modifier.size(28.dp))
+                }
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Swipe up to unlock", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                }
+                Box(
+                    Modifier.size(58.dp).clip(CircleShape).background(Color(0xFF0A1220))
+                        .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+                        .clickable {
+                            // the phone's own camera, opened above the lock without unlocking
+                            val locked = (ctx.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).isKeyguardLocked
+                            try {
+                                ctx.startActivity(
+                                    Intent(if (locked) MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA_SECURE else MediaStore.ACTION_IMAGE_CAPTURE)
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            } catch (e: Exception) {
+                                try { ctx.startActivity(Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e2: Exception) { }
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) { Icon(Icons.Filled.CameraAlt, "Camera", tint = Color.White, modifier = Modifier.size(28.dp)) }
+            }
+            Spacer(Modifier.height(12.dp))
             Box(Modifier.size(width = 134.dp, height = 5.dp).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.85f)))
         }
     }
