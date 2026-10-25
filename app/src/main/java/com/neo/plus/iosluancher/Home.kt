@@ -232,7 +232,7 @@ fun LauncherRoot(
                         }
                     }
                     Row(Modifier.fillMaxWidth().height(44.dp), Arrangement.Center, Alignment.CenterVertically) {
-                        NeoDialButton(34.dp, Modifier.noRipple { rootCtx.safeStart(Intent(rootCtx, NeoDialerActivity::class.java)) })
+                        NeoCallButton(34.dp, Modifier.noRipple { rootCtx.safeStart(Intent(rootCtx, WakeCallActivity::class.java).putExtra(WakeCallActivity.EXTRA_OUTGOING, true)) })
                         Spacer(Modifier.width(10.dp))
                         Row(
                             Modifier.glass(RoundedCornerShape(50), 0.22f)

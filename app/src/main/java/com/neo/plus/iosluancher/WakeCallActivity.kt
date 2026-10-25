@@ -11,6 +11,7 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -63,6 +64,11 @@ import java.util.concurrent.Executors
  * call turns into a normal voice conversation. It only ends when the user taps End call.
  */
 class WakeCallActivity : ComponentActivity() {
+    companion object {
+        /** Set on the Intent when YOU call the assistant (home-screen call button) instead of the assistant ringing you. */
+        const val EXTRA_OUTGOING = "neo_outgoing_call"
+    }
+
     private var session: CallSession? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,14 +79,33 @@ class WakeCallActivity : ComponentActivity() {
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
         )
-        if (!SleepMode.isOn(applicationContext) && !WakeRinger.ringing) { finish(); return }
-        val s = CallSession(this)
+        val outgoing = intent?.getBooleanExtra(EXTRA_OUTGOING, false) == true
+        val s: CallSession
+        val running = liveSession?.takeIf { it.isAlive }
+        if (running != null) {
+            // The call is still going on (you were in another app and tapped the notification): pick it up, do not restart it
+            s = running
+            s.act = this
+        } else {
+            if (!outgoing && !SleepMode.isOn(applicationContext) && !WakeRinger.ringing) { finish(); return }
+            s = CallSession(this)
+            liveSession = s
+            if (outgoing) s.startOutgoing()
+        }
         session = s
+        // Back while in a call = leave the screen, the call keeps going (notification) until you tap End call
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (session?.inCall == true) moveTaskToBack(true)
+                else { isEnabled = false; onBackPressedDispatcher.onBackPressed() }
+            }
+        })
         setContent { CallScreen(s) }
     }
 
     override fun onDestroy() {
         if (isFinishing) session?.shutdown()
+        else session?.let { if (it.act === this) it.act = null }
         NeoLock.callUp = maxOf(0, NeoLock.callUp - 1)
         if (isFinishing) NeoLock.showIfNeeded(applicationContext)
         super.onDestroy()
@@ -88,8 +113,18 @@ class WakeCallActivity : ComponentActivity() {
 }
 
 /** One phone call: ringing -> connecting -> the assistant speaks -> listens -> thinks -> speaks ... until End call. */
-private class CallSession(val act: WakeCallActivity) {
-    private val ctx = act.applicationContext
+private var liveSession: CallSession? = null
+
+/** Ends the running assistant call from outside the call screen (the End call button in the notification). */
+fun endNeoCall() { liveSession?.end() }
+
+private class CallSession(activity: WakeCallActivity) {
+    var act: WakeCallActivity? = activity
+    private val ctx = activity.applicationContext
+    private var startedAt = 0L
+    val isAlive: Boolean get() = alive
+    /** True from the moment the call is connecting until it ends or is declined. */
+    val inCall: Boolean get() = alive && phase >= 1 && !declined
     private val main = Handler(Looper.getMainLooper())
     private val io = Executors.newSingleThreadExecutor()
     private val hist = ArrayList<Pair<Boolean, String>>()
@@ -106,10 +141,17 @@ private class CallSession(val act: WakeCallActivity) {
     var declined by mutableStateOf(false)
     val lines = mutableStateListOf<Pair<Boolean, String>>()   // true = me, false = assistant
 
+    /** The call is on: show the ongoing-call notification and keep the microphone service running. */
+    private fun connected() {
+        if (startedAt == 0L) startedAt = System.currentTimeMillis()
+        NeoCallService.start(ctx, startedAt)
+    }
+
     fun answer() {
         WakeRinger.stop()
         SleepMode.answered(ctx)
         phase = 1
+        connected()
         io.execute {
             val r = SleepPrep.ready(ctx)   // already written (and its voice made) 5 minutes earlier, if nothing new came in
             main.post {
@@ -119,6 +161,16 @@ private class CallSession(val act: WakeCallActivity) {
                 say(r)
             }
         }
+    }
+
+    /** You phoned the assistant: no ringing, it picks up straight away, greets you, then listens. */
+    fun startOutgoing() {
+        phase = 1
+        connected()
+        val hello = "Hi, it's Neo. What can I do for you?"
+        hist += true to "[The user just phoned me. Greet them briefly and ask how I can help.]"
+        hist += false to hello
+        main.post { say(hello) }
     }
 
     fun decline() {
@@ -146,11 +198,13 @@ private class CallSession(val act: WakeCallActivity) {
 
     fun end() {
         shutdown()
-        act.finish()
+        act?.finish()
     }
 
     fun shutdown() {
         alive = false
+        if (liveSession === this) liveSession = null
+        NeoCallService.stop(ctx)
         if (loud) { loud = false; NeoLoud.toggle(ctx, false) }
         main.removeCallbacksAndMessages(null)
         try { recognizer?.cancel() } catch (e: Exception) { }
@@ -290,7 +344,7 @@ private fun CallScreen(s: CallSession) {
     LaunchedEffect(s.phase, s.declined) {
         if (s.phase == 0 && !s.declined) {
             while (WakeRinger.ringing) delay(500)
-            if (s.phase == 0 && !s.declined) s.act.finish()   // nobody answered: the ringing timed out
+            if (s.phase == 0 && !s.declined) s.act?.finish()   // nobody answered: the ringing timed out
         }
     }
     LaunchedEffect(Unit) { while (true) { delay(1000); if (s.phase >= 1 && !s.declined) s.secs++ } }
@@ -301,7 +355,7 @@ private fun CallScreen(s: CallSession) {
             lines = s.lines.toList(), heard = s.heard, micDenied = s.micDenied,
             onAnswer = { s.answer() }, onDecline = { s.decline() }, onEnd = { s.end() },
             onMute = { s.toggleMute() }, onHold = { s.toggleHold() }, onSpeaker = { s.toggleLoud() },
-            onType = { s.typed(it) }, onCallBack = { s.callBack() }, onClose = { s.act.finish() },
+            onType = { s.typed(it) }, onCallBack = { s.callBack() }, onClose = { s.act?.finish() },
             onMicGranted = { s.listen() }
         )
     )

@@ -45,6 +45,77 @@ import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.TextStyle
+
+/* ---- NEO PLUS look for the clock and weather cards: deep navy glass, glowing neon edge, light streaks / mountain horizon ---- */
+private val NeoCyanC = Color(0xFF38BDF8)
+private val NeoBlueC = Color(0xFF1D6BFF)
+private val GlowText = TextStyle(shadow = Shadow(color = NeoCyanC.copy(alpha = 0.55f), offset = Offset.Zero, blurRadius = 24f))
+
+private fun Modifier.neoCard(shape: Shape): Modifier = this
+    .shadow(12.dp, shape, clip = false, ambientColor = NeoBlueC, spotColor = NeoCyanC)
+    .clip(shape)
+    .background(Brush.linearGradient(listOf(Color(0xFF0D2C62), Color(0xFF071634), Color(0xFF030A1C))))
+    .border(1.6.dp, Brush.linearGradient(listOf(NeoCyanC, NeoBlueC.copy(alpha = 0.55f), NeoCyanC.copy(alpha = 0.9f))), shape)
+
+/** Glowing diagonal light streaks in two corners of the clock card. */
+private fun DrawScope.clockStreaks() {
+    val w = size.width
+    val h = size.height
+    drawPath(
+        Path().apply { moveTo(w * 0.62f, 0f); lineTo(w * 0.80f, 0f); lineTo(w, h * 0.36f); lineTo(w, h * 0.52f); close() },
+        Brush.linearGradient(listOf(NeoCyanC.copy(alpha = 0.22f), Color.Transparent), Offset(w, 0f), Offset(w * 0.6f, h * 0.5f))
+    )
+    fun bar(x1: Float, y1: Float, x2: Float, y2: Float, a: Float) {
+        drawLine(NeoCyanC.copy(alpha = a * 0.28f), Offset(x1, y1), Offset(x2, y2), 7.dp.toPx(), StrokeCap.Round)
+        drawLine(NeoCyanC.copy(alpha = a), Offset(x1, y1), Offset(x2, y2), 1.8.dp.toPx(), StrokeCap.Round)
+    }
+    bar(w * 0.62f, 0f, w, h * 0.52f, 0.8f)
+    bar(w * 0.80f, 0f, w, h * 0.28f, 0.55f)
+    bar(0f, h * 0.74f, w * 0.22f, h, 0.7f)
+    bar(0f, h * 0.90f, w * 0.09f, h, 0.45f)
+}
+
+/** Dark mountain ridges with a glowing blue horizon along the bottom of the weather card. */
+private fun DrawScope.mountains() {
+    val w = size.width
+    val h = size.height
+    fun ridge(pts: List<Pair<Float, Float>>, fill: Brush, edge: Color) {
+        val body = Path()
+        body.moveTo(0f, h)
+        pts.forEach { (x, y) -> body.lineTo(w * x, h * y) }
+        body.lineTo(w, h)
+        body.close()
+        drawPath(body, fill)
+        val line = Path()
+        pts.forEachIndexed { i, (x, y) -> if (i == 0) line.moveTo(w * x, h * y) else line.lineTo(w * x, h * y) }
+        drawPath(line, edge, style = Stroke(width = 1.2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+    }
+    ridge(
+        listOf(0f to 0.78f, 0.10f to 0.64f, 0.20f to 0.72f, 0.36f to 0.50f, 0.48f to 0.68f, 0.60f to 0.60f, 0.74f to 0.76f, 0.88f to 0.64f, 1f to 0.72f),
+        Brush.verticalGradient(listOf(Color(0xFF1B3B6B), Color(0xFF050B18)), startY = h * 0.5f, endY = h), NeoCyanC.copy(alpha = 0.55f)
+    )
+    drawRect(Brush.verticalGradient(listOf(Color.Transparent, NeoBlueC.copy(alpha = 0.50f), NeoCyanC.copy(alpha = 0.70f)), startY = h * 0.68f, endY = h))
+    ridge(
+        listOf(0f to 0.90f, 0.18f to 0.80f, 0.34f to 0.88f, 0.52f to 0.78f, 0.70f to 0.90f, 0.86f to 0.82f, 1f to 0.88f),
+        SolidColor(Color(0xFF030810)), NeoBlueC.copy(alpha = 0.60f)
+    )
+}
 
 /**
  * Clean glass panel at the top of the first home page:
@@ -97,30 +168,31 @@ fun HomePanel(modifier: Modifier = Modifier) {
     val shortDate = SimpleDateFormat("EEE, d MMM", loc).format(date)
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         // ---- clock card
-        Column(
-            Modifier.weight(1f).fillMaxHeight().neonGlass(card, 9.dp)
+        Box(
+            Modifier.weight(1f).fillMaxHeight().neoCard(card)
                 .clickable { ctx.safeStart(Intent(AlarmClock.ACTION_SHOW_ALARMS)) }
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.Center
         ) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(time, color = Color.White, fontSize = 50.sp, fontWeight = FontWeight.Light, letterSpacing = (-1).sp, style = ShadowStyle, maxLines = 1)
-                if (ampm.isNotEmpty()) {
-                    Text(ampm, color = Color.White.copy(alpha = 0.85f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 4.dp, bottom = 9.dp))
+            Canvas(Modifier.matchParentSize()) { clockStreaks() }
+            Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.Center) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(time, color = Color.White, fontSize = 50.sp, fontWeight = FontWeight.Light, letterSpacing = (-1).sp, style = GlowText, maxLines = 1, softWrap = false)
+                    if (ampm.isNotEmpty()) {
+                        Text(ampm, color = Color(0xFFBFE6FF), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 4.dp, bottom = 9.dp))
+                    }
                 }
+                Text(
+                    shortDate, color = Color.White.copy(alpha = 0.95f), fontSize = 16.sp, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clickable {
+                        val uri = CalendarContract.CONTENT_URI.buildUpon().appendPath("time").appendPath(System.currentTimeMillis().toString()).build()
+                        ctx.safeStart(Intent(Intent.ACTION_VIEW, uri))
+                    }
+                )
             }
-            Text(
-                shortDate, color = Color.White.copy(alpha = 0.92f), fontSize = 16.sp, fontWeight = FontWeight.Medium,
-                modifier = Modifier.clickable {
-                    val uri = CalendarContract.CONTENT_URI.buildUpon().appendPath("time").appendPath(System.currentTimeMillis().toString()).build()
-                    ctx.safeStart(Intent(Intent.ACTION_VIEW, uri))
-                }
-            )
         }
 
         // ---- weather card
-        Column(
-            Modifier.weight(1f).fillMaxHeight().neonGlass(card, 9.dp)
+        Box(
+            Modifier.weight(1f).fillMaxHeight().neoCard(card)
                 .clickable {
                     when {
                         w != null -> ctx.safeStart(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=" + Uri.encode("weather"))))
@@ -128,31 +200,32 @@ fun HomePanel(modifier: Modifier = Modifier) {
                         else -> tick++
                     }
                 }
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.Center
         ) {
-            if (w != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    WeatherGlyph(weatherKind(w.code, w.isDay), Modifier.size(52.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Column {
-                        Text("${w.temp}°", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Light, style = ShadowStyle)
-                        Text(weatherText(w.code), color = Color.White.copy(alpha = 0.94f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Canvas(Modifier.matchParentSize()) { mountains() }
+            Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.Center) {
+                if (w != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        WeatherGlyph(weatherKind(w.code, w.isDay), Modifier.size(52.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text("${w.temp}°", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Light, style = GlowText)
+                            Text(weatherText(w.code), color = Color.White.copy(alpha = 0.94f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                     }
-                }
-                if (w.place.isNotBlank()) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                        Icon(Icons.Filled.LocationOn, null, tint = Color(0xFF38BDF8), modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(3.dp))
-                        Text(w.place, color = Color(0xFF38BDF8), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (w.place.isNotBlank()) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                            Icon(Icons.Filled.LocationOn, null, tint = NeoCyanC, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(3.dp))
+                            Text(w.place, color = NeoCyanC, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                     }
+                } else {
+                    Text("Weather", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (!permitted) "Tap to allow location" else "Getting forecast…",
+                        color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp)
+                    )
                 }
-            } else {
-                Text("Weather", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                Text(
-                    if (!permitted) "Tap to allow location" else "Getting forecast…",
-                    color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp)
-                )
             }
         }
     }

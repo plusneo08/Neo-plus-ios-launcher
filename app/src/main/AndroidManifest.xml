@@ -180,6 +180,12 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
+        <!-- Ongoing-call notification + microphone while you talk to the assistant in another app -->
+        <service
+            android:name=".NeoCallService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
         <service
             android:name=".ScreenRecordService"
             android:exported="false"

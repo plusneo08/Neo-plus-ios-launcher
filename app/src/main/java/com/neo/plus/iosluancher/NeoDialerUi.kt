@@ -84,12 +84,122 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import java.io.File
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import kotlinx.coroutines.launch
 
 private enum class DialTab(val label: String, val icon: ImageVector) {
     Keypad("Keypad", Icons.Filled.Dialpad),
     Recents("Recents", Icons.Filled.History),
     Missed("Missed", Icons.Filled.PhoneMissed),
     Contacts("Contacts", Icons.Filled.Contacts)
+}
+
+/* ------------------------------------------------------------------ */
+/*  Phone app themes and backgrounds                                    */
+/* ------------------------------------------------------------------ */
+
+private class DialTheme(val name: String, val base: List<Color>, val blue: Color, val cyan: Color, val glowA: Color, val glowB: Color)
+
+private val DialThemes = listOf(
+    DialTheme("Neo Blue", listOf(Color(0xFF040A16), Color(0xFF040A16)), Color(0xFF0A84FF), Color(0xFF38BDF8), Color(0xFF0A84FF), Color(0xFF7C3AED)),
+    DialTheme("Aurora", listOf(Color(0xFF04130E), Color(0xFF061C20)), Color(0xFF10B981), Color(0xFF34D399), Color(0xFF10B981), Color(0xFF6366F1)),
+    DialTheme("Sunset", listOf(Color(0xFF1A0B14), Color(0xFF1A0A05)), Color(0xFFF97316), Color(0xFFFB923C), Color(0xFFE11D48), Color(0xFFF97316)),
+    DialTheme("Violet", listOf(Color(0xFF0E0820), Color(0xFF080414)), Color(0xFF8B5CF6), Color(0xFFC084FC), Color(0xFFD946EF), Color(0xFF6366F1)),
+    DialTheme("Crimson", listOf(Color(0xFF16060A), Color(0xFF0C0306)), Color(0xFFE11D48), Color(0xFFFB7185), Color(0xFFE11D48), Color(0xFFF97316)),
+    DialTheme("Midnight", listOf(Color.Black, Color(0xFF05060A)), Color(0xFF2563EB), Color(0xFF60A5FA), Color(0xFF2563EB), Color(0xFF1E293B))
+)
+
+/** The theme in use; read by every tab of the Phone app. */
+private object DialLook {
+    var theme by mutableStateOf(DialThemes[0])
+    val blue: Color get() = theme.blue
+    val cyan: Color get() = theme.cyan
+}
+
+/** Lets the keypad keys (shared with the lock screen and in-call pad) follow the Phone app's theme. */
+internal val LocalPadAccent = compositionLocalOf<Pair<Color, Color>?> { null }
+
+private class DialBg(val id: String, val name: String, val colors: List<Color>)
+
+private val DialBgs = listOf(
+    DialBg("ocean", "Ocean", listOf(Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364))),
+    DialBg("forest", "Forest", listOf(Color(0xFF0B1F14), Color(0xFF14532D), Color(0xFF052E16))),
+    DialBg("sunset", "Sunset", listOf(Color(0xFF3B0A2A), Color(0xFFB4412C), Color(0xFFF59E0B))),
+    DialBg("berry", "Berry", listOf(Color(0xFF2A0A3B), Color(0xFF7E22CE), Color(0xFFDB2777))),
+    DialBg("slate", "Slate", listOf(Color(0xFF111827), Color(0xFF1F2937), Color(0xFF374151))),
+    DialBg("black", "Black", listOf(Color.Black, Color.Black))
+)
+
+/** Copies the picked photo into the app (scaled down) so the background still works if the photo is moved or deleted. */
+private fun saveDialPhoto(ctx: Context, uri: Uri): String? {
+    try {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        var sample = 1
+        while (bounds.outWidth / sample > 1400 || bounds.outHeight / sample > 1400) sample *= 2
+        val bmp = ctx.contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
+        } ?: return null
+        val name = "dialbg_" + System.currentTimeMillis() + ".jpg"
+        File(ctx.filesDir, name).outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 85, it) }
+        return name
+    } catch (e: Exception) { return null }
+}
+
+/** The colours or photo behind the whole Phone app (drawn over the theme's own background). */
+@Composable
+private fun DialBackdrop(v: String) {
+    val ctx = LocalContext.current
+    if (v.startsWith("g:")) {
+        val c = DialBgs.firstOrNull { "g:" + it.id == v }
+        if (c != null) Box(Modifier.fillMaxSize().background(Brush.verticalGradient(c.colors)))
+    } else if (v.startsWith("p:")) {
+        val bmp by produceState<ImageBitmap?>(null, v) {
+            value = withContext(Dispatchers.IO) {
+                try { BitmapFactory.decodeFile(File(ctx.filesDir, v.substring(2)).path)?.asImageBitmap() } catch (e: Exception) { null }
+            }
+        }
+        val b = bmp
+        if (b != null) {
+            Image(b, null, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.50f)))
+        }
+    }
+}
+
+@Composable
+private fun DialTile(label: String, brush: Brush, selected: Boolean, accent: Color, content: @Composable () -> Unit = {}, onClick: () -> Unit) {
+    Column(Modifier.width(72.dp).clickable { onClick() }, horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            Modifier.size(72.dp, 96.dp).clip(RoundedCornerShape(16.dp)).background(brush)
+                .border(if (selected) 2.dp else 1.dp, if (selected) accent else Color.White.copy(alpha = 0.25f), RoundedCornerShape(16.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            content()
+            if (selected) Icon(Icons.Filled.Check, null, tint = accent, modifier = Modifier.align(Alignment.TopEnd).padding(5.dp).size(18.dp))
+        }
+        Text(label, color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp, modifier = Modifier.padding(top = 5.dp), maxLines = 1)
+    }
 }
 
 private class LogEntry(val id: Long, val number: String, val name: String, val type: Int, val date: Long)
@@ -200,6 +310,9 @@ private fun KeyGlyph(c: Char, compact: Boolean = false) {
 @Composable
 internal fun PadKey(c: Char, size: androidx.compose.ui.unit.Dp, compact: Boolean = false, onKey: (Char) -> Unit) {
     val haptic = LocalHapticFeedback.current
+    val padAccent = LocalPadAccent.current
+    val padBlue = padAccent?.first ?: NeoCallColors.Blue
+    val padCyan = padAccent?.second ?: NeoCallColors.Cyan
     var down by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(if (down) 0.93f else 1f, label = "key")
     val sub = when (c) {
@@ -208,10 +321,10 @@ internal fun PadKey(c: Char, size: androidx.compose.ui.unit.Dp, compact: Boolean
     Box(
         Modifier.size(size).graphicsLayer { scaleX = scale; scaleY = scale }.clip(CircleShape)
             .background(
-                if (down) Brush.verticalGradient(listOf(NeoCallColors.Blue.copy(alpha = 0.60f), NeoCallColors.Blue.copy(alpha = 0.28f)))
+                if (down) Brush.verticalGradient(listOf(padBlue.copy(alpha = 0.60f), padBlue.copy(alpha = 0.28f)))
                 else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.11f), Color.White.copy(alpha = 0.04f)))
             )
-            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.30f), NeoCallColors.Blue.copy(alpha = 0.18f))), CircleShape)
+            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.30f), padBlue.copy(alpha = 0.18f))), CircleShape)
             .pointerInput(c) {
                 detectTapGestures(
                     onPress = { down = true; tryAwaitRelease(); down = false },
@@ -223,7 +336,7 @@ internal fun PadKey(c: Char, size: androidx.compose.ui.unit.Dp, compact: Boolean
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             KeyGlyph(c, compact)
-            if (sub.isNotEmpty() && !compact) Text(sub, color = NeoCallColors.Cyan, fontSize = 8.5.sp, letterSpacing = 1.6.sp, fontWeight = FontWeight.SemiBold)
+            if (sub.isNotEmpty() && !compact) Text(sub, color = padCyan, fontSize = 8.5.sp, letterSpacing = 1.6.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -231,6 +344,22 @@ internal fun PadKey(c: Char, size: androidx.compose.ui.unit.Dp, compact: Boolean
 @Composable
 fun DialerScreen(initial: String, onClose: () -> Unit) {
     val ctx = LocalContext.current
+    val dprefs = remember { ctx.getSharedPreferences("neo_dialer", Context.MODE_PRIVATE) }
+    var themeIdx by remember { mutableStateOf(dprefs.getInt("theme", 0).coerceIn(0, DialThemes.lastIndex)) }
+    var bg by remember { mutableStateOf(dprefs.getString("bg", "").orEmpty()) }
+    var sheet by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    DialLook.theme = DialThemes[themeIdx]
+    val look = DialLook.theme
+    val padAccent = remember(themeIdx) { look.blue to look.cyan }
+    fun setBg(v: String) { bg = v; dprefs.edit().putString("bg", v).apply() }
+    val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) scope.launch {
+            val f = withContext(Dispatchers.IO) { saveDialPhoto(ctx, uri) }
+            if (f != null) setBg("p:$f") else android.widget.Toast.makeText(ctx, "Couldn’t use that photo", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+    BackHandler(enabled = sheet) { sheet = false }
     var tab by remember { mutableStateOf(DialTab.Keypad) }
     var number by remember { mutableStateOf(initial) }
     var hasLog by remember { mutableStateOf(has(ctx, Manifest.permission.READ_CALL_LOG)) }
@@ -265,26 +394,33 @@ fun DialerScreen(initial: String, onClose: () -> Unit) {
 
     val missedRecent = remember(log) { val cut = System.currentTimeMillis() - 86_400_000L; log.count { it.type == CallLog.Calls.MISSED_TYPE && it.date > cut } }
 
+    CompositionLocalProvider(LocalPadAccent provides padAccent) {
     Box(
-        Modifier.fillMaxSize().background(DialInk).drawBehind {
+        Modifier.fillMaxSize().background(Brush.verticalGradient(look.base)).drawBehind {
             val r = size.width * 1.1f
-            drawCircle(Brush.radialGradient(listOf(NeoCallColors.Blue.copy(alpha = 0.30f), Color.Transparent), center = Offset(size.width * 0.5f, 0f), radius = r), r, Offset(size.width * 0.5f, 0f))
-            drawCircle(Brush.radialGradient(listOf(Color(0xFF7C3AED).copy(alpha = 0.16f), Color.Transparent), center = Offset(size.width, size.height), radius = r), r, Offset(size.width, size.height))
+            drawCircle(Brush.radialGradient(listOf(look.glowA.copy(alpha = 0.30f), Color.Transparent), center = Offset(size.width * 0.5f, 0f), radius = r), r, Offset(size.width * 0.5f, 0f))
+            drawCircle(Brush.radialGradient(listOf(look.glowB.copy(alpha = 0.16f), Color.Transparent), center = Offset(size.width, size.height), radius = r), r, Offset(size.width, size.height))
         }
     ) {
+        DialBackdrop(bg)
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             // ---- header
             Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Image(
                     painterResource(R.drawable.neo_art_connected), null,
-                    Modifier.size(42.dp).clip(RoundedCornerShape(13.dp)).border(1.dp, NeoCallColors.Cyan.copy(alpha = 0.5f), RoundedCornerShape(13.dp)),
+                    Modifier.size(42.dp).clip(RoundedCornerShape(13.dp)).border(1.dp, DialLook.cyan.copy(alpha = 0.5f), RoundedCornerShape(13.dp)),
                     contentScale = androidx.compose.ui.layout.ContentScale.Crop
                 )
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text("NEO PLUS", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
-                    Text(tab.label, color = NeoCallColors.Cyan, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    Text(tab.label, color = DialLook.cyan, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 }
+                Box(
+                    Modifier.size(40.dp).clip(CircleShape).background(CardFill).clickable { sheet = true }.semantics { contentDescription = "Themes and background" },
+                    contentAlignment = Alignment.Center
+                ) { Icon(Icons.Filled.Palette, null, tint = Color.White, modifier = Modifier.size(22.dp)) }
+                Spacer(Modifier.width(8.dp))
                 Box(
                     Modifier.size(40.dp).clip(CircleShape).background(CardFill).clickable { onClose() }.semantics { contentDescription = "Close" },
                     contentAlignment = Alignment.Center
@@ -294,15 +430,15 @@ fun DialerScreen(initial: String, onClose: () -> Unit) {
             if (!isDefault) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clip(RoundedCornerShape(16.dp))
-                        .background(NeoCallColors.Blue.copy(alpha = 0.18f)).border(1.dp, NeoCallColors.Cyan.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                        .background(DialLook.blue.copy(alpha = 0.18f)).border(1.dp, DialLook.cyan.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
                         .clickable { NeoDialer.requestIntent(ctx)?.let { try { roleLauncher.launch(it) } catch (e: Exception) { } } }
                         .padding(horizontal = 14.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Filled.Call, null, tint = NeoCallColors.Cyan, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Filled.Call, null, tint = DialLook.cyan, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(10.dp))
                     Text("Make Neo Plus your default Phone app", color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    Text("SET", color = NeoCallColors.Cyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("SET", color = DialLook.cyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -325,7 +461,7 @@ fun DialerScreen(initial: String, onClose: () -> Unit) {
                     Box(Modifier.weight(1f)) {
                         Column(
                             Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
-                                .background(if (sel) Brush.verticalGradient(listOf(NeoCallColors.Blue.copy(alpha = 0.55f), NeoCallColors.Blue.copy(alpha = 0.25f))) else SolidColor(Color.Transparent))
+                                .background(if (sel) Brush.verticalGradient(listOf(DialLook.blue.copy(alpha = 0.55f), DialLook.blue.copy(alpha = 0.25f))) else SolidColor(Color.Transparent))
                                 .clickable { tab = t }.padding(vertical = 8.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
@@ -342,6 +478,43 @@ fun DialerScreen(initial: String, onClose: () -> Unit) {
                 }
             }
         }
+
+        // themes + background picker
+        AnimatedVisibility(sheet, enter = fadeIn(), exit = fadeOut()) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).clickable { sheet = false })
+        }
+        AnimatedVisibility(
+            sheet, modifier = Modifier.align(Alignment.BottomCenter),
+            enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()
+        ) {
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(Color(0xFF0E1626)).navigationBarsPadding()
+                    .padding(horizontal = 18.dp, vertical = 18.dp)
+            ) {
+                Text("Theme", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(12.dp))
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    DialThemes.forEachIndexed { i, t ->
+                        DialTile(t.name, Brush.linearGradient(listOf(t.base[1], t.blue.copy(alpha = 0.85f))), i == themeIdx, t.cyan) {
+                            themeIdx = i; dprefs.edit().putInt("theme", i).apply()
+                        }
+                    }
+                }
+                Spacer(Modifier.height(18.dp))
+                Text("Background", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(12.dp))
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    DialTile("Theme", Brush.verticalGradient(look.base), bg.isEmpty(), look.cyan) { setBg("") }
+                    DialBgs.forEach { c -> DialTile(c.name, Brush.verticalGradient(c.colors), bg == "g:" + c.id, look.cyan) { setBg("g:" + c.id) } }
+                    val photo = bg.startsWith("p:")
+                    DialTile(
+                        "My photo", SolidColor(Color.White.copy(alpha = 0.08f)), photo, look.cyan,
+                        content = { if (!photo) Icon(Icons.Filled.Add, null, tint = Color.White, modifier = Modifier.size(26.dp)) }
+                    ) { pickPhoto.launch("image/*") }
+                }
+            }
+        }
+    }
     }
 }
 
@@ -366,13 +539,13 @@ private fun KeypadTab(
                     modifier = Modifier.semantics { contentDescription = "Number" }
                 ) else Text("Enter number", color = Color.White.copy(alpha = 0.28f), fontSize = 22.sp, fontWeight = FontWeight.Light)
             }
-            Box(Modifier.fillMaxWidth(0.72f).height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, NeoCallColors.Cyan.copy(alpha = 0.6f), Color.Transparent))))
+            Box(Modifier.fillMaxWidth(0.72f).height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, DialLook.cyan.copy(alpha = 0.6f), Color.Transparent))))
             Box(Modifier.fillMaxWidth().height(46.dp), contentAlignment = Alignment.Center) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     matches.forEach { m ->
                         Row(
-                            Modifier.clip(RoundedCornerShape(20.dp)).background(NeoCallColors.Blue.copy(alpha = 0.22f))
-                                .border(1.dp, NeoCallColors.Cyan.copy(alpha = 0.4f), RoundedCornerShape(20.dp)).clickable { onPick(m.number) }
+                            Modifier.clip(RoundedCornerShape(20.dp)).background(DialLook.blue.copy(alpha = 0.22f))
+                                .border(1.dp, DialLook.cyan.copy(alpha = 0.4f), RoundedCornerShape(20.dp)).clickable { onPick(m.number) }
                                 .padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -415,8 +588,8 @@ private fun KeypadTab(
 @Composable
 private fun NeedAccess(title: String, text: String, onAllow: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(36.dp), Arrangement.Center, Alignment.CenterHorizontally) {
-        Box(Modifier.size(72.dp).clip(CircleShape).background(NeoCallColors.Blue.copy(alpha = 0.2f)).border(1.dp, NeoCallColors.Cyan.copy(alpha = 0.4f), CircleShape), contentAlignment = Alignment.Center) {
-            Icon(Icons.Filled.Contacts, null, tint = NeoCallColors.Cyan, modifier = Modifier.size(34.dp))
+        Box(Modifier.size(72.dp).clip(CircleShape).background(DialLook.blue.copy(alpha = 0.2f)).border(1.dp, DialLook.cyan.copy(alpha = 0.4f), CircleShape), contentAlignment = Alignment.Center) {
+            Icon(Icons.Filled.Contacts, null, tint = DialLook.cyan, modifier = Modifier.size(34.dp))
         }
         Spacer(Modifier.height(16.dp))
         Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
@@ -424,7 +597,7 @@ private fun NeedAccess(title: String, text: String, onAllow: () -> Unit) {
         Text(text, color = Dim, fontSize = 14.sp, textAlign = TextAlign.Center)
         Spacer(Modifier.height(20.dp))
         Box(
-            Modifier.clip(RoundedCornerShape(26.dp)).background(Brush.horizontalGradient(listOf(NeoCallColors.Cyan, NeoCallColors.Blue))).clickable { onAllow() }
+            Modifier.clip(RoundedCornerShape(26.dp)).background(Brush.horizontalGradient(listOf(DialLook.cyan, DialLook.blue))).clickable { onAllow() }
                 .padding(horizontal = 30.dp, vertical = 12.dp)
         ) { Text("Allow access", color = Color.White, fontWeight = FontWeight.SemiBold) }
     }
@@ -451,7 +624,7 @@ private fun LogTab(entries: List<LogEntry>, missedOnly: Boolean, allowed: Boolea
             val missed = e.type == CallLog.Calls.MISSED_TYPE || e.type == CallLog.Calls.REJECTED_TYPE || e.type == CallLog.Calls.BLOCKED_TYPE
             val shown = e.name.ifBlank { e.number.ifBlank { "Private number" } }
             val (icon, tint) = when (e.type) {
-                CallLog.Calls.OUTGOING_TYPE -> Icons.Filled.CallMade to NeoCallColors.Cyan
+                CallLog.Calls.OUTGOING_TYPE -> Icons.Filled.CallMade to DialLook.cyan
                 CallLog.Calls.INCOMING_TYPE -> Icons.Filled.CallReceived to NeoCallColors.Green
                 else -> Icons.Filled.CallMissed to MissedRed
             }
@@ -499,7 +672,7 @@ private fun ContactsTab(contacts: List<ContactEntry>, allowed: Boolean, onAllow:
             Spacer(Modifier.width(8.dp))
             Box(Modifier.weight(1f)) {
                 if (query.isEmpty()) Text("Search ${contacts.size} contacts", color = Color.White.copy(alpha = 0.35f), fontSize = 16.sp)
-                BasicTextField(query, { query = it }, singleLine = true, textStyle = TextStyle(color = Color.White, fontSize = 16.sp), cursorBrush = SolidColor(NeoCallColors.Cyan), modifier = Modifier.fillMaxWidth())
+                BasicTextField(query, { query = it }, singleLine = true, textStyle = TextStyle(color = Color.White, fontSize = 16.sp), cursorBrush = SolidColor(DialLook.cyan), modifier = Modifier.fillMaxWidth())
             }
         }
         if (shown.isEmpty()) { EmptyState(Icons.Filled.Contacts, if (contacts.isEmpty()) "No contacts yet" else "No match"); return@Column }
@@ -512,7 +685,7 @@ private fun ContactsTab(contacts: List<ContactEntry>, allowed: Boolean, onAllow:
                 Triple(c, l, head)
             }
             items(grouped) { (c, l, head) ->
-                if (head) Text(l.toString(), color = NeoCallColors.Cyan, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, top = 12.dp, bottom = 4.dp))
+                if (head) Text(l.toString(), color = DialLook.cyan, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, top = 12.dp, bottom = 4.dp))
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onCall(c.number) }.padding(horizontal = 6.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically

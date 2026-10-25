@@ -294,18 +294,27 @@ private fun Bubble(m: ChatMsg) {
 }
 
 @Composable
-private fun GlassField(value: String, onChange: (String) -> Unit, hint: String, password: Boolean = false, phone: Boolean = false) {
+private fun GlassField(value: String, onChange: (String) -> Unit, hint: String, password: Boolean = false, phone: Boolean = false, email: Boolean = false, reveal: Boolean = false) {
     Box(Modifier.fillMaxWidth().glass(RoundedCornerShape(14.dp), 0.18f).padding(horizontal = 14.dp, vertical = 12.dp)) {
         if (value.isEmpty()) Text(hint, color = Color.White.copy(alpha = 0.45f), fontSize = 15.sp)
         BasicTextField(
             value = value, onValueChange = onChange, singleLine = true,
             textStyle = TextStyle(color = Color.White, fontSize = 15.sp),
             cursorBrush = SolidColor(Color.White),
-            visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
-            keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else if (phone) KeyboardType.Phone else KeyboardType.Ascii),
+            visualTransformation = if (password && !reveal) PasswordVisualTransformation() else VisualTransformation.None,
+            keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else if (phone) KeyboardType.Phone else if (email) KeyboardType.Email else KeyboardType.Ascii),
             modifier = Modifier.fillMaxWidth()
         )
     }
+}
+
+@Composable
+private fun EmailPill(label: String, strong: Boolean = false, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier.clip(RoundedCornerShape(50)).background(if (strong) UserBlueBottom else Color.White.copy(alpha = 0.16f))
+            .clickable { onClick() }.padding(horizontal = 16.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center
+    ) { Text(label, color = Color.White, fontSize = 15.sp, fontWeight = if (strong) FontWeight.SemiBold else FontWeight.Normal) }
 }
 
 @Composable
@@ -325,6 +334,10 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
     var emailPass by remember { mutableStateOf("") }
     var emailTo by remember { mutableStateOf(EmailReport.to(ctx)) }
     var emailMsg by remember { mutableStateOf(EmailReport.lastError(ctx).let { if (it.isBlank()) "" else "Last email problem: $it" }) }
+    var emailShowPw by remember { mutableStateOf(false) }
+    var emailOther by remember { mutableStateOf(EmailReport.to(ctx).isNotBlank()) }
+    var emailHost by remember { mutableStateOf(EmailReport.host(ctx)) }
+    var emailBusy by remember { mutableStateOf(false) }
     val smsPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     // The settings are separate pages: 0 = the menu, 1 = API keys, 2 = Voice, 3 = Website authorisation, 4 = Apps, 5 = Task reports.
     var page by remember { mutableStateOf(0) }
@@ -392,7 +405,10 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                     }
                     MenuRow("Lock", if (AppLock.enabled(ctx)) "On: Neo Plus and ${AppLock.lockedApps(ctx).size} app(s) are locked" else "Lock Neo Plus and chosen apps with your phone’s unlock or your voice", 7)
                     MenuRow("Saved PINs", if (PinVault.names(ctx).isEmpty()) "Let the phone type a PIN for you, the AI never sees it" else PinVault.names(ctx).size.toString() + " saved", 6)
-                    MenuRow("Task reports by text", if (TaskReports.smsNumber(ctx).isBlank()) "Add the number the assistant texts when a task is done" else "Texting " + TaskReports.smsNumber(ctx), 5)
+                    MenuRow("Task reports (email or text)",
+                        if (EmailReport.configured(ctx)) "Emailing " + EmailReport.from(ctx)
+                        else if (TaskReports.smsNumber(ctx).isNotBlank()) "Texting " + TaskReports.smsNumber(ctx)
+                        else "Get a report when a task is done: connect your email in one tap", 5)
                     Box(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.16f))
                             .clickable { onDone() }.padding(vertical = 12.dp),
@@ -536,34 +552,67 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                 5 -> {
                     Text("Task reports", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
                     Text("By email (free, sent from your own mailbox, no SIM used)", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    val provider = EmailReport.providerName(emailFrom)
+                    val hasAt = emailFrom.contains("@") && emailFrom.substringAfter("@").contains(".")
+                    Text("1. Your email address", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    GlassField(emailFrom, { emailFrom = it.trim().take(120); emailMsg = "" }, "you@gmail.com", email = true)
+                    if (provider.isNotBlank()) Text("✓ $provider recognised, the mail server is set up for you.", color = Color(0xFF7DE08A), fontSize = 13.sp, lineHeight = 18.sp)
+                    else if (hasAt) {
+                        Text("This provider is not one I know, so add its outgoing (SMTP) mail server, e.g. smtp.yourdomain.com or smtp.yourdomain.com:587.", color = note, fontSize = 13.sp, lineHeight = 18.sp)
+                        GlassField(emailHost, { emailHost = it.trim().take(100); emailMsg = "" }, "Mail server (leave empty to try smtp.yourdomain)")
+                    }
+                    Text("2. App password", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    val pwUrl = EmailReport.appPasswordUrl(emailFrom)
                     Text(
-                        "Every finished task is emailed to you. Enter the email address that sends the reports and its APP PASSWORD " +
-                            "(Gmail: Google Account > Security > 2-Step Verification > App passwords). Your normal password will not work. " +
-                            "The app password is stored encrypted on this phone. Leave the email empty and save to turn email reports off.",
+                        if (pwUrl.isNotBlank()) "Your normal password will not work. Tap the button, create a password called Neo Plus, copy it, then come back and tap Paste."
+                        else "Your normal password may not work. Create an app password in your mail account’s security settings, copy it, then tap Paste.",
                         color = note, fontSize = 13.sp, lineHeight = 18.sp
                     )
-                    GlassField(emailFrom, { emailFrom = it.trim().take(120); emailMsg = "" }, "Your email, e.g. you@gmail.com")
-                    GlassField(emailPass, { emailPass = it.take(64); emailMsg = "" },
-                        if (EmailReport.hasPassword(ctx)) "App password (saved, leave empty to keep it)" else "App password", password = true)
-                    GlassField(emailTo, { emailTo = it.trim().take(120); emailMsg = "" }, "Send reports to (empty = the same email)")
-                    if (emailMsg.isNotBlank()) Text(emailMsg, color = if (emailMsg.startsWith("Couldn") || emailMsg.startsWith("Last")) Color(0xFFFFB347) else Color(0xFF7DE08A), fontSize = 13.sp, lineHeight = 18.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                        Box(
-                            Modifier.weight(1f).clip(RoundedCornerShape(50)).background(UserBlueBottom)
-                                .clickable { emailMsg = EmailReport.save(ctx, emailFrom, emailPass, emailTo); if (!emailMsg.startsWith("Couldn")) emailPass = "" }
-                                .padding(vertical = 12.dp),
-                            contentAlignment = Alignment.Center
-                        ) { Text("Save email", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
-                        Box(
-                            Modifier.weight(1f).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.16f))
-                                .clickable {
-                                    emailMsg = "Sending the test email…"
-                                    val c = ctx.applicationContext
-                                    Thread { emailMsg = EmailReport.sendTest(c) }.start()
-                                }.padding(vertical = 12.dp),
-                            contentAlignment = Alignment.Center
-                        ) { Text("Send test", color = Color.White, fontSize = 15.sp) }
+                    if (pwUrl.isNotBlank()) EmailPill("Get my $provider app password", modifier = Modifier.fillMaxWidth()) {
+                        try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pwUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                        catch (e: Exception) { emailMsg = "Couldn’t open the browser. Open $pwUrl yourself." }
                     }
+                    GlassField(emailPass, { emailPass = it.filter { c -> !c.isWhitespace() }.take(64); emailMsg = "" },
+                        if (EmailReport.hasPassword(ctx)) "App password (saved, leave empty to keep it)" else "Paste the app password here", password = true, reveal = emailShowPw)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                        EmailPill("Paste", modifier = Modifier.weight(1f)) {
+                            try {
+                                val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                val t = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(ctx)?.toString().orEmpty()
+                                if (t.isBlank()) emailMsg = "Couldn’t paste: copy the app password first."
+                                else { emailPass = t.filter { c -> !c.isWhitespace() }.take(64); emailMsg = "" }
+                            } catch (e: Exception) { emailMsg = "Couldn’t paste: copy the app password first." }
+                        }
+                        EmailPill(if (emailShowPw) "Hide" else "Show", modifier = Modifier.weight(1f)) { emailShowPw = !emailShowPw }
+                    }
+                    Text("3. Where to send the reports", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    if (!emailOther) {
+                        Text("To the same email address.", color = note, fontSize = 13.sp)
+                        EmailPill("Send to a different email", modifier = Modifier.fillMaxWidth()) { emailOther = true }
+                    } else {
+                        GlassField(emailTo, { emailTo = it.trim().take(120); emailMsg = "" }, "Send reports to this email", email = true)
+                        EmailPill("Use the same email instead", modifier = Modifier.fillMaxWidth()) { emailOther = false; emailTo = ""; emailMsg = "" }
+                    }
+                    if (emailMsg.isNotBlank()) Text(emailMsg, color = if (emailMsg.startsWith("Couldn") || emailMsg.startsWith("Last")) Color(0xFFFFB347) else Color(0xFF7DE08A), fontSize = 13.sp, lineHeight = 18.sp)
+                    EmailPill(if (emailBusy) "Connecting…" else if (EmailReport.configured(ctx)) "Save & send test" else "Connect & send test", strong = true, modifier = Modifier.fillMaxWidth()) {
+                        if (emailBusy) return@EmailPill
+                        if (emailFrom.isBlank()) { emailMsg = "Couldn’t connect: type your email address first."; return@EmailPill }
+                        emailBusy = true; emailMsg = "Connecting and sending a test email…"
+                        val c = ctx.applicationContext
+                        val f = emailFrom; val pw = emailPass; val t = if (emailOther) emailTo else ""; val h = emailHost
+                        Thread {
+                            val r = try { EmailReport.connect(c, f, pw, t, h) } catch (e: Exception) { "Couldn’t connect: " + e.javaClass.simpleName }
+                            emailMsg = r
+                            if (!r.startsWith("Couldn")) emailPass = ""
+                            emailBusy = false
+                        }.start()
+                    }
+                    if (EmailReport.configured(ctx)) Text(
+                        "Turn email reports off", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp,
+                        modifier = Modifier.clickable {
+                            emailMsg = EmailReport.save(ctx, "", "", ""); emailFrom = ""; emailPass = ""; emailTo = ""; emailHost = ""; emailOther = false
+                        }.padding(vertical = 4.dp)
+                    )
                     Text("By text message (sent from your own SIM, uses airtime)", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     Text(
                         "Add the phone number the assistant should text when it finishes a task (include the country code, e.g. +265…). Each finished task is sent as a text message to this number, and after 5 finished tasks the assistant calls you instead. Leave it empty to turn texts off: you still get a notification for each task.",

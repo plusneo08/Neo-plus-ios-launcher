@@ -358,3 +358,27 @@ fun NeoDialButton(size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifi
         }
     }
 }
+
+
+/** A round glowing green handset button on the home screen: tap it to phone the Neo Plus assistant and talk by voice. */
+@Composable
+fun NeoCallButton(size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
+    val t = rememberFrameSeconds()
+    val green = Color(0xFF30D158)
+    Box(modifier.size(size), contentAlignment = Alignment.Center) {
+        androidx.compose.foundation.Canvas(Modifier.requiredSize(size * 1.5f)) {
+            val p = (t.value * 0.5f) % 1f
+            drawCircle(green.copy(alpha = 0.45f * (1f - p)), this.size.minDimension / 2f * (0.66f + 0.34f * p), center,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5.dp.toPx()))
+        }
+        Box(
+            Modifier.size(size).clip(CircleShape)
+                .background(Brush.linearGradient(listOf(Color(0xFF5BE584), green, Color(0xFF12A150))))
+                .border(0.9.dp, Color.White.copy(alpha = 0.55f), CircleShape)
+                .semantics { contentDescription = "Call Neo Plus assistant" },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.Call, null, tint = Color.White, modifier = Modifier.size(size * 0.55f))
+        }
+    }
+}
