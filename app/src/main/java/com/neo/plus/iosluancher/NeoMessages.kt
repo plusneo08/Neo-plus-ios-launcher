@@ -110,6 +110,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import kotlinx.coroutines.launch
+import android.app.PendingIntent
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Notifications
 import android.content.BroadcastReceiver
 import android.content.ContentValues
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -173,7 +176,7 @@ val MsgThemes = listOf(
 /*  Data                                                                */
 /* ------------------------------------------------------------------ */
 
-private class MsgItem(val id: Long, val address: String, val body: String, val date: Long, val sent: Boolean, val read: Boolean)
+private class MsgItem(val id: Long, val address: String, val body: String, val date: Long, val sent: Boolean, val read: Boolean, val state: Int = 0)
 private class MsgThread(val key: String, val address: String, val name: String, val msgs: List<MsgItem>)
 
 private fun has(ctx: Context, p: String) = ctx.checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED
@@ -187,13 +190,13 @@ private fun prefs(ctx: Context) = ctx.applicationContext.getSharedPreferences("n
 /** Messages this app sent: Android only lets the default SMS app write to the phone's message store, so they are kept here. */
 private fun outbox(ctx: Context): List<MsgItem> = try {
     val a = JSONArray(prefs(ctx).getString("outbox", "[]"))
-    (0 until a.length()).map { val o = a.getJSONObject(it); MsgItem(-o.getLong("d"), o.getString("a"), o.getString("b"), o.getLong("d"), true, true) }
+    (0 until a.length()).map { val o = a.getJSONObject(it); MsgItem(-o.getLong("d"), o.getString("a"), o.getString("b"), o.getLong("d"), true, true, o.optInt("s", 0)) }
 } catch (e: Exception) { emptyList() }
 
-private fun saveOutbox(ctx: Context, to: String, body: String) {
+private fun saveOutbox(ctx: Context, to: String, body: String, date: Long = System.currentTimeMillis()) {
     try {
         val a = JSONArray(prefs(ctx).getString("outbox", "[]"))
-        a.put(JSONObject().put("a", to).put("b", body).put("d", System.currentTimeMillis()))
+        a.put(JSONObject().put("a", to).put("b", body).put("d", date))
         val keep = JSONArray()
         for (i in maxOf(0, a.length() - 400) until a.length()) keep.put(a.get(i))
         prefs(ctx).edit().putString("outbox", keep.toString()).apply()
@@ -295,10 +298,10 @@ private fun defaultSmsIntent(ctx: Context): Intent {
 }
 
 /** As the default app, a sent text must be written into the phone's message store by us. */
-private fun insertSent(ctx: Context, to: String, body: String): Boolean = try {
+private fun insertSent(ctx: Context, to: String, body: String, date: Long = System.currentTimeMillis()): Boolean = try {
     val v = ContentValues().apply {
         put(Telephony.Sms.ADDRESS, to); put(Telephony.Sms.BODY, body)
-        put(Telephony.Sms.DATE, System.currentTimeMillis()); put(Telephony.Sms.READ, 1); put(Telephony.Sms.SEEN, 1)
+        put(Telephony.Sms.DATE, date); put(Telephony.Sms.READ, 1); put(Telephony.Sms.SEEN, 1)
     }
     ctx.contentResolver.insert(Telephony.Sms.Sent.CONTENT_URI, v) != null
 } catch (e: Exception) { false }
@@ -344,6 +347,57 @@ class SmsDeliverReceiver : BroadcastReceiver() {
     }
 }
 
+/**
+ * Hears back from the network about a text you sent: it left the phone, or it was delivered (or failed). This is a delivery
+ * report only: ordinary text messages cannot tell the sender whether the other person has opened or read them.
+ */
+class SmsStatusReceiver : BroadcastReceiver() {
+    companion object {
+        const val ACTION_SENT = "com.neo.plus.iosluancher.SMS_SENT"
+        const val ACTION_DELIVERED = "com.neo.plus.iosluancher.SMS_DELIVERED"
+    }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        val app = context.applicationContext
+        val d = intent.getLongExtra("d", 0L)
+        if (d == 0L) return
+        val n = intent.getIntExtra("n", 1)
+        when (intent.action) {
+            ACTION_SENT -> if (resultCode != android.app.Activity.RESULT_OK) setSmsState(app, d, 2)
+            ACTION_DELIVERED -> {
+                var st = 0
+                val pdu = intent.getByteArrayExtra("pdu")
+                if (pdu != null) try { st = android.telephony.SmsMessage.createFromPdu(pdu, intent.getStringExtra("format")).status } catch (e: Exception) { }
+                if (st == 0) {
+                    val got = prefs(app).getInt("dlv_$d", 0) + 1
+                    prefs(app).edit().putInt("dlv_$d", got).apply()
+                    if (got >= n) setSmsState(app, d, 1)
+                } else if (st >= 64) setSmsState(app, d, 2)
+            }
+        }
+    }
+}
+
+/** 1 = delivered, 2 = failed. Written to the phone's store when Neo Messages is the default app, and always to Neo Messages' own list. */
+private fun setSmsState(ctx: Context, date: Long, state: Int) {
+    try {
+        val v = ContentValues().apply {
+            put(Telephony.Sms.STATUS, if (state == 1) 0 else 64)
+            if (state == 2) put(Telephony.Sms.TYPE, 5)
+        }
+        ctx.contentResolver.update(Telephony.Sms.CONTENT_URI, v, "date=? AND type IN (2,4,5)", arrayOf(date.toString()))
+    } catch (e: Exception) { }
+    try {
+        val a = JSONArray(prefs(ctx).getString("outbox", "[]"))
+        var changed = false
+        for (i in 0 until a.length()) {
+            val o = a.getJSONObject(i)
+            if (o.getLong("d") == date && o.optInt("s", 0) != 1) { o.put("s", state); changed = true }
+        }
+        if (changed) prefs(ctx).edit().putString("outbox", a.toString()).apply()
+    } catch (e: Exception) { }
+}
+
 /** Android requires a default messages app to declare this. Picture messages (MMS) are not handled yet. */
 class MmsDeliverReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) { }
@@ -375,12 +429,20 @@ private fun loadSms(ctx: Context): List<MsgItem> {
     val hidden = prefs(ctx).getStringSet("hidden_sms", emptySet()) ?: emptySet()
     try {
         ctx.contentResolver.query(
-            Telephony.Sms.CONTENT_URI, arrayOf("_id", "address", "body", "date", "type", "read"), null, null, "date DESC"
+            Telephony.Sms.CONTENT_URI, arrayOf("_id", "address", "body", "date", "type", "read", "status"), null, null, "date DESC"
         )?.use { c ->
             while (c.moveToNext() && out.size < 4000) {
                 val id = c.getLong(0)
                 if (id.toString() in hidden) continue
-                out.add(MsgItem(id, c.getString(1).orEmpty(), c.getString(2).orEmpty(), c.getLong(3), c.getInt(4) != 1, c.getInt(5) == 1))
+                val type = c.getInt(4)
+                val status = c.getInt(6)
+                val state = when {
+                    type == 1 -> 0
+                    type == 5 || status >= 64 -> 2          // failed
+                    status == 0 -> 1                        // the delivery report came back: delivered
+                    else -> 0
+                }
+                out.add(MsgItem(id, c.getString(1).orEmpty(), c.getString(2).orEmpty(), c.getLong(3), type != 1, c.getInt(5) == 1, state))
             }
         }
     } catch (e: Exception) { }
@@ -418,8 +480,21 @@ private fun sendSms(ctx: Context, to: String, text: String): String? {
     return try {
         val sm = if (Build.VERSION.SDK_INT >= 31) ctx.getSystemService(SmsManager::class.java) else @Suppress("DEPRECATION") SmsManager.getDefault()
         val parts = sm.divideMessage(text)
-        if (parts.size > 1) sm.sendMultipartTextMessage(to, null, parts, null, null) else sm.sendTextMessage(to, null, text, null, null)
-        if (!(isDefaultSms(ctx) && insertSent(ctx, to, text))) saveOutbox(ctx, to, text)
+        val now = System.currentTimeMillis()
+        // The network tells us when the text was sent and when it reached the other phone (a "delivery report").
+        fun pi(action: String, i: Int): PendingIntent = PendingIntent.getBroadcast(
+            ctx, ((now and 0xFFFFFFFL).toInt() + i * 2 + if (action == SmsStatusReceiver.ACTION_SENT) 0 else 1),
+            Intent(ctx, SmsStatusReceiver::class.java).setAction(action).putExtra("d", now).putExtra("n", parts.size),
+            PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        if (parts.size > 1) {
+            sm.sendMultipartTextMessage(
+                to, null, parts,
+                ArrayList(parts.indices.map { pi(SmsStatusReceiver.ACTION_SENT, it) }),
+                ArrayList(parts.indices.map { pi(SmsStatusReceiver.ACTION_DELIVERED, it) })
+            )
+        } else sm.sendTextMessage(to, null, text, pi(SmsStatusReceiver.ACTION_SENT, 0), pi(SmsStatusReceiver.ACTION_DELIVERED, 0))
+        if (!(isDefaultSms(ctx) && insertSent(ctx, to, text, now))) saveOutbox(ctx, to, text, now)
         null
     } catch (e: Exception) { "Couldn’t send: " + (e.message ?: "unknown error") }
 }
@@ -459,6 +534,15 @@ private fun Avatar(name: String, th: MsgTheme, size: Dp) {
         if (c != null) Text(c.uppercase(), color = Color.White, fontSize = (size.value * 0.42f).sp, fontWeight = FontWeight.SemiBold)
         else Icon(Icons.Filled.Create, null, tint = Color.White, modifier = Modifier.size(size * 0.45f))
     }
+}
+
+/** A small round button for the top bars; lit up in the theme colour when it is switched on. */
+@Composable
+private fun TopIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, th: MsgTheme, desc: String, active: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.size(38.dp).clip(CircleShape).background(if (active) th.accent.copy(alpha = 0.22f) else Color.Transparent).clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) { Icon(icon, desc, tint = if (active) th.accent else th.text, modifier = Modifier.size(20.dp)) }
 }
 
 @Composable
@@ -605,14 +689,38 @@ private fun ListScreen(
     Box(Modifier.fillMaxSize()) {
         ChatBackdrop(bg)
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 14.dp, top = 14.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            val lctx = LocalContext.current
+            var orbsOn by remember { mutableStateOf(MessageOrbs.enabled(lctx)) }
+            val unread = remember(threads) { threads.count { t -> t.msgs.any { !it.sent && !it.read } } }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(46.dp).clip(RoundedCornerShape(16.dp)).background(Brush.linearGradient(th.sent)),
+                    contentAlignment = Alignment.Center
+                ) { Icon(Icons.Filled.Email, null, tint = Color.White, modifier = Modifier.size(24.dp)) }
+                Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Messages", color = th.text, fontSize = 32.sp, fontWeight = FontWeight.Bold)
-                    Text("NEO PLUS", color = th.accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 3.sp)
+                    Text("Messages", color = th.text, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (unread > 0) "$unread unread  ·  ${threads.size} chats" else "${threads.size} chats",
+                        color = if (unread > 0) th.accent else th.sub, fontSize = 12.sp, fontWeight = FontWeight.Medium
+                    )
                 }
-                IconBtn(Icons.Filled.PhotoLibrary, th, "Background", onBg)
-                Spacer(Modifier.width(8.dp))
-                IconBtn(Icons.Filled.Palette, th, "Themes", onTheme)
+                Row(Modifier.clip(RoundedCornerShape(50)).background(th.card).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    TopIcon(Icons.Filled.Notifications, th, "Floating orbs for new messages", orbsOn) {
+                        if (orbsOn) {
+                            orbsOn = false; MessageOrbs.setEnabled(lctx, false)
+                            android.widget.Toast.makeText(lctx, "New messages will not float as orbs", android.widget.Toast.LENGTH_SHORT).show()
+                        } else {
+                            orbsOn = true; MessageOrbs.setEnabled(lctx, true)
+                            if (!MessageOrbs.canShow(lctx)) {
+                                android.widget.Toast.makeText(lctx, "Allow “Display over other apps” for Neo Plus so the orbs can float", android.widget.Toast.LENGTH_LONG).show()
+                                try { lctx.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + lctx.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
+                            } else android.widget.Toast.makeText(lctx, "New messages will float as orbs", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    TopIcon(Icons.Filled.PhotoLibrary, th, "Background", false, onBg)
+                    TopIcon(Icons.Filled.Palette, th, "Themes", false, onTheme)
+                }
             }
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).clip(RoundedCornerShape(22.dp)).background(th.card)
@@ -782,6 +890,7 @@ private fun ChatScreen(
         out
     }
     val list = rememberLazyListState()
+    val lastSentId = remember(msgs) { msgs.lastOrNull { it.sent }?.id }
     LaunchedEffect(rows.size) { if (rows.isNotEmpty()) list.scrollToItem(rows.lastIndex) }
 
     Box(Modifier.fillMaxSize()) {
@@ -789,7 +898,10 @@ private fun ChatScreen(
         Column(Modifier.fillMaxSize().statusBarsPadding().imePadding()) {
             if (selecting) {
                 // selection bar: Copy / Forward / Delete the chosen messages
-                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp).clip(RoundedCornerShape(30.dp)).background(ui.card).padding(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     IconBtn(Icons.Filled.Close, ui, "Cancel") { selected.clear() }
                     Spacer(Modifier.width(12.dp))
                     Text("${selected.size} selected", color = ui.text, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -812,18 +924,26 @@ private fun ChatScreen(
                     IconBtn(Icons.Filled.Delete, ui, "Delete") { confirmDelete = true }
                 }
             } else {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconBtn(Icons.Filled.ArrowBack, ui, "Back", onBack)
-                    Spacer(Modifier.width(10.dp))
-                    Avatar(name, th, 42.dp)
+                // floating glass top bar: back, who you are talking to, background, call
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp).clip(RoundedCornerShape(30.dp)).background(ui.card).padding(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TopIcon(Icons.Filled.ArrowBack, ui, "Back", false, onBack)
+                    Spacer(Modifier.width(4.dp))
+                    Avatar(name, th, 40.dp)
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(name, color = ui.text, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(name, color = ui.text, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         if (name != address) Text(address, color = ui.sub, fontSize = 12.sp, maxLines = 1)
                     }
-                    IconBtn(Icons.Filled.Palette, ui, "Chat background") { bgSheet = true }
-                    Spacer(Modifier.width(8.dp))
-                    IconBtn(Icons.Filled.Call, ui, "Call") { try { ctx.startActivity(Intent(ctx, NeoDialerActivity::class.java).setData(Uri.fromParts("tel", address, null))) } catch (e: Exception) { } }
+                    TopIcon(Icons.Filled.Palette, ui, "Chat background", false) { bgSheet = true }
+                    Spacer(Modifier.width(4.dp))
+                    Box(
+                        Modifier.size(40.dp).clip(CircleShape).background(Brush.linearGradient(th.sent))
+                            .clickable { try { ctx.startActivity(Intent(ctx, NeoDialerActivity::class.java).setData(Uri.fromParts("tel", address, null))) } catch (e: Exception) { } },
+                        contentAlignment = Alignment.Center
+                    ) { Icon(Icons.Filled.Call, "Call", tint = Color.White, modifier = Modifier.size(20.dp)) }
                 }
             }
             LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp), state = list, verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -850,7 +970,15 @@ private fun ChatScreen(
                                         .then(if (r.sent) Modifier.background(Brush.linearGradient(th.sent)) else Modifier.background(th.recv))
                                         .padding(horizontal = 14.dp, vertical = 9.dp)
                                 ) { Text(r.body, color = if (r.sent) th.sentText else th.text, fontSize = 16.sp) }
-                                Text(SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(r.date)), color = ui.sub, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                                Row(Modifier.padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(r.date)), color = ui.sub, fontSize = 10.sp)
+                                    if (r.sent) {
+                                        // 👌 = the network says it reached the other phone. Plain texts cannot report that it was opened.
+                                        if (r.state == 1) Text("  ·  👌 Delivered", color = ui.sub, fontSize = 10.sp)
+                                        else if (r.state == 2) Text("  ·  Not sent", color = Color(0xFFFFB347), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                                        else if (r.id == lastSentId) Text("  ·  Sent", color = ui.sub, fontSize = 10.sp)
+                                    }
+                                }
                             }
                         }
                     }

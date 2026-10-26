@@ -336,6 +336,12 @@
         <receiver android:name=".SmsDeliverReceiver" android:exported="true" android:permission="android.permission.BROADCAST_SMS">
             <intent-filter><action android:name="android.provider.Telephony.SMS_DELIVER" /></intent-filter>
         </receiver>
+        <receiver android:name=".SmsStatusReceiver" android:exported="false" />
+        <!-- A text arrived: float an orb carrying it over the home screen and other apps -->
+        <receiver android:name=".SmsOrbReceiver" android:exported="true" android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter><action android:name="android.provider.Telephony.SMS_RECEIVED" /></intent-filter>
+        </receiver>
+        <service android:name=".MessageOrbService" android:exported="false" />
         <receiver android:name=".MmsDeliverReceiver" android:exported="true" android:permission="android.permission.BROADCAST_WAP_PUSH">
             <intent-filter>
                 <action android:name="android.provider.Telephony.WAP_PUSH_DELIVER" />

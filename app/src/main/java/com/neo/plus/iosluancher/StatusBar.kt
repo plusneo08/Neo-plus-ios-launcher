@@ -2,6 +2,43 @@
 
 package com.neo.plus.iosluancher
 
+import android.app.AlarmManager
+import android.bluetooth.BluetoothManager
+import android.content.res.Configuration
+import android.hardware.camera2.CameraManager
+import android.location.LocationManager
+import android.media.AudioManager
+import android.net.wifi.WifiManager
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.Contrast
+import androidx.compose.material.icons.filled.DoNotDisturbOn
+import androidx.compose.material.icons.filled.FlashlightOn
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.ScreenLockRotation
+import androidx.compose.material.icons.filled.Vibration
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.WifiTethering
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import android.Manifest
 import android.app.NotificationManager
 import android.content.BroadcastReceiver
@@ -116,7 +153,11 @@ object SimSignals {
 
 private data class PhoneInfo(
     val sims: List<Int>, val type: String,
-    val airplane: Boolean, val wifi: Boolean, val dataOn: Boolean
+    val airplane: Boolean, val wifi: Boolean, val dataOn: Boolean,
+    val wifiOn: Boolean = false, val bt: Boolean = false, val dnd: Boolean = false, val rotationLock: Boolean = false,
+    val location: Boolean = false, val hotspot: Boolean = false, val alarm: Boolean = false,
+    val ringer: Int = 2,            // 0 = silent, 1 = vibrate, 2 = normal
+    val dark: Boolean = false
 )
 
 private fun readPhone(ctx: Context): PhoneInfo {
@@ -137,7 +178,31 @@ private fun readPhone(ctx: Context): PhoneInfo {
         val cm = ctx.getSystemService(ConnectivityManager::class.java)
         cm.getNetworkCapabilities(cm.activeNetwork)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
     } catch (e: Exception) { false }
-    return PhoneInfo(sims, type, air, wifi, dataOn)
+    // The other switches that are shown in the top bar while they are on
+    val wifiOn = try { (ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager).isWifiEnabled } catch (e: Throwable) { false }
+    val bt = try { ctx.getSystemService(BluetoothManager::class.java)?.adapter?.isEnabled == true } catch (e: Throwable) { false }
+    val dnd = try {
+        val f = (ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).currentInterruptionFilter
+        f != NotificationManager.INTERRUPTION_FILTER_ALL && f != NotificationManager.INTERRUPTION_FILTER_UNKNOWN
+    } catch (e: Throwable) { false }
+    val rotationLock = try { Settings.System.getInt(ctx.contentResolver, Settings.System.ACCELEROMETER_ROTATION, 1) == 0 } catch (e: Throwable) { false }
+    val location = try {
+        val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        if (android.os.Build.VERSION.SDK_INT >= 28) lm.isLocationEnabled
+        else lm.isProviderEnabled(LocationManager.GPS_PROVIDER) || lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+    } catch (e: Throwable) { false }
+    val hotspot = try {
+        java.net.NetworkInterface.getNetworkInterfaces().toList().any {
+            (it.name.startsWith("ap") || it.name.startsWith("swlan") || it.name == "wlan1") && it.isUp && it.inetAddresses.hasMoreElements()
+        }
+    } catch (e: Throwable) { false }
+    val alarm = try { (ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager).nextAlarmClock != null } catch (e: Throwable) { false }
+    val ringer = try { (ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager).ringerMode } catch (e: Throwable) { AudioManager.RINGER_MODE_NORMAL }
+    val dark = (ctx.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    return PhoneInfo(
+        sims, type, air, wifi, dataOn, wifiOn, bt, dnd, rotationLock, location, hotspot, alarm,
+        when (ringer) { AudioManager.RINGER_MODE_SILENT -> 0; AudioManager.RINGER_MODE_VIBRATE -> 1; else -> 2 }, dark
+    )
 }
 
 /** Signal bars: one row per SIM. A dual-SIM phone shows two stacked rows (SIM 1 on top, SIM 2 below), like an iPhone. */
@@ -206,15 +271,59 @@ fun expandAndroidPanel(ctx: Context, quickSettings: Boolean) {
     }
 }
 
+/** A frosted capsule behind a group of status icons. */
+private fun Modifier.glass(): Modifier =
+    this.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.14f)).border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(50))
+
+/** A status icon that grows in when its switch is turned on and shrinks away when it is turned off. */
+@Composable
+private fun RowScope.Indicator(on: Boolean, icon: ImageVector, tint: Color = Color.White, alpha: Float = 1f) {
+    AnimatedVisibility(
+        on,
+        enter = fadeIn() + scaleIn(initialScale = 0.4f) + expandHorizontally(),
+        exit = fadeOut() + scaleOut(targetScale = 0.4f) + shrinkHorizontally()
+    ) {
+        Icon(icon, null, tint = tint.copy(alpha = alpha), modifier = Modifier.padding(start = 6.dp).size(14.dp))
+    }
+}
+
+/** Battery as a small ring that fills with the charge (it pulses green while charging), with the percentage beside it. */
+@Composable
+private fun BatteryRing(pct: Int, charging: Boolean, lowPower: Boolean) {
+    val color = when {
+        charging -> Color(0xFF34C759)
+        lowPower -> Color(0xFFFFD60A)
+        pct <= 15 -> Color(0xFFFF453A)
+        else -> Color.White
+    }
+    val pulse = if (charging) rememberInfiniteTransition(label = "charging").animateFloat(
+        0.5f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "chargingPulse"
+    ).value else 1f
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Canvas(Modifier.size(15.dp)) {
+            val sw = 2.2.dp.toPx()
+            val tl = Offset(sw / 2f, sw / 2f)
+            val box = Size(size.width - sw, size.height - sw)
+            drawArc(Color.White.copy(alpha = 0.25f), 0f, 360f, false, tl, box, style = Stroke(sw))
+            drawArc(color.copy(alpha = pulse), -90f, 360f * pct.coerceIn(3, 100) / 100f, false, tl, box, style = Stroke(sw, cap = StrokeCap.Round))
+        }
+        Text("$pct%", color = Color.White, fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 5.dp))
+    }
+}
+
 /**
- * The launcher's own status bar, laid out like a normal Android one: clock on the left, SIM signal / data type / Wi-Fi /
- * battery with % on the right, over a soft dark fade so it reads on any wallpaper. Android's real bar stays hidden.
- * Swiping down on it opens Android's own notification shade (left half) or quick settings (right half).
+ * The launcher's own top bar: two frosted capsules floating over the wallpaper, so the middle stays clear for the camera
+ * hole. Left: the time (the colon blinks every second) and the date. Right: SIM signal, data type, Wi-Fi and a battery ring.
+ * Android's real bar stays hidden. Swiping down on it opens Android's own notification shade (left half) or quick settings
+ * (right half).
  */
 @Composable
 fun IosStatusBar(modifier: Modifier = Modifier) {
     val ctx = LocalContext.current
-    var time by remember { mutableStateOf("") }
+    var hh by remember { mutableStateOf("") }
+    var mm by remember { mutableStateOf("") }
+    var day by remember { mutableStateOf("") }
+    var colonOn by remember { mutableStateOf(true) }
     var info by remember { mutableStateOf(readPhone(ctx)) }
     var pct by remember { mutableStateOf(0) }
     var charging by remember { mutableStateOf(false) }
@@ -236,12 +345,25 @@ fun IosStatusBar(modifier: Modifier = Modifier) {
         onDispose { try { ctx.unregisterReceiver(r) } catch (e: Exception) { } }
     }
 
+    var torchOn by remember { mutableStateOf(false) }
+    DisposableEffect(Unit) {
+        val cm = try { ctx.getSystemService(Context.CAMERA_SERVICE) as CameraManager } catch (e: Exception) { null }
+        val cb = object : CameraManager.TorchCallback() {
+            override fun onTorchModeChanged(cameraId: String, enabled: Boolean) { torchOn = enabled }
+        }
+        try { cm?.registerTorchCallback(cb, null) } catch (e: Exception) { }
+        onDispose { try { cm?.unregisterTorchCallback(cb) } catch (e: Exception) { } }
+    }
+
     LaunchedEffect(Unit) {
+        val dayFmt = java.text.SimpleDateFormat("EEE d", java.util.Locale.getDefault())
         while (true) {
             val c = Calendar.getInstance()
-            val h = c.get(Calendar.HOUR).let { if (it == 0) 12 else it }
-            time = if (android.text.format.DateFormat.is24HourFormat(ctx)) "%02d:%02d".format(c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE))
-            else "%d:%02d".format(h, c.get(Calendar.MINUTE))
+            val h12 = c.get(Calendar.HOUR).let { if (it == 0) 12 else it }
+            if (android.text.format.DateFormat.is24HourFormat(ctx)) hh = "%02d".format(c.get(Calendar.HOUR_OF_DAY)) else hh = h12.toString()
+            mm = "%02d".format(c.get(Calendar.MINUTE))
+            day = dayFmt.format(c.time)
+            colonOn = c.get(Calendar.SECOND) % 2 == 0
             info = readPhone(ctx)
             lowPower = try { (ctx.getSystemService(Context.POWER_SERVICE) as PowerManager).isPowerSaveMode } catch (e: Exception) { false }
             delay(1000)
@@ -251,7 +373,7 @@ fun IosStatusBar(modifier: Modifier = Modifier) {
     var dragY by remember { mutableStateOf(0f) }
     Row(
         modifier.fillMaxWidth().windowInsetsTopHeight(statusInsets())
-            .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.38f), Color.Transparent)))
+            .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.22f), Color.Transparent)))
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
                     onDragStart = { dragY = 0f },
@@ -264,22 +386,44 @@ fun IosStatusBar(modifier: Modifier = Modifier) {
                     }
                 )
             }
-            .padding(start = 18.dp, end = 18.dp, bottom = 2.dp),
+            .padding(start = 12.dp, end = 12.dp, bottom = 1.dp),
         Arrangement.SpaceBetween, Alignment.CenterVertically
     ) {
-        Text(time, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium, style = ShadowStyle)
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        // left capsule: time, date, and the "mode" switches while they are on (Do Not Disturb, silent / vibrate, rotation lock, dark mode, alarm)
+        val modes = listOf(info.dnd, info.ringer != 2, info.rotationLock, info.dark, info.alarm).count { it }
+        Row(Modifier.height(24.dp).glass().padding(horizontal = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(hh, color = Color.White, fontSize = 14.sp, lineHeight = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(":", color = Color.White.copy(alpha = if (colonOn) 1f else 0.25f), fontSize = 14.sp, lineHeight = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(mm, color = Color.White, fontSize = 14.sp, lineHeight = 14.sp, fontWeight = FontWeight.SemiBold)
+            if (modes < 3) {
+                Spacer(Modifier.width(8.dp))
+                Text(day, color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.Medium)
+            }
+            Indicator(info.dnd, Icons.Filled.DoNotDisturbOn)
+            Indicator(info.ringer == 0, Icons.Filled.VolumeOff)
+            Indicator(info.ringer == 1, Icons.Filled.Vibration)
+            Indicator(info.rotationLock, Icons.Filled.ScreenLockRotation)
+            Indicator(info.dark, Icons.Filled.Contrast)
+            Indicator(info.alarm, Icons.Filled.Alarm)
+        }
+        // right capsule: every connection switch that is on, then the battery
+        Row(Modifier.height(24.dp).glass().padding(horizontal = 11.dp), verticalAlignment = Alignment.CenterVertically) {
             when {
                 info.airplane -> Icon(Icons.Filled.AirplanemodeActive, null, tint = Color.White, modifier = Modifier.size(15.dp))
-                info.sims.isEmpty() -> Text("No SIM", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, style = ShadowStyle)
+                info.sims.isEmpty() -> Text("No SIM", color = Color.White, fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.SemiBold)
                 else -> {
                     SignalBars(info.sims)
-                    if (info.dataOn && info.type.isNotEmpty() && !info.wifi)
-                        Text(info.type, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, style = ShadowStyle)
+                    if (info.dataOn && info.type.isNotEmpty())
+                        Text(info.type, color = Color.White, fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 5.dp))
                 }
             }
-            if (info.wifi) Icon(Icons.Filled.Wifi, null, tint = Color.White, modifier = Modifier.size(16.dp))
-            AndroidBattery(pct, charging, lowPower)
+            Indicator(info.wifiOn, Icons.Filled.Wifi, alpha = if (info.wifi) 1f else 0.45f)   // dimmed while on but not connected
+            Indicator(info.hotspot, Icons.Filled.WifiTethering)
+            Indicator(info.bt, Icons.Filled.Bluetooth)
+            Indicator(info.location, Icons.Filled.LocationOn)
+            Indicator(torchOn, Icons.Filled.FlashlightOn, tint = Color(0xFFFFD60A))
+            Spacer(Modifier.width(8.dp))
+            BatteryRing(pct, charging, lowPower)
         }
     }
 }
