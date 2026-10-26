@@ -92,6 +92,7 @@ object ApprovalCall {
 
     fun ring(ctx: Context, isUrgent: Boolean) {
         val app = ctx.applicationContext
+        CallAwareness.refreshAsync(app)   // learn where you are and what you're doing while the phone rings
         urgent = isUrgent
         val nm = app.getSystemService(NotificationManager::class.java) ?: return
         if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CHANNEL) == null) {
@@ -238,6 +239,7 @@ private class ApprovalSession(val act: ApprovalCallActivity) {
 
     fun answer() {
         ApprovalCall.stop(ctx)
+        CallAwareness.refreshAsync(ctx)
         phase = 1
         refresh()
         val list = items
@@ -469,7 +471,7 @@ private class ApprovalSession(val act: ApprovalCallActivity) {
                                 ctx, cfg.provider, cfg.key, cfg.activeModel, buildSystemPrompt(ctx, apps), snapshot, apps, null,
                                 "[This is a live phone call. Talk like a friendly person on the phone: contractions, one to three short sentences, no markdown, no lists, and say times and numbers the way people say them out loud. " +
                                     "The user can ask about tasks in progress or about other apps; answer or do it. " +
-                                    (if (waiting.isEmpty()) "Nothing is waiting for their OK." else "Waiting for their OK: " + waiting.mapIndexed { i, w -> "${i + 1}. " + w.summary }.joinToString(" | ") + ". Do not send these yourself; the user answers them by voice.") + "]"
+                                    (if (waiting.isEmpty()) "Nothing is waiting for their OK." else "Waiting for their OK: " + waiting.mapIndexed { i, w -> "${i + 1}. " + w.summary }.joinToString(" | ") + ". Do not send these yourself; the user answers them by voice.") + "]" + CallAwareness.hint(ctx)
                             ).text
                         }
                         // After a side question, steer back to what is still waiting.

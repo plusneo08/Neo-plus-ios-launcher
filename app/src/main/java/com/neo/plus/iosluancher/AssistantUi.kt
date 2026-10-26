@@ -405,6 +405,8 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                     }
                     MenuRow("Lock", if (AppLock.enabled(ctx)) "On: Neo Plus and ${AppLock.lockedApps(ctx).size} app(s) are locked" else "Lock Neo Plus and chosen apps with your phone’s unlock or your voice", 7)
                     MenuRow("Saved PINs", if (PinVault.names(ctx).isEmpty()) "Let the phone type a PIN for you, the AI never sees it" else PinVault.names(ctx).size.toString() + " saved", 6)
+                    MenuRow("Call awareness",
+                        if (CallAwareness.enabled(ctx)) "On: on calls the assistant knows where you are and what you’re doing" else "Off: the assistant does not check your situation on calls", 8)
                     MenuRow("Task reports (email or text)",
                         if (EmailReport.configured(ctx)) "Emailing " + EmailReport.from(ctx)
                         else if (TaskReports.smsNumber(ctx).isNotBlank()) "Texting " + TaskReports.smsNumber(ctx)
@@ -650,6 +652,7 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
 
                 6 -> PinsPanel { page = 0 }
                 7 -> LockPanel(apps) { page = 0 }
+                8 -> AwarenessPanel { page = 0 }
 
                 else -> {
                     Text("Website authorisation", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
@@ -1233,6 +1236,86 @@ private fun PinsPanel(onBack: () -> Unit) {
 
 
 /** Lock settings. Switching the lock off or weakening it needs the phone's own unlock first (see AppLock). */
+@Composable
+private fun AwarenessPanel(onBack: () -> Unit) {
+    val ctx = LocalContext.current
+    val note = Color.White.copy(alpha = 0.7f)
+    var on by remember { mutableStateOf(CallAwareness.enabled(ctx)) }
+    var tick by remember { mutableStateOf(0) }
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { tick++ }
+    val usage = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { tick++ }
+    androidx.compose.runtime.LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(1500); tick++ } }
+    val t = tick   // re-check the permissions whenever this changes
+
+    @Composable
+    fun Item(title: String, sub: String, ok: Boolean, action: String, onClick: () -> Unit) {
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.12f)).padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(sub, color = Color.White.copy(alpha = 0.65f), fontSize = 12.sp)
+            }
+            if (ok) Text("✓ Allowed", color = Color(0xFF7DE08A), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            else Box(Modifier.clip(RoundedCornerShape(50)).background(UserBlueBottom).clickable { onClick() }.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                Text(action, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+
+    Text("Call awareness", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+    Text(
+        "When the assistant calls you, or you call it, it checks where you are, whether you are moving, which app you were just in, your calendar " +
+            "and a few phone facts (screen, battery, headphones, Do Not Disturb). That short summary is sent to Gemini with your call so it can talk " +
+            "to you in context, for example keep it short while you drive. It is kept in memory only and never saved. Each item below is optional.",
+        color = note, fontSize = 13.sp, lineHeight = 18.sp
+    )
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.12f)).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Let the assistant know my situation on calls", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (on) "On" else "Off", color = Color.White.copy(alpha = 0.65f), fontSize = 12.sp)
+        }
+        Box(
+            Modifier.clip(RoundedCornerShape(50)).background(if (on) UserBlueBottom else Color.White.copy(alpha = 0.18f))
+                .clickable { on = !on; CallAwareness.setEnabled(ctx, on) }.padding(horizontal = 14.dp, vertical = 8.dp)
+        ) { Text(if (on) "On" else "Off", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+    }
+    if (on) {
+        Item("Where you are", "Your place name from the phone’s location", t >= 0 && CallAwareness.hasLocation(ctx), "Allow") {
+            ask.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+        }
+        if (Build.VERSION.SDK_INT >= 29 && CallAwareness.hasLocation(ctx)) {
+            Item("Location when the app is closed", "Needed when a call starts while Neo Plus is not open. Choose “Allow all the time”.", CallAwareness.hasBackgroundLocation(ctx), "Allow") {
+                ask.launch(arrayOf("android.permission.ACCESS_BACKGROUND_LOCATION"))
+            }
+        }
+        Item("Meetings and events", "Whether you are in a meeting or have one soon", t >= 0 && CallAwareness.hasCalendar(ctx), "Allow") {
+            ask.launch(arrayOf(Manifest.permission.READ_CALENDAR))
+        }
+        Item("Which app you were in", "Android calls this “usage access”. Turn on Neo Plus in the list.", t >= 0 && CallAwareness.hasUsageAccess(ctx), "Open settings") {
+            try { usage.launch(Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS)) } catch (e: Exception) { }
+        }
+        Text(
+            "Moving or still comes from the phone’s motion sensor and, when available, its speed. Screen, battery, headphones and Do Not Disturb need no permission.",
+            color = note, fontSize = 12.sp, lineHeight = 17.sp
+        )
+    }
+    Text(
+        "Seeing you: during a call tap SHOW ME to take one photo with your camera and Gemini will look at it. Nothing is ever captured on its own, " +
+            "and the photo is deleted from the phone as soon as it has been sent.",
+        color = note, fontSize = 13.sp, lineHeight = 18.sp
+    )
+    Box(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.16f))
+            .clickable { onBack() }.padding(vertical = 12.dp),
+        contentAlignment = Alignment.Center
+    ) { Text("Done", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+}
+
 @Composable
 private fun LockPanel(apps: List<AppEntry>, onBack: () -> Unit) {
     val ctx = LocalContext.current

@@ -38,6 +38,7 @@ object WakeRinger {
 
     fun start(ctx: Context) {
         val app = ctx.applicationContext
+        CallAwareness.refreshAsync(app)   // read your situation while it rings, so it is ready when you answer
         stop()
         try {
             val uri = RingtoneManager.getActualDefaultRingtoneUri(app, RingtoneManager.TYPE_RINGTONE)

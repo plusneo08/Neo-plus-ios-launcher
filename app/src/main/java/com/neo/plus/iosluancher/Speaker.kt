@@ -357,8 +357,8 @@ object Speaker {
     fun prewarmSpeech(ctx: Context, text: String) {
         val cfg = NaturalVoice.config(ctx.applicationContext) ?: return
         if (text.isBlank() || LangGuess.isChichewa(text)) return
-        chunk(split(text)).forEachIndexed { i, c ->
-            try { NaturalVoice.synth(cfg.key, c, cfg.voice, fast = i == 0) } catch (e: Exception) { }
+        chunkP(splitP(text)).forEachIndexed { i, c ->
+            try { NaturalVoice.synth(cfg.key, c.first, cfg.voice, fast = i == 0) } catch (e: Exception) { }
         }
     }
 
@@ -400,39 +400,65 @@ object Speaker {
     /**
      * Joins short sentences so the voice keeps its natural flow; each chunk is one subtitle. The first chunk is short
      * so the voice can start quickly; the rest are longer because they are made while the first one is playing.
+     * A chunk never runs across the end of a message (line): the flag says "this chunk ends a message".
      */
-    private fun chunk(sentencesIn: List<String>): List<String> {
+    private fun chunkP(items: List<Pair<String, Boolean>>): List<Pair<String, Boolean>> {
         // A long first sentence is cut at its first comma / colon so the first piece to make (and hear) is short.
-        val sentences = sentencesIn.toMutableList()
-        if (sentences.isNotEmpty() && sentences[0].length > 70) {
-            val m = Regex("[,;:] ").findAll(sentences[0]).firstOrNull { it.range.first in 18..70 }
+        val sentences = items.toMutableList()
+        if (sentences.isNotEmpty() && sentences[0].first.length > 70) {
+            val first = sentences[0].first
+            val m = Regex("[,;:] ").findAll(first).firstOrNull { it.range.first in 18..70 }
             if (m != null) {
-                val first = sentences[0]
-                sentences[0] = first.substring(0, m.range.first + 1).trim()
-                sentences.add(1, first.substring(m.range.last + 1).trim())
+                val endsMessage = sentences[0].second
+                sentences[0] = first.substring(0, m.range.first + 1).trim() to false
+                sentences.add(1, first.substring(m.range.last + 1).trim() to endsMessage)
             }
         }
-        val out = mutableListOf<String>()
+        val out = mutableListOf<Pair<String, Boolean>>()
         var cur = ""
-        for (s in sentences) {
+        for ((sentence, endsMessage) in sentences) {
             val limit = if (out.isEmpty()) 40 else 220
-            if (cur.isNotEmpty() && cur.length + s.length > limit) { out += cur; cur = s }
-            else cur = if (cur.isEmpty()) s else "$cur $s"
+            if (cur.isNotEmpty() && cur.length + sentence.length > limit) { out += cur to false; cur = sentence }
+            else cur = if (cur.isEmpty()) sentence else "$cur $sentence"
+            if (endsMessage) { out += cur to true; cur = "" }
         }
-        if (cur.isNotEmpty()) out += cur
+        if (cur.isNotEmpty()) out += cur to false
         return out
+    }
+
+    /** How long the voice stays quiet after a piece of speech: it depends on the punctuation it ended with, and is longer when a message ended. */
+    private fun gapAfter(piece: String, endsMessage: Boolean): Long {
+        val base = when (piece.trimEnd().lastOrNull()) {
+            '.' -> 380L
+            '!', '?' -> 450L
+            '…' -> 600L
+            ':', ';' -> 300L
+            ',' -> 200L
+            else -> 0L
+        }
+        return if (endsMessage) base + 450L else base
+    }
+
+    /** Silence between two pieces; ends at once when the speech is stopped. */
+    private fun pauseFor(ms: Long, my: Long) {
+        var left = ms
+        while (left > 0 && naturalToken == my) {
+            val step = if (left < 25L) left else 25L
+            try { Thread.sleep(step) } catch (e: Exception) { return }
+            left -= step
+        }
     }
 
     private fun speakNatural(app: Context, text: String, cfg: NaturalVoice.Cfg, onStart: ((String) -> Unit)?, onDone: (() -> Unit)?) {
         try { tts?.stop() } catch (e: Exception) { }
         try { track?.pause(); track?.flush() } catch (e: Exception) { }
         sentences.clear()
-        val chunks = chunk(split(text))
+        val chunks = chunkP(splitP(text))
         if (chunks.isEmpty()) { onDone?.invoke(); return }
         val my = ++naturalToken
         speaking = true
         // Every chunk is requested at once (the pool runs several together), so while one plays the next are ready.
-        val jobs: List<Future<ByteArray>> = chunks.mapIndexed { i, c -> pool.submit<ByteArray> { NaturalVoice.synth(cfg.key, c, cfg.voice, fast = i == 0) } }
+        val jobs: List<Future<ByteArray>> = chunks.mapIndexed { i, c -> pool.submit<ByteArray> { NaturalVoice.synth(cfg.key, c.first, cfg.voice, fast = i == 0) } }
         pool.execute {
             try {
                 for (i in chunks.indices) {
@@ -442,12 +468,14 @@ object Speaker {
                     if (naturalToken != my) { jobs.forEach { it.cancel(true) }; return@execute }
                     if (pcm == null) { // cloud voice failed: finish with the phone's own voice
                         jobs.forEach { it.cancel(true) }
-                        val rest = chunks.subList(i, chunks.size).joinToString(" ")
+                        val rest = chunks.subList(i, chunks.size).joinToString(" ") { it.first }
                         main.post { if (naturalToken == my) { speaking = false; speakSystem(app, rest, onStart, onDone) } }
                         return@execute
                     }
-                    main.post { if (naturalToken == my) onStart?.invoke(chunks[i]) }
+                    main.post { if (naturalToken == my) onStart?.invoke(chunks[i].first) }
                     playPcm(pcm, my)
+                    // stop where the punctuation is, and a little longer where one message ends and the next begins
+                    if (i < chunks.lastIndex) pauseFor(gapAfter(chunks[i].first, chunks[i].second), my)
                 }
                 main.post { if (naturalToken == my) { speaking = false; onDone?.invoke() } }
             } catch (e: Exception) {
@@ -515,6 +543,9 @@ object Speaker {
                         break
                     }
                     playPcm(pcm, my)
+                    // quiet at the punctuation, unless this was the last piece of the reply
+                    val next = q.peek()
+                    if (!(next != null && next.job == null)) pauseFor(gapAfter(item.text, false), my)
                 }
             } catch (e: Exception) {
                 // playback problem: treat like a failed voice so the reply is still read out
@@ -541,7 +572,7 @@ object Speaker {
         val q = liveQ ?: return
         val cfg = liveCfg ?: return
         if (naturalToken != liveToken) return
-        val t = split(text).joinToString(" ").trim()
+        val t = split(text, addEnd = false).joinToString(" ").trim()
         if (t.isEmpty()) return
         synchronized(liveLock) {
             if (liveFailed) { liveRest.append(t).append(' '); return } // Gemini voice already failed: keep it for the phone voice
@@ -661,17 +692,21 @@ object Speaker {
         val loc = pickLocale(engine, LangGuess.detect(text))
         engine.setLanguage(loc)
         applySystemVoice(engine, loc)
-        val parts = split(text)
+        val parts = splitP(text)
         if (parts.isEmpty()) { onDone?.invoke(); return }
         onSentence = onStart
         onFinished = onDone
         speaking = true
         val b = ++batch
         sentences.clear()
-        parts.forEachIndexed { i, s ->
+        parts.forEachIndexed { i, part ->
+            val s = part.first
             val id = "neo_${b}_$i"
             sentences[id] = s to (i == parts.lastIndex)
             engine.speak(s, if (i == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, null, id)
+            // stop where the punctuation is, and a little longer where one message ends and the next begins
+            val gap = gapAfter(s, part.second)
+            if (i < parts.lastIndex && gap > 0L) engine.playSilentUtterance(gap, TextToSpeech.QUEUE_ADD, "neo_${b}_${i}_gap")
         }
     }
 
@@ -726,24 +761,51 @@ object Speaker {
     }
 
     /** Sentences for subtitles; very long ones are cut at a word so the engine's length limit is never hit. */
-    private fun split(text: String): List<String> {
+    private fun split(text: String, addEnd: Boolean = true): List<String> = splitP(text, addEnd).map { it.first }
+
+    /**
+     * The words the voice says, cut into sentences. Each message (line) gets a full stop if it has no end mark, spaces are put
+     * after commas and other marks, and dashes become commas, so the voice pauses where the punctuation is. The flag says the
+     * sentence is the last one of a message that is followed by another message.
+     */
+    private fun splitP(text: String, addEnd: Boolean = true): List<Pair<String, Boolean>> {
         val clean = text
             .replace(Regex("https?://\\S+"), " ")
             .replace(Regex("[*_#`]+"), "")
             .replace(Regex("[ \\t]+"), " ")
             .trim()
-        val out = mutableListOf<String>()
-        clean.split(Regex("(?<=[.!?…])\\s+|\\n+")).map { it.trim() }.filter { it.isNotEmpty() }.forEach { s ->
-            var rest = s
-            while (rest.length > 150) {
-                val cut = rest.lastIndexOf(' ', 150).let { if (it < 50) 150 else it }
-                out += rest.substring(0, cut).trim()
-                rest = rest.substring(cut).trim()
+        val lines = clean.split(Regex("\\n+")).map { tidy(it) }.filter { it.isNotEmpty() }
+        val out = mutableListOf<Pair<String, Boolean>>()
+        lines.forEachIndexed { li, raw ->
+            val line = if (addEnd) withEnd(raw) else raw
+            val pieces = mutableListOf<String>()
+            line.split(Regex("(?<=[.!?…])\\s+")).map { it.trim() }.filter { it.isNotEmpty() }.forEach { sentence ->
+                var rest = sentence
+                while (rest.length > 150) {
+                    val cut = rest.lastIndexOf(' ', 150).let { if (it < 50) 150 else it }
+                    pieces += rest.substring(0, cut).trim()
+                    rest = rest.substring(cut).trim()
+                }
+                if (rest.isNotEmpty()) pieces += rest
             }
-            if (rest.isNotEmpty()) out += rest
+            pieces.forEachIndexed { pi, piece -> out += piece to (pi == pieces.lastIndex && li < lines.lastIndex) }
         }
         return out
     }
+
+    private fun tidy(line: String): String = line.trim()
+        .replace(Regex("^[-•·–—]+\\s+"), "")                 // list bullets
+        .replace(Regex("\\s+[-–—]+\\s+"), ", ")              // " - " and " — " are a pause
+        .replace(Regex("([,;:!?])(?=\\p{L})"), "$1 ")        // "Hello,there" -> "Hello, there"
+        .replace(Regex("\\s+([,;:!?])"), "$1")                // "word ," -> "word,"
+        .replace(Regex("([!?]){2,}"), "$1")                   // "?!?!" -> one mark
+        .replace(Regex(",{2,}"), ",")
+        .replace(Regex("\\.{4,}"), "…")
+        .trim()
+
+    /** A message that has no end mark gets a full stop, so the voice finishes its sentence and stops. */
+    private fun withEnd(s: String): String =
+        if (s.isNotEmpty() && !Regex("[.!?…:;)\"”'’]$").containsMatchIn(s)) s.trimEnd(',', ';', ':', '-', '–', '—', ' ') + "." else s
 }
 
 /**

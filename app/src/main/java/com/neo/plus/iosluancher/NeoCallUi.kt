@@ -30,6 +30,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Close
@@ -115,6 +116,8 @@ class NeoCallModel(
     val realCall: Boolean = false,
     val onDtmf: (Char) -> Unit = {},
     val onMessage: (() -> Unit)? = null,
+    /** Assistant calls: take a photo with the camera and show it to the assistant. */
+    val onCamera: (() -> Unit)? = null,
 )
 
 @Composable
@@ -287,7 +290,9 @@ private fun ConnectedScreen(m: NeoCallModel, ctx: Context, extra: @Composable ()
         }
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
-            RoundTool(Icons.Filled.Add, "ADD CALL", false) {
+            val cam = m.onCamera
+            if (cam != null) RoundTool(Icons.Filled.CameraAlt, "SHOW ME", false) { cam() }
+            else RoundTool(Icons.Filled.Add, "ADD CALL", false) {
                 try { ctx.startActivity(Intent(ctx, NeoDialerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
             }
             RoundTool(if (m.held) Icons.Filled.PlayArrow else Icons.Filled.Pause, if (m.held) "RESUME" else "HOLD", m.held) { m.onHold() }
