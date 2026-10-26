@@ -99,6 +99,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -242,19 +243,28 @@ private fun launchMatching(ctx: Context, match: (label: String, pkg: String) -> 
 
 /* ---------------- look of the tiles (matches the reference screenshot) ---------------- */
 
-private val TileBg = Color(0xFF2B2B2E).copy(alpha = 0.62f)
-private val CircleOff = Color(0xFF48484A).copy(alpha = 0.85f)
+private val TileBg = Color(0xFF0E1E3F).copy(alpha = 0.58f)
+private val CircleOff = Color(0xFF1C3160).copy(alpha = 0.85f)
+private val NeonCyan = Color(0xFF35E0FF)
+private val GlassEdge = Color(0xFF5CC8FF).copy(alpha = 0.30f)
+private val GlassSheen = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10f), Color.Transparent))
+private val NeonBrush = Brush.verticalGradient(listOf(Color(0xFF35E0FF), Color(0xFF1E7BFF)))
+private val ScrimBrush = Brush.verticalGradient(listOf(Color(0xFF030A1C).copy(alpha = 0.80f), Color(0xFF0A1F4A).copy(alpha = 0.62f)))
 private val IosRed = Color(0xFFE5483F)
 private val IosOrange = Color(0xFFE9692C)
-private val IosBlue = Color(0xFF0A84FF)
-private val IosCream = Color(0xFFF6EEDC)
-private val IosIndigo = Color(0xFF5E5CE6)
+private val IosBlue = Color(0xFF2EA8FF)
+private val IosCream = Color(0xFFBFE9FF)
+private val IosIndigo = Color(0xFF6C6CFF)
 private val IosYellow = Color(0xFFFFD60A)
 private val Ink = Color(0xFF1C1C1E)
 
 @Composable
 private fun Module(modifier: Modifier, radius: Dp, bg: Color = TileBg, content: @Composable BoxScope.() -> Unit) {
-    Box(modifier.clip(RoundedCornerShape(radius)).background(bg), content = content)
+    Box(
+        modifier.clip(RoundedCornerShape(radius)).background(bg).background(GlassSheen)
+            .border(1.dp, GlassEdge, RoundedCornerShape(radius)),
+        content = content
+    )
 }
 
 @Composable
@@ -265,6 +275,7 @@ private fun CircleBtn(
     Box(
         Modifier.size(size).clip(CircleShape)
             .background(if (active) activeColor else CircleOff)
+            .border(1.dp, if (active) Color.White.copy(alpha = 0.35f) else GlassEdge, CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -278,8 +289,15 @@ private fun TileBox(
     modifier: Modifier, radius: Dp, active: Boolean, activeBg: Color,
     onClick: () -> Unit, content: @Composable () -> Unit
 ) {
+    val shape = RoundedCornerShape(radius)
     Box(
-        modifier.clip(RoundedCornerShape(radius)).background(if (active) activeBg else TileBg)
+        modifier.clip(shape)
+            .then(
+                if (active) {
+                    if (activeBg == Color.White) Modifier.background(NeonBrush) else Modifier.background(activeBg)
+                } else Modifier.background(TileBg).background(GlassSheen)
+            )
+            .border(1.dp, if (active) Color.White.copy(alpha = 0.35f) else GlassEdge, shape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) { content() }
@@ -288,7 +306,7 @@ private fun TileBox(
 @Composable
 private fun Tile(
     icon: ImageVector, active: Boolean, modifier: Modifier, radius: Dp,
-    activeTint: Color = Ink, activeBg: Color = Color.White, onClick: () -> Unit
+    activeTint: Color = Color.White, activeBg: Color = Color.White, onClick: () -> Unit
 ) {
     TileBox(modifier, radius, active, activeBg, onClick) {
         Icon(icon, contentDescription = null, tint = if (active) activeTint else Color.White,
@@ -324,7 +342,8 @@ private fun BatteryGlyph(pct: Int, charging: Boolean, width: Dp, tint: Color = C
 private fun VSlider(icon: ImageVector, value: Float, modifier: Modifier, radius: Dp, onChange: (Float) -> Unit) {
     val cb by rememberUpdatedState(onChange)
     Box(
-        modifier.clip(RoundedCornerShape(radius)).background(TileBg)
+        modifier.clip(RoundedCornerShape(radius)).background(TileBg).background(GlassSheen)
+            .border(1.dp, GlassEdge, RoundedCornerShape(radius))
             .pointerInput(Unit) {
                 detectTapGestures { o -> cb((1f - o.y / size.height.toFloat()).coerceIn(0f, 1f)) }
             }
@@ -339,11 +358,11 @@ private fun VSlider(icon: ImageVector, value: Float, modifier: Modifier, radius:
     ) {
         Box(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                .fillMaxHeight(value.coerceIn(0f, 1f)).background(Color.White.copy(alpha = 0.93f))
+                .fillMaxHeight(value.coerceIn(0f, 1f)).background(NeonBrush)
         )
         Icon(
             icon, contentDescription = null,
-            tint = if (value < 0.14f) Color.White else Color(0xFF48484A),
+            tint = Color.White,
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp).size(26.dp)
         )
     }
@@ -370,6 +389,8 @@ private fun StatusHeader(sys: Sys, locked: Boolean) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (sys.alarmSet) Icon(Icons.Filled.Alarm, null, tint = Color.White, modifier = Modifier.size(15.dp))
                 if (locked) Icon(Icons.Filled.ScreenLockRotation, null, tint = Color.White, modifier = Modifier.size(15.dp))
+                Text("${sys.battery}%", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                BatteryGlyph(sys.battery, sys.charging, 24.dp, fill = if (sys.battery <= 20 && !sys.charging) IosRed else null)
             }
         }
     }
@@ -508,7 +529,7 @@ fun ControlCenter(onClose: () -> Unit) {
     }
 
     Box(
-        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.42f))
+        Modifier.fillMaxSize().background(ScrimBrush)
             .consumeTouches()
             .pointerInput(Unit) {
                 // swipe down anywhere on the dimmed area closes it
@@ -530,14 +551,17 @@ fun ControlCenter(onClose: () -> Unit) {
             val cell = (maxWidth - side * 2 - gap * 3) / 4
             val wide = cell * 2 + gap
             val circle = cell * 0.82f
-            val rTile = cell * 0.30f
-            val rModule = cell * 0.36f
+            val rTile = cell * 0.34f
+            val rModule = cell * 0.40f
 
             Column(
                 Modifier.width(maxWidth - side * 2).verticalScroll(rememberScrollState())
                     .noRipple { }.padding(top = 8.dp, bottom = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(gap)
             ) {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Box(Modifier.width(44.dp).height(5.dp).clip(CircleShape).background(NeonCyan.copy(alpha = 0.55f)))
+                }
                 StatusHeader(sys, locked = !sys.autoRotate)
 
                 // Row 1: connectivity + now playing
@@ -604,7 +628,7 @@ fun ControlCenter(onClose: () -> Unit) {
                     Column(Modifier.width(wide).fillMaxHeight(), Arrangement.spacedBy(gap)) {
                         Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(gap)) {
                             Tile(Icons.Filled.ScreenLockRotation, !sys.autoRotate, Modifier.size(cell), rTile,
-                                activeTint = Color(0xFFFF453A)) { toggleRotationLock() }
+                                activeTint = Color.White, activeBg = IosRed) { toggleRotationLock() }
                             Tile(Icons.Filled.FlipToFront, false, Modifier.size(cell), rTile) {
                                 open(Intent(Settings.ACTION_CAST_SETTINGS))
                             }
@@ -612,7 +636,7 @@ fun ControlCenter(onClose: () -> Unit) {
                         Row(
                             Modifier.width(wide).height(cell).clip(RoundedCornerShape(rModule))
                                 .background(if (sys.dnd) IosIndigo.copy(alpha = 0.85f) else TileBg)
-                                .clickable { toggleFocus() }.padding(horizontal = cell * 0.15f),
+                                .border(1.dp, GlassEdge, RoundedCornerShape(rModule)).clickable { toggleFocus() }.padding(horizontal = cell * 0.15f),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
@@ -718,7 +742,8 @@ private fun PlayerPicker(
     ) {
         Column(
             Modifier.fillMaxWidth(0.88f).heightIn(max = 480.dp)
-                .clip(RoundedCornerShape(28.dp)).background(Color(0xFF2C2C2E).copy(alpha = 0.97f))
+                .clip(RoundedCornerShape(28.dp)).background(Color(0xFF0E1E3F).copy(alpha = 0.97f))
+                .border(1.dp, GlassEdge, RoundedCornerShape(28.dp))
                 .noRipple { }.padding(vertical = 14.dp)
         ) {
             Text("Choose Music Player", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold,

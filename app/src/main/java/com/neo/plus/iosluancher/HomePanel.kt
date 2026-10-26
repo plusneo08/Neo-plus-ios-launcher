@@ -59,6 +59,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
@@ -167,6 +168,8 @@ fun HomePanel(modifier: Modifier = Modifier) {
     val date = Date(now)
     val loc = Locale.getDefault()
     val time = SimpleDateFormat(if (use24) "HH:mm" else "h:mm", loc).format(date)
+    val hours = SimpleDateFormat(if (use24) "HH" else "h", loc).format(date)
+    val minutes = SimpleDateFormat("mm", loc).format(date)
     val ampm = if (use24) "" else SimpleDateFormat("a", loc).format(date).uppercase(loc)
     val weekday = SimpleDateFormat("EEEE", loc).format(date)
     val dayMonth = SimpleDateFormat("d MMMM", loc).format(date)
@@ -178,34 +181,42 @@ fun HomePanel(modifier: Modifier = Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         // ---- clock card: big rolling digits, live seconds and a glowing seconds sweep along the bottom edge
         Box(
-            Modifier.weight(1f).fillMaxWidth().neoCard(card)
+            Modifier.weight(1.1f).fillMaxWidth().neoCard(card)
                 .clickable { ctx.safeStart(Intent(AlarmClock.ACTION_SHOW_ALARMS)) }
         ) {
             Canvas(Modifier.matchParentSize()) { clockStreaks() }
-            SecondsSweep(Modifier.matchParentSize())
-            Row(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Row(verticalAlignment = Alignment.Bottom) {
-                    AnimatedContent(
-                        targetState = time,
-                        transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
-                        label = "clockTime"
-                    ) { t ->
-                        Text(t, color = Color.White, fontSize = 60.sp, fontWeight = FontWeight.Light, letterSpacing = (-1).sp, style = GlowText, maxLines = 1, softWrap = false)
+            Row(Modifier.fillMaxSize().padding(start = 18.dp, end = 12.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        AnimatedContent(
+                            targetState = hours,
+                            transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
+                            label = "clockHours"
+                        ) { h -> Text(h, color = Color.White, fontSize = 56.sp, fontWeight = FontWeight.Light, style = GlowText, maxLines = 1, softWrap = false) }
+                        PulsingColon()
+                        AnimatedContent(
+                            targetState = minutes,
+                            transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
+                            label = "clockMinutes"
+                        ) { m -> Text(m, color = Color(0xFFBDEBFF), fontSize = 56.sp, fontWeight = FontWeight.Light, style = GlowText, maxLines = 1, softWrap = false) }
+                        if (ampm.isNotEmpty()) {
+                            Text(ampm, color = NeoCyanC, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 5.dp, bottom = 11.dp))
+                        }
                     }
-                    if (ampm.isNotEmpty()) {
-                        Text(ampm, color = Color(0xFFBFE6FF), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 4.dp, bottom = 12.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable {
+                            val uri = CalendarContract.CONTENT_URI.buildUpon().appendPath("time").appendPath(System.currentTimeMillis().toString()).build()
+                            ctx.safeStart(Intent(Intent.ACTION_VIEW, uri))
+                        }
+                    ) {
+                        Box(Modifier.size(6.dp).background(NeoCyanC, RoundedCornerShape(50)))
+                        Spacer(Modifier.width(7.dp))
+                        Text("$weekday, $dayMonth", color = Color.White.copy(alpha = 0.92f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
-                Spacer(Modifier.weight(1f))
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    modifier = Modifier.clickable {
-                        val uri = CalendarContract.CONTENT_URI.buildUpon().appendPath("time").appendPath(System.currentTimeMillis().toString()).build()
-                        ctx.safeStart(Intent(Intent.ACTION_VIEW, uri))
-                    }
-                ) {
-                    Text(weekday, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                    Text(dayMonth, color = Color.White.copy(alpha = 0.9f), fontSize = 15.sp, maxLines = 1)
+                Box(Modifier.size(68.dp), contentAlignment = Alignment.Center) {
+                    SecondsRing(Modifier.matchParentSize())
                     LiveSeconds()
                 }
             }
@@ -268,7 +279,7 @@ private fun LiveSeconds() {
         transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
         label = "clockSeconds"
     ) { v ->
-        Text(String.format(Locale.US, "%02d", v), color = Color(0xFF7DD3FC), fontSize = 17.sp, fontWeight = FontWeight.Medium)
+        Text(String.format(Locale.US, "%02d", v), color = Color(0xFF7DD3FC), fontSize = 20.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -289,5 +300,36 @@ private fun SecondsSweep(modifier: Modifier = Modifier) {
         )
         drawCircle(NeoCyanC.copy(alpha = 0.35f * pulse), 8.dp.toPx(), Offset(x, y))
         drawCircle(Color.White, 2.6.dp.toPx(), Offset(x, y))
+    }
+}
+
+/** The colon between hours and minutes breathes once a second. */
+@Composable
+private fun PulsingColon() {
+    val t = rememberFrameSeconds()
+    val a = 0.45f + 0.55f * ((kotlin.math.sin(t.value * 3f) + 1f) / 2f)
+    Text(":", color = NeoCyanC.copy(alpha = a), fontSize = 52.sp, fontWeight = FontWeight.Light, style = GlowText,
+        modifier = Modifier.padding(horizontal = 1.dp).padding(bottom = 4.dp))
+}
+
+/** A ring that fills once a minute with a glowing head; the seconds sit in the middle. */
+@Composable
+private fun SecondsRing(modifier: Modifier = Modifier) {
+    val t = rememberFrameSeconds()
+    Canvas(modifier) {
+        val pulse = 0.8f + 0.2f * kotlin.math.sin(t.value * 3f)
+        val stroke = 4.dp.toPx()
+        val pad = stroke / 2f + 3.dp.toPx()
+        val d = size.minDimension - pad * 2f
+        val tl = Offset((size.width - d) / 2f, (size.height - d) / 2f)
+        val sz = Size(d, d)
+        val frac = (System.currentTimeMillis() % 60_000L) / 60_000f
+        drawArc(NeoCyanC.copy(alpha = 0.16f), 0f, 360f, false, tl, sz, style = Stroke(stroke, cap = StrokeCap.Round))
+        drawArc(NeoCyanC.copy(alpha = 0.25f * pulse), -90f, 360f * frac, false, tl, sz, style = Stroke(stroke * 2.2f, cap = StrokeCap.Round))
+        drawArc(NeoCyanC, -90f, 360f * frac, false, tl, sz, style = Stroke(stroke, cap = StrokeCap.Round))
+        val ang = Math.toRadians(-90.0 + 360.0 * frac)
+        val r = d / 2f
+        val head = Offset(size.width / 2f + r * kotlin.math.cos(ang).toFloat(), size.height / 2f + r * kotlin.math.sin(ang).toFloat())
+        drawCircle(Color.White, 2.8.dp.toPx(), head)
     }
 }

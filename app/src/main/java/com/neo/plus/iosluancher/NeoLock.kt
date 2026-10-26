@@ -130,9 +130,14 @@ object NeoLock {
     fun enableReplace(ctx: Context): String {
         val app = ctx.applicationContext
         if (!hasCredential(app)) return "Set a Neo PIN, password or pattern first"
-        if (!Kiosk.isOwner(app)) return "Needs device-owner mode: see setup-on-phone.txt, step 5"
-        val ok = try { dpm(app).setKeyguardDisabled(DeviceAdmin.component(app), true) } catch (e: Exception) { false }
-        if (!ok) return "Android’s own lock is still on. Remove it first (Settings > Security > Screen lock > None), then switch this on again"
+        if (Kiosk.isOwner(app)) {
+            val ok = try { dpm(app).setKeyguardDisabled(DeviceAdmin.component(app), true) } catch (e: Exception) { false }
+            if (!ok) return "Android’s own lock is still on. Remove it first (Settings > Security > Screen lock > None), then switch this on again"
+        } else {
+            // No device-owner mode: the Neo lock simply sits on top of a phone that has no lock of its own.
+            val km = app.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+            if (km?.isDeviceSecure == true) return "Android’s own lock is on. Remove it first (Settings > Security > Screen lock > None), then switch this on again"
+        }
         p(app).edit().putBoolean("replace", true).apply()
         unlocked = true   // the credential was just proven; the lock closes the next time the screen turns off
         return ""
@@ -158,6 +163,42 @@ object NeoLock {
             )
         } catch (e: Exception) { }
     }
+
+    /* ---------------- locking and unlocking by itself ---------------- */
+
+    /** May the assistant open the lock by itself for the user's own goals and scheduled jobs, and lock again afterwards? */
+    fun autoJobs(ctx: Context) = p(ctx).getBoolean("auto_jobs", true)
+    fun setAutoJobs(ctx: Context, on: Boolean) { p(ctx).edit().putBoolean("auto_jobs", on).apply() }
+
+    /** Locks the phone now: the screen goes off and the Neo lock is up when it comes back. */
+    fun lockNow(ctx: Context): Boolean {
+        val app = ctx.applicationContext
+        if (!replaceOn(app)) return false
+        lock()
+        if (!DeviceAdmin.lockNow(app)) showIfNeeded(app)   // no device admin: cover the screen instead of switching it off
+        return true
+    }
+
+    /** Opens the lock without anyone typing the PIN. Only used for things the owner already allowed (see [openForJob], [PowerControl.unlock]). */
+    fun unlockBySelf(ctx: Context): Boolean {
+        val app = ctx.applicationContext
+        if (!replaceOn(app)) return false
+        unlocked = true
+        applyFeatures(app, false)
+        PowerControl.wakeScreen(app)
+        NeoLockScreenActivity.closeIfUp()
+        return true
+    }
+
+    /** A goal check-in or scheduled job is about to run: opens the lock if the user allowed it. Returns true when it did. */
+    fun openForJob(ctx: Context): Boolean {
+        val app = ctx.applicationContext
+        if (!replaceOn(app) || !autoJobs(app) || !needsLock(app)) return false
+        return unlockBySelf(app)
+    }
+
+    /** The job is done: locks again, but only if [openForJob] was the one that opened it. */
+    fun closeAfterJob(ctx: Context, opened: Boolean) { if (opened) lockNow(ctx) }
 
     /** Puts the Neo lock on screen when it is needed and nothing (a wake-up call, for example) is meant to be above it. */
     fun showIfNeeded(ctx: Context) {

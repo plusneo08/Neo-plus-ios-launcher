@@ -123,6 +123,10 @@ class NeoLockScreenActivity : ComponentActivity() {
         fun confirm(ctx: Context) = launch(ctx, "confirm")
         fun app(ctx: Context, pkg: String) = launch(ctx, "app", pkg)
         fun setup(ctx: Context, type: String) = launch(ctx, "setup", "", type)
+
+        @Volatile private var current: NeoLockScreenActivity? = null
+        /** Closes the lock screen if it is up (the assistant opened the lock by itself). */
+        fun closeIfUp() { current?.closeFromOutside() }
     }
 
     private var mode by mutableStateOf("device")
@@ -138,6 +142,7 @@ class NeoLockScreenActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        current = this
         if (Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(true); setTurnScreenOn(true) }
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)   // no screenshots of the lock screen
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -171,8 +176,13 @@ class NeoLockScreenActivity : ComponentActivity() {
         if (mode == "confirm" || mode == "app") window.decorView.post { startBio() }
     }
 
+    fun closeFromOutside() {
+        runOnUiThread { if (mode == "device") lockdown(false); finish() }
+    }
+
     override fun onStop() {
         if (!isChangingConfigurations) {
+            if (mode == "device") NeoLock.showing = false   // not on screen any more: the lock must be able to come back
             val keep = mode == "device" && NeoLock.needsLock(this)   // the lock that replaces Android's must stay up
             if (!dismissing && !keep) finish()
         }
@@ -183,7 +193,7 @@ class NeoLockScreenActivity : ComponentActivity() {
         super.onResume()
         if (mode != "device") return
         if (NeoLock.replaceOn(this)) {
-            if (!NeoLock.needsLock(this)) finish()
+            if (!NeoLock.needsLock(this)) finish() else NeoLock.showing = true
         } else {
             // Already unlocked (for example by Smart Lock or face unlock while this was up): nothing to show
             val km = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
@@ -192,6 +202,7 @@ class NeoLockScreenActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (current === this) current = null
         if (mode == "app") { AppLock.showing = false; AppLock.showingPkg = "" }
         NeoLock.showing = false
         super.onDestroy()

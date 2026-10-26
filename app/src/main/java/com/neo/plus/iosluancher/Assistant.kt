@@ -499,7 +499,7 @@ object PhoneActions {
             }
 
             "system" -> {
-                if (a.optString("action") == "lock" && DeviceAdmin.lockNow(ctx)) return "Locked the screen"
+                if (a.optString("action") == "lock" && (NeoLock.lockNow(ctx) || DeviceAdmin.lockNow(ctx))) return "Locked the screen"
                 val svc = IosControlService.instance
                 if (svc == null) {
                     ctx.safeStart(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))

@@ -1325,6 +1325,7 @@ private fun LockPanel(apps: List<AppEntry>, onBack: () -> Unit) {
     var lockScreen by remember { mutableStateOf(AppLock.lockScreenOn(ctx)) }
     var credType by remember { mutableStateOf(NeoLock.type(ctx)) }
     var replace by remember { mutableStateOf(NeoLock.replaceOn(ctx)) }
+    var autoJobs by remember { mutableStateOf(NeoLock.autoJobs(ctx)) }
     androidx.compose.runtime.LaunchedEffect(Unit) {
         while (true) { credType = NeoLock.type(ctx); replace = NeoLock.replaceOn(ctx); kotlinx.coroutines.delay(700) }
     }
@@ -1441,9 +1442,26 @@ private fun LockPanel(apps: List<AppEntry>, onBack: () -> Unit) {
             } else needStrong { NeoLock.disableReplace(ctx); replace = false }
         }
     }
+    if (replace) {
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.12f)).padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Let the assistant open the lock for my jobs", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Goals and scheduled jobs you set up can unlock the phone by themselves and lock it again when done. Saying “unlock” still shows the PIN pad.",
+                    color = note, fontSize = 12.sp
+                )
+            }
+            Pill(if (autoJobs) "On" else "Off", autoJobs) { needStrong { autoJobs = !autoJobs; NeoLock.setAutoJobs(ctx, autoJobs) } }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Pill("Lock phone now", false) { NeoLock.lockNow(ctx) } }
+    }
     Text(
-        "Read before switching on. Needs device-owner mode (setup-on-phone.txt, step 5) and Android’s own lock removed first " +
-            "(Settings > Security > Screen lock > None). Fingerprint and face unlock only exist together with an Android lock, so they stop " +
+        "Read before switching on. First remove Android’s own lock (Settings > Security > Screen lock > None). Device-owner mode " +
+            "(setup-on-phone.txt, step 5) is optional: with it the home button and notification shade are blocked while locked; without it " +
+            "Neo Plus covers the screen again whenever someone leaves the lock, but safe mode and the power menu are not blocked. Fingerprint and face unlock only exist together with an Android lock, so they stop " +
             "working while this is on: the Neo lock takes PIN, password or pattern. Your files are then not protected by a PIN at the " +
             "phone’s deepest level, and restarting in safe mode skips the Neo lock. Write the Neo PIN down: if you forget it there is no reset " +
             "from the phone itself, and the way out may be a factory reset. To get Android’s lock back, switch this off while you know it.",

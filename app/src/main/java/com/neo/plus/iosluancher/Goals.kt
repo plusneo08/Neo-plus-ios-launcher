@@ -169,8 +169,10 @@ object Goals {
                 (app.getSystemService(Context.POWER_SERVICE) as PowerManager)
                     .newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "neo:goal").also { it.acquire((CHECKIN_MINUTES + 2) * 60_000L) }
             } catch (e: Exception) { null }
+            var reopened = false
             try {
                 try { Thread.sleep(1800) } catch (e: InterruptedException) { }
+                reopened = NeoLock.openForJob(app)   // the assistant opens the Neo lock by itself for the user's own goal
                 val apps = try { OrbBridge.apps() } catch (e: Exception) { Approvals.lastApps }
                 val pkg = apps.findBest(g0.app)?.pkg
 
@@ -189,6 +191,7 @@ object Goals {
                 finally { PinVault.unattended = false }
                 handleResult(app, g0, r)
             } finally {
+                NeoLock.closeAfterJob(app, reopened)
                 try { wl?.let { if (it.isHeld) it.release() } } catch (e: Exception) { }
             }
         }

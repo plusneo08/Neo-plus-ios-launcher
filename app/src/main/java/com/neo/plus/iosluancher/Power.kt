@@ -82,6 +82,13 @@ object PowerControl {
         val app = ctx.applicationContext
         val km = app.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
         wakeScreen(app)
+        if (NeoLock.replaceOn(app)) {
+            // The Neo lock is the phone's lock: it opens by itself only right after the PIN was proved, otherwise the PIN pad is shown.
+            if (!NeoLock.needsLock(app)) return "The phone is already unlocked"
+            if (AppLock.strongOk() && NeoLock.unlockBySelf(app)) return "Unlocked"
+            NeoLock.showIfNeeded(app)
+            return "Screen is on. Enter your Neo PIN, password or pattern to unlock"
+        }
         if (!km.isKeyguardLocked) return "The phone is already unlocked"
         val secure = km.isKeyguardSecure
 

@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,10 +70,10 @@ fun GlassSearchField(
     onSearch: () -> Unit = {}
 ) {
     Row(
-        modifier.glass(RoundedCornerShape(16.dp), 0.22f).padding(horizontal = 12.dp, vertical = 11.dp),
+        modifier.neonGlass(RoundedCornerShape(18.dp), 6.dp).padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(Icons.Filled.Search, contentDescription = null, tint = Color.White.copy(alpha = 0.8f),
+        Icon(Icons.Filled.Search, contentDescription = null, tint = Color(0xFF7DD3FC),
             modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(8.dp))
         BasicTextField(
@@ -117,24 +118,40 @@ fun AppRow(app: AppEntry, onDone: () -> Unit) {
 @Composable
 private fun CategoryCard(group: AppGroup, onOpen: (String) -> Unit, modifier: Modifier) {
     val ctx = LocalContext.current
+    val extra = group.apps.size - 3
+    val cells = buildList<AppEntry?> {
+        if (group.apps.size > 4) { addAll(group.apps.take(3)); add(null) } else addAll(group.apps.take(4))
+    }
     Column(modifier) {
         Box(
-            Modifier.fillMaxWidth().aspectRatio(1f).glass(RoundedCornerShape(26.dp), 0.22f)
+            Modifier.fillMaxWidth().aspectRatio(1f).neonGlass(RoundedCornerShape(28.dp), 8.dp)
                 .clickable { onOpen(group.name) }.padding(12.dp)
         ) {
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                group.apps.take(4).chunked(2).forEach { r ->
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceEvenly) {
+                cells.chunked(2).forEach { r ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                         r.forEach { a ->
-                            AppIcon(a, 50.dp, Modifier.clickable { ctx.launchApp(a) })
+                            if (a != null) {
+                                AppIcon(a, 50.dp, Modifier.clickable { ctx.launchApp(a) })
+                            } else {
+                                Box(
+                                    Modifier.size(50.dp).clip(RoundedCornerShape(15.dp))
+                                        .background(Color(0xFF38BDF8).copy(alpha = 0.16f))
+                                        .border(1.dp, Color(0xFF38BDF8).copy(alpha = 0.6f), RoundedCornerShape(15.dp))
+                                        .clickable { onOpen(group.name) },
+                                    contentAlignment = Alignment.Center
+                                ) { Text("+$extra", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
+                            }
                         }
                         if (r.size == 1) Spacer(Modifier.size(50.dp))
                     }
                 }
             }
         }
-        Text(group.name, color = Color.White, fontSize = 12.sp, textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(top = 6.dp), maxLines = 1, style = ShadowStyle)
+        Row(Modifier.fillMaxWidth().padding(top = 7.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            Text(group.name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, style = ShadowStyle)
+            Text("  ${group.apps.size}", color = Color(0xFF7DD3FC), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        }
     }
 }
 
@@ -142,8 +159,10 @@ private fun CategoryCard(group: AppGroup, onOpen: (String) -> Unit, modifier: Mo
 fun LibraryPage(apps: List<AppEntry>, groups: List<AppGroup>, onOpenCategory: (String) -> Unit) {
     var q by remember { mutableStateOf("") }
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        Text("App Library", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold,
-            style = ShadowStyle, modifier = Modifier.padding(vertical = 8.dp))
+        Column(Modifier.padding(vertical = 8.dp)) {
+            Text("App Library", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold, style = ShadowStyle)
+            Text("${apps.size} apps · ${groups.size} groups", color = Color(0xFF7DD3FC), fontSize = 14.sp, fontWeight = FontWeight.Medium)
+        }
         GlassSearchField(q, { q = it }, "App Library", Modifier.fillMaxWidth())
         Spacer(Modifier.height(14.dp))
         if (q.isBlank()) {
@@ -167,14 +186,14 @@ fun LibraryPage(apps: List<AppEntry>, groups: List<AppGroup>, onOpenCategory: (S
 @Composable
 fun CategorySheet(name: String, apps: List<AppEntry>, vm: LauncherViewModel, onClose: () -> Unit) {
     Box(
-        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)).consumeTouches().noRipple(onClose),
+        Modifier.fillMaxSize().background(Color(0xFF030A1C).copy(alpha = 0.66f)).consumeTouches().noRipple(onClose),
         contentAlignment = Alignment.Center
     ) {
         Column(
             Modifier.padding(20.dp).fillMaxWidth().heightIn(max = 560.dp)
-                .glass(RoundedCornerShape(32.dp), 0.30f).noRipple { }.padding(16.dp)
+                .neonGlass(RoundedCornerShape(32.dp), 14.dp).noRipple { }.padding(16.dp)
         ) {
-            Text(name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
+            Text(name, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 10.dp))
             LazyVerticalGrid(GridCells.Fixed(4), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(apps, key = { it.pkg + "/" + it.activity }) { a ->

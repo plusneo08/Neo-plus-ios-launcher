@@ -370,6 +370,17 @@ private fun BubbleItem(text: String, enabled: Boolean, onClick: () -> Unit) {
     )
 }
 
+private val TodayGlow = androidx.compose.ui.text.TextStyle(
+    shadow = androidx.compose.ui.graphics.Shadow(color = Color(0xFF38BDF8).copy(alpha = 0.5f), offset = androidx.compose.ui.geometry.Offset.Zero, blurRadius = 24f)
+)
+
+@Composable
+private fun NeoPill(text: String, onClick: () -> Unit) {
+    Box(Modifier.neonGlass(RoundedCornerShape(50), 6.dp).clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(text, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
 @Composable
 fun TodayPage(widgets: WidgetController, onAddWidget: () -> Unit) {
     var editing by remember { mutableStateOf(false) }
@@ -377,11 +388,17 @@ fun TodayPage(widgets: WidgetController, onAddWidget: () -> Unit) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        val hour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) }
+        val greeting = when { hour < 12 -> "Good morning"; hour < 18 -> "Good afternoon"; else -> "Good evening" }
+        val dateLine = remember { java.text.SimpleDateFormat("EEEE, d MMMM", java.util.Locale.getDefault()).format(java.util.Date()) }
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-            Text("Today View", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold, style = ShadowStyle)
+            Column {
+                Text("Today", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, style = TodayGlow)
+                Text("$greeting · $dateLine", color = Color(0xFF7DD3FC), fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GlassPill(if (editing) "Done" else "Edit") { editing = !editing }
-                GlassPill("＋", onClick = onAddWidget)
+                NeoPill(if (editing) "Done" else "Edit") { editing = !editing }
+                NeoPill("＋", onClick = onAddWidget)
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -401,7 +418,7 @@ fun TodayPage(widgets: WidgetController, onAddWidget: () -> Unit) {
 fun HomeGrid(apps: List<AppEntry>, vm: LauncherViewModel, iconSize: Dp, rowH: Dp, withWidgets: Boolean = false) {
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp)) {
         if (withWidgets) {
-            HomePanel(Modifier.fillMaxWidth().height(200.dp).padding(horizontal = 4.dp, vertical = 4.dp))
+            HomePanel(Modifier.fillMaxWidth().height(216.dp).padding(horizontal = 4.dp, vertical = 4.dp))
             Spacer(Modifier.weight(1f))   // the wallpaper's logo shows here
         }
         apps.chunked(4).forEach { row ->

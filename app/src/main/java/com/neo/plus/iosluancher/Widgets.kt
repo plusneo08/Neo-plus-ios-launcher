@@ -94,6 +94,9 @@ import java.util.Locale
 /*  Built-in iOS-style widgets                                         */
 /* ------------------------------------------------------------------ */
 
+private val TdCyan = Color(0xFF38BDF8)
+private val TdGlow = TextStyle(shadow = androidx.compose.ui.graphics.Shadow(color = TdCyan.copy(alpha = 0.5f), offset = Offset.Zero, blurRadius = 22f))
+
 @Composable
 private fun WidgetCard(
     modifier: Modifier,
@@ -102,7 +105,7 @@ private fun WidgetCard(
 ) {
     Column(
         modifier
-            .glass(RoundedCornerShape(24.dp), 0.30f)
+            .neonGlass(RoundedCornerShape(26.dp), 10.dp)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(14.dp),
         content = content
@@ -123,14 +126,14 @@ fun ClockWidget(modifier: Modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Image(painterResource(R.drawable.neo_icon), "NEO PLUS", Modifier.size(22.dp).clip(Squircle))
             Spacer(Modifier.size(7.dp))
-            Text("NEO PLUS", color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp,
+            Text("NEO PLUS", color = TdCyan, fontSize = 11.sp,
                 letterSpacing = 1.5.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.weight(1f))
         Text(SimpleDateFormat(pattern, Locale.getDefault()).format(Date(now)),
-            color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.Light, style = ShadowStyle)
+            color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.Light, style = TdGlow)
         Text(SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(Date(now)),
-            color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp)
+            color = Color(0xFFBDEBFF), fontSize = 14.sp)
     }
 }
 
@@ -144,7 +147,7 @@ fun CalendarWidget(modifier: Modifier) {
         ctx.safeStart(Intent(Intent.ACTION_VIEW, uri))
     }) {
         Text(SimpleDateFormat("EEEE", Locale.getDefault()).format(now).uppercase(),
-            color = Color(0xFFFF7B7B), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            color = TdCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         Text(SimpleDateFormat("d", Locale.getDefault()).format(now),
             color = Color.White, fontSize = 56.sp, fontWeight = FontWeight.Light, style = ShadowStyle)
         Text(SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(now),
@@ -183,7 +186,7 @@ private fun rememberBattery(): Pair<Int, Boolean> {
 fun BatteryWidget(modifier: Modifier) {
     val (pct, charging) = rememberBattery()
     WidgetCard(modifier) {
-        Text("BATTERY", color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp,
+        Text("BATTERY", color = TdCyan, fontSize = 11.sp,
             letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.weight(1f))
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -191,8 +194,9 @@ fun BatteryWidget(modifier: Modifier) {
                 val stroke = 9.dp.toPx()
                 val tl = Offset(stroke / 2, stroke / 2)
                 val sz = Size(size.width - stroke, size.height - stroke)
-                drawArc(Color.White.copy(alpha = 0.25f), 0f, 360f, false, tl, sz, style = Stroke(stroke))
-                val c = if (pct <= 20 && !charging) Color(0xFFFF6B6B) else Color(0xFF5CE08A)
+                drawArc(TdCyan.copy(alpha = 0.15f), 0f, 360f, false, tl, sz, style = Stroke(stroke, cap = StrokeCap.Round))
+                val c = if (pct <= 20 && !charging) Color(0xFFFF6B6B) else if (charging) Color(0xFF5CE08A) else TdCyan
+                drawArc(c.copy(alpha = 0.25f), -90f, 360f * pct / 100f, false, tl, sz, style = Stroke(stroke * 1.8f, cap = StrokeCap.Round))
                 drawArc(c, -90f, 360f * pct / 100f, false, tl, sz, style = Stroke(stroke, cap = StrokeCap.Round))
             }
             Text("$pct%", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
@@ -216,14 +220,17 @@ fun StorageWidget(modifier: Modifier) {
     val frac = (used.toFloat() / total.coerceAtLeast(1)).coerceIn(0f, 1f)
     fun gb(b: Long) = String.format(Locale.getDefault(), "%.0f GB", b / 1_073_741_824.0)
     WidgetCard(modifier) {
-        Text("STORAGE", color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp,
+        Text("STORAGE", color = TdCyan, fontSize = 11.sp,
             letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.weight(1f))
         Text(gb(used), color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Light, style = ShadowStyle)
         Text("of ${gb(total)} used", color = Color.White.copy(alpha = 0.9f), fontSize = 13.sp)
         Spacer(Modifier.height(10.dp))
-        Box(Modifier.fillMaxWidth().height(8.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.25f))) {
-            Box(Modifier.fillMaxHeight().fillMaxWidth(frac).background(Color.White))
+        Box(Modifier.fillMaxWidth().height(8.dp).clip(CircleShape).background(TdCyan.copy(alpha = 0.15f))) {
+            Box(
+                Modifier.fillMaxHeight().fillMaxWidth(frac)
+                    .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(TdCyan, Color(0xFF1E7BFF))))
+            )
         }
     }
 }

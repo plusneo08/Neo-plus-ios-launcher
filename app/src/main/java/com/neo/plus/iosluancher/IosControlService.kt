@@ -546,6 +546,7 @@ class IosControlService : AccessibilityService() {
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = event.packageName?.toString() ?: return
         val cls = event.className?.toString() ?: ""
+        guardNeoLock(pkg)
         if (pkg != "com.android.systemui") { trackForeground(pkg, cls); return }
         val shade = cls.contains("NotificationShade") || cls.contains("StatusBarWindow") ||
             cls.contains("QuickSettings") || cls.contains("QSPanel") || cls.contains("NotificationPanel")
@@ -560,6 +561,20 @@ class IosControlService : AccessibilityService() {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .putExtra("open_cc", true)
         )
+    }
+
+    /**
+     * Without device-owner mode nothing pins the Neo lock screen, so if anyone gets out of it (home button, recents, the
+     * notification shade) while the Neo lock is closed and the screen is on, it is put back on top. Calls are left alone.
+     */
+    private fun guardNeoLock(pkg: String) {
+        try {
+            if (pkg == packageName || Kiosk.isOwner(this) || !NeoLock.needsLock(this) || NeoLock.callUp > 0 || NeoLock.showing) return
+            if (!(getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isInteractive) return
+            val mode = (getSystemService(Context.AUDIO_SERVICE) as AudioManager).mode
+            if (mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_RINGTONE || mode == AudioManager.MODE_IN_COMMUNICATION) return
+            NeoLock.showIfNeeded(this)
+        } catch (e: Exception) { }
     }
 
     override fun onInterrupt() {}
