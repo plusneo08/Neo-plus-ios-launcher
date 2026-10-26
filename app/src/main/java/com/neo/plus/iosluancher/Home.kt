@@ -181,7 +181,7 @@ fun LauncherRoot(
                 val rowH = iconSize + 36.dp
                 val rows = ((maxHeight - 72.dp) / rowH).toInt().coerceIn(3, 7)
                 val perPage = rows * 4
-                val firstCap = ((maxHeight - 72.dp - 120.dp - 200.dp) / rowH).toInt().coerceIn(1, 3) * 4
+                val firstCap = ((maxHeight - 72.dp - 120.dp - 280.dp) / rowH).toInt().coerceIn(1, 3) * 4
                 val homeList = vm.homeApps
                 val homePages = remember(homeList, perPage, firstCap) {
                     listOf(homeList.take(firstCap)) + homeList.drop(firstCap).chunked(perPage)
@@ -401,7 +401,7 @@ fun TodayPage(widgets: WidgetController, onAddWidget: () -> Unit) {
 fun HomeGrid(apps: List<AppEntry>, vm: LauncherViewModel, iconSize: Dp, rowH: Dp, withWidgets: Boolean = false) {
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp)) {
         if (withWidgets) {
-            HomePanel(Modifier.fillMaxWidth().height(112.dp).padding(horizontal = 4.dp, vertical = 4.dp))
+            HomePanel(Modifier.fillMaxWidth().height(200.dp).padding(horizontal = 4.dp, vertical = 4.dp))
             Spacer(Modifier.weight(1f))   // the wallpaper's logo shows here
         }
         apps.chunked(4).forEach { row ->

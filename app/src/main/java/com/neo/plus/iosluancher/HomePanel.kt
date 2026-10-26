@@ -1,5 +1,13 @@
 package com.neo.plus.iosluancher
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import android.Manifest
 import android.content.Intent
 import android.net.Uri
@@ -165,34 +173,47 @@ fun HomePanel(modifier: Modifier = Modifier) {
 
     val w = weather
     val card = RoundedCornerShape(26.dp)
-    val shortDate = SimpleDateFormat("EEE, d MMM", loc).format(date)
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        // ---- clock card
+    val sky = rememberSkyKind()
+    val kind = if (w != null) weatherKind(w.code, w.isDay) else sky
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // ---- clock card: big rolling digits, live seconds and a glowing seconds sweep along the bottom edge
         Box(
-            Modifier.weight(1f).fillMaxHeight().neoCard(card)
+            Modifier.weight(1f).fillMaxWidth().neoCard(card)
                 .clickable { ctx.safeStart(Intent(AlarmClock.ACTION_SHOW_ALARMS)) }
         ) {
             Canvas(Modifier.matchParentSize()) { clockStreaks() }
-            Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.Center) {
+            SecondsSweep(Modifier.matchParentSize())
+            Row(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Row(verticalAlignment = Alignment.Bottom) {
-                    Text(time, color = Color.White, fontSize = 50.sp, fontWeight = FontWeight.Light, letterSpacing = (-1).sp, style = GlowText, maxLines = 1, softWrap = false)
+                    AnimatedContent(
+                        targetState = time,
+                        transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
+                        label = "clockTime"
+                    ) { t ->
+                        Text(t, color = Color.White, fontSize = 60.sp, fontWeight = FontWeight.Light, letterSpacing = (-1).sp, style = GlowText, maxLines = 1, softWrap = false)
+                    }
                     if (ampm.isNotEmpty()) {
-                        Text(ampm, color = Color(0xFFBFE6FF), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 4.dp, bottom = 9.dp))
+                        Text(ampm, color = Color(0xFFBFE6FF), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 4.dp, bottom = 12.dp))
                     }
                 }
-                Text(
-                    shortDate, color = Color.White.copy(alpha = 0.95f), fontSize = 16.sp, fontWeight = FontWeight.Medium,
+                Spacer(Modifier.weight(1f))
+                Column(
+                    horizontalAlignment = Alignment.End,
                     modifier = Modifier.clickable {
                         val uri = CalendarContract.CONTENT_URI.buildUpon().appendPath("time").appendPath(System.currentTimeMillis().toString()).build()
                         ctx.safeStart(Intent(Intent.ACTION_VIEW, uri))
                     }
-                )
+                ) {
+                    Text(weekday, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    Text(dayMonth, color = Color.White.copy(alpha = 0.9f), fontSize = 15.sp, maxLines = 1)
+                    LiveSeconds()
+                }
             }
         }
 
-        // ---- weather card
+        // ---- weather card: the live sky for the current weather moves behind a large animated icon
         Box(
-            Modifier.weight(1f).fillMaxHeight().neoCard(card)
+            Modifier.weight(1f).fillMaxWidth().neoCard(card)
                 .clickable {
                     when {
                         w != null -> ctx.safeStart(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=" + Uri.encode("weather"))))
@@ -201,32 +222,72 @@ fun HomePanel(modifier: Modifier = Modifier) {
                     }
                 }
         ) {
+            WeatherScene(kind, Modifier.matchParentSize())
             Canvas(Modifier.matchParentSize()) { mountains() }
-            Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.Center) {
+            Row(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (w != null) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        WeatherGlyph(weatherKind(w.code, w.isDay), Modifier.size(52.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Column {
-                            Text("${w.temp}°", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Light, style = GlowText)
-                            Text(weatherText(w.code), color = Color.White.copy(alpha = 0.94f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
+                    WeatherGlyph(kind, Modifier.size(80.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("${w.temp}°", color = Color.White, fontSize = 46.sp, fontWeight = FontWeight.Light, style = GlowText)
+                        Text(weatherText(w.code), color = Color.White.copy(alpha = 0.94f), fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     if (w.place.isNotBlank()) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                            Icon(Icons.Filled.LocationOn, null, tint = NeoCyanC, modifier = Modifier.size(14.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.widthIn(max = 130.dp)) {
+                            Icon(Icons.Filled.LocationOn, null, tint = NeoCyanC, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(3.dp))
-                            Text(w.place, color = NeoCyanC, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(w.place, color = NeoCyanC, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 } else {
-                    Text("Weather", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        if (!permitted) "Tap to allow location" else "Getting forecast…",
-                        color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp)
-                    )
+                    Column {
+                        Text("Weather", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            if (!permitted) "Tap to allow location" else "Getting forecast…",
+                            color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp, modifier = Modifier.padding(top = 3.dp)
+                        )
+                    }
                 }
             }
         }
+    }
+}
+
+/** Seconds that roll over every tick. */
+@Composable
+private fun LiveSeconds() {
+    val s by produceState(0) {
+        while (true) {
+            val n = System.currentTimeMillis()
+            value = ((n / 1000L) % 60L).toInt()
+            delay(1000L - n % 1000L + 5L)
+        }
+    }
+    AnimatedContent(
+        targetState = s,
+        transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
+        label = "clockSeconds"
+    ) { v ->
+        Text(String.format(Locale.US, "%02d", v), color = Color(0xFF7DD3FC), fontSize = 17.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+/** A glowing line along the bottom of the clock card that fills once a minute, with a bright head. */
+@Composable
+private fun SecondsSweep(modifier: Modifier = Modifier) {
+    val t = rememberFrameSeconds()
+    Canvas(modifier) {
+        val pulse = 0.8f + 0.2f * kotlin.math.sin(t.value * 3f)
+        val frac = (System.currentTimeMillis() % 60_000L) / 60_000f
+        val x = size.width * frac
+        val y = size.height - 4.dp.toPx()
+        val tail = size.width * 0.28f
+        drawLine(NeoCyanC.copy(alpha = 0.18f), Offset(0f, y), Offset(size.width, y), 2.dp.toPx(), StrokeCap.Round)
+        drawLine(
+            Brush.horizontalGradient(listOf(Color.Transparent, NeoCyanC), startX = x - tail, endX = x),
+            Offset(maxOf(0f, x - tail), y), Offset(x, y), 3.dp.toPx(), StrokeCap.Round
+        )
+        drawCircle(NeoCyanC.copy(alpha = 0.35f * pulse), 8.dp.toPx(), Offset(x, y))
+        drawCircle(Color.White, 2.6.dp.toPx(), Offset(x, y))
     }
 }

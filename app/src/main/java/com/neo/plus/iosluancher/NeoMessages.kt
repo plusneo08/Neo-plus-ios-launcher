@@ -110,6 +110,36 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import kotlinx.coroutines.launch
+import android.content.BroadcastReceiver
+import android.content.ContentValues
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material3.Slider
+import androidx.compose.runtime.key
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 
 /** Neo Messages: the Neo Plus text-message app, with themes. */
 class NeoMessagesActivity : ComponentActivity() {
@@ -234,6 +264,7 @@ private fun savePhotoBg(ctx: Context, uri: Uri): String? {
 private fun bgIsLight(v: String): Boolean? = when {
     v.startsWith("g:") -> ChatBgs.firstOrNull { "g:" + it.id == v }?.light
     v.startsWith("p:") -> false
+    v.startsWith("c:") -> customColor(v)?.let { it.luminance() > 0.55f }
     else -> null
 }
 
@@ -245,6 +276,99 @@ private fun chromeTheme(th: MsgTheme, light: Boolean?): MsgTheme = when {
         MsgTheme(th.name, th.bg, th.accent, th.sent, th.recv, Color.White, Color.White.copy(alpha = 0.72f), Color.White.copy(alpha = 0.12f), th.sentText)
     else -> th
 }
+
+/* ------------------------------------------------------------------ */
+/*  Default messages app                                                */
+/* ------------------------------------------------------------------ */
+
+private fun isDefaultSms(ctx: Context): Boolean = try { Telephony.Sms.getDefaultSmsPackage(ctx) == ctx.packageName } catch (e: Exception) { false }
+
+/** The system screen that asks “Make Neo Messages your default messages app?”. */
+private fun defaultSmsIntent(ctx: Context): Intent {
+    val old = Intent(Telephony.Sms.Intents.ACTION_CHANGE_DEFAULT).putExtra(Telephony.Sms.Intents.EXTRA_PACKAGE_NAME, ctx.packageName)
+    return try {
+        if (Build.VERSION.SDK_INT >= 29) {
+            val rm = ctx.getSystemService(android.app.role.RoleManager::class.java)
+            if (rm != null && rm.isRoleAvailable(android.app.role.RoleManager.ROLE_SMS)) rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_SMS) else old
+        } else old
+    } catch (e: Exception) { old }
+}
+
+/** As the default app, a sent text must be written into the phone's message store by us. */
+private fun insertSent(ctx: Context, to: String, body: String): Boolean = try {
+    val v = ContentValues().apply {
+        put(Telephony.Sms.ADDRESS, to); put(Telephony.Sms.BODY, body)
+        put(Telephony.Sms.DATE, System.currentTimeMillis()); put(Telephony.Sms.READ, 1); put(Telephony.Sms.SEEN, 1)
+    }
+    ctx.contentResolver.insert(Telephony.Sms.Sent.CONTENT_URI, v) != null
+} catch (e: Exception) { false }
+
+private fun markRead(ctx: Context, address: String) {
+    try {
+        val v = ContentValues().apply { put(Telephony.Sms.READ, 1); put(Telephony.Sms.SEEN, 1) }
+        ctx.contentResolver.update(Telephony.Sms.Inbox.CONTENT_URI, v, "address=? AND read=0", arrayOf(address))
+    } catch (e: Exception) { }
+}
+
+private fun notifyIncoming(ctx: Context, from: String, body: String) {
+    try {
+        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(android.app.NotificationChannel("neo_msgs_in", "Messages", android.app.NotificationManager.IMPORTANCE_HIGH))
+        val open = Intent(ctx, NeoMessagesActivity::class.java).setData(Uri.fromParts("smsto", from, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val pi = android.app.PendingIntent.getActivity(ctx, from.hashCode(), open, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE)
+        val n = android.app.Notification.Builder(ctx, "neo_msgs_in")
+            .setSmallIcon(android.R.drawable.stat_notify_chat).setContentTitle(from).setContentText(body)
+            .setStyle(android.app.Notification.BigTextStyle().bigText(body)).setAutoCancel(true).setContentIntent(pi).build()
+        nm.notify(from.hashCode(), n)
+    } catch (e: Exception) { }
+}
+
+/** Receives texts while Neo Messages is the default app: the phone no longer files them, so we write them to the inbox. */
+class SmsDeliverReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != Telephony.Sms.Intents.SMS_DELIVER_ACTION) return
+        val app = context.applicationContext
+        val parts = try { Telephony.Sms.Intents.getMessagesFromIntent(intent) } catch (e: Exception) { null }
+        if (parts == null || parts.isEmpty()) return
+        val from = parts[0].displayOriginatingAddress ?: parts[0].originatingAddress ?: ""
+        val body = parts.joinToString("") { it.displayMessageBody ?: "" }
+        try {
+            val v = ContentValues().apply {
+                put(Telephony.Sms.ADDRESS, from); put(Telephony.Sms.BODY, body)
+                put(Telephony.Sms.DATE, System.currentTimeMillis()); put(Telephony.Sms.DATE_SENT, parts[0].timestampMillis)
+                put(Telephony.Sms.READ, 0); put(Telephony.Sms.SEEN, 0)
+            }
+            app.contentResolver.insert(Telephony.Sms.Inbox.CONTENT_URI, v)
+        } catch (e: Exception) { }
+        notifyIncoming(app, from, body)
+    }
+}
+
+/** Android requires a default messages app to declare this. Picture messages (MMS) are not handled yet. */
+class MmsDeliverReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) { }
+}
+
+/** “Reply with message” from the incoming-call screen. */
+class RespondViaMessageService : android.app.Service() {
+    override fun onBind(intent: Intent?): android.os.IBinder? = null
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        try {
+            val to = intent?.data?.schemeSpecificPart.orEmpty().substringBefore('?')
+            val text = intent?.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
+            if (to.isNotBlank() && text.isNotBlank()) sendSms(applicationContext, to, text)
+        } catch (e: Exception) { }
+        stopSelf(startId)
+        return START_NOT_STICKY
+    }
+}
+
+/* Message list background: same values as the chat backgrounds, plus "c:RRGGBB" for any colour you mix yourself. */
+private fun listBgValue(ctx: Context): String = prefs(ctx).getString("listbg", "").orEmpty()
+private fun setListBg(ctx: Context, v: String) { prefs(ctx).edit().putString("listbg", v).apply() }
+
+private fun customColor(v: String): Color? =
+    if (v.startsWith("c:")) try { Color(android.graphics.Color.parseColor("#" + v.substring(2))) } catch (e: Exception) { null } else null
 
 private fun loadSms(ctx: Context): List<MsgItem> {
     val out = ArrayList<MsgItem>()
@@ -295,7 +419,7 @@ private fun sendSms(ctx: Context, to: String, text: String): String? {
         val sm = if (Build.VERSION.SDK_INT >= 31) ctx.getSystemService(SmsManager::class.java) else @Suppress("DEPRECATION") SmsManager.getDefault()
         val parts = sm.divideMessage(text)
         if (parts.size > 1) sm.sendMultipartTextMessage(to, null, parts, null, null) else sm.sendTextMessage(to, null, text, null, null)
-        saveOutbox(ctx, to, text)
+        if (!(isDefaultSms(ctx) && insertSent(ctx, to, text))) saveOutbox(ctx, to, text)
         null
     } catch (e: Exception) { "Couldn’t send: " + (e.message ?: "unknown error") }
 }
@@ -356,6 +480,10 @@ private fun MessagesApp(initialTo: String, onClose: () -> Unit) {
     var names by remember { mutableStateOf(emptyMap<String, Pair<String, String>>()) }
     var tick by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
+    var listBg by remember { mutableStateOf(listBgValue(ctx)) }
+    var listBgSheet by remember { mutableStateOf(false) }
+    var isDefault by remember { mutableStateOf(isDefaultSms(ctx)) }
+    val defaultLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { isDefault = isDefaultSms(ctx); tick++ }
 
     val perms = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { canRead = has(ctx, Manifest.permission.READ_SMS); tick++ }
     LaunchedEffect(canRead, tick) {
@@ -364,10 +492,15 @@ private fun MessagesApp(initialTo: String, onClose: () -> Unit) {
         while (true) { items = withContext(Dispatchers.IO) { loadSms(ctx) }; delay(3000) }
     }
     val threads = remember(items, names) { buildThreads(items, names) }
+    LaunchedEffect(screen, isDefault) {
+        val sc = screen
+        if (isDefault && sc is Screen.Chat) withContext(Dispatchers.IO) { markRead(ctx, sc.address) }
+    }
 
     BackHandler(enabled = true) {
         val sc = screen
         when {
+            listBgSheet -> listBgSheet = false
             picker -> picker = false
             sc is Screen.Forward -> screen = Screen.Chat(sc.from)
             sc !is Screen.List -> screen = Screen.List
@@ -393,7 +526,14 @@ private fun MessagesApp(initialTo: String, onClose: () -> Unit) {
                 ) { Text("Allow access", color = Color.White, fontWeight = FontWeight.SemiBold) }
             }
         } else when (val s = screen) {
-            is Screen.List -> ListScreen(threads, th, { picker = true }, { screen = Screen.New }) { screen = Screen.Chat(it) }
+            is Screen.List -> ListScreen(
+                threads, th, listBg, isDefault, { listBgSheet = true },
+                {
+                    try { defaultLauncher.launch(defaultSmsIntent(ctx)) }
+                    catch (e: Exception) { android.widget.Toast.makeText(ctx, "Couldn’t open the setting. Choose Neo Messages under Settings, Apps, Default apps, SMS app.", android.widget.Toast.LENGTH_LONG).show() }
+                },
+                { picker = true }, { screen = Screen.New }
+            ) { screen = Screen.Chat(it) }
             is Screen.New -> NewScreen(names, th, { screen = Screen.List }) { screen = Screen.Chat(it) }
             is Screen.Chat -> {
                 val k = keyOf(s.address)
@@ -406,10 +546,14 @@ private fun MessagesApp(initialTo: String, onClose: () -> Unit) {
                 ) { text ->
                     val err = sendSms(ctx, s.address, text)
                     if (err != null) android.widget.Toast.makeText(ctx, err, android.widget.Toast.LENGTH_SHORT).show() else tick++
+                    err == null
                 }
             }
             is Screen.Forward -> NewScreen(names, th, { screen = Screen.Chat(s.from) }, "Forward to") { screen = Screen.Chat(it, s.text) }
         }
+
+        // message list background picker
+        BackgroundSheet(listBgSheet && screen is Screen.List, listBg, th, "Message list background", null, {}, { listBgSheet = false }) { v -> setListBg(ctx, v); listBg = v }
 
         // theme picker
         AnimatedVisibility(picker, enter = fadeIn(), exit = fadeOut()) {
@@ -451,16 +595,23 @@ private fun MessagesApp(initialTo: String, onClose: () -> Unit) {
 }
 
 @Composable
-private fun ListScreen(threads: List<MsgThread>, th: MsgTheme, onTheme: () -> Unit, onNew: () -> Unit, onOpen: (String) -> Unit) {
+private fun ListScreen(
+    threads: List<MsgThread>, th0: MsgTheme, bg: String, isDefault: Boolean, onBg: () -> Unit, onMakeDefault: () -> Unit,
+    onTheme: () -> Unit, onNew: () -> Unit, onOpen: (String) -> Unit
+) {
+    val th = chromeTheme(th0, bgIsLight(bg))
     var q by remember { mutableStateOf("") }
     val shown = remember(q, threads) { if (q.isBlank()) threads else threads.filter { it.name.contains(q, true) || it.address.contains(q) || it.msgs.last().body.contains(q, true) } }
     Box(Modifier.fillMaxSize()) {
+        ChatBackdrop(bg)
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 14.dp, top = 14.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Messages", color = th.text, fontSize = 32.sp, fontWeight = FontWeight.Bold)
                     Text("NEO PLUS", color = th.accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 3.sp)
                 }
+                IconBtn(Icons.Filled.PhotoLibrary, th, "Background", onBg)
+                Spacer(Modifier.width(8.dp))
                 IconBtn(Icons.Filled.Palette, th, "Themes", onTheme)
             }
             Row(
@@ -473,6 +624,21 @@ private fun ListScreen(threads: List<MsgThread>, th: MsgTheme, onTheme: () -> Un
                 Box(Modifier.weight(1f)) {
                     if (q.isEmpty()) Text("Search messages", color = th.sub, fontSize = 16.sp)
                     BasicTextField(q, { q = it }, singleLine = true, textStyle = TextStyle(color = th.text, fontSize = 16.sp), cursorBrush = SolidColor(th.accent), modifier = Modifier.fillMaxWidth())
+                }
+            }
+            if (!isDefault) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).clip(RoundedCornerShape(18.dp)).background(th.card).padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Make Neo Messages your default", color = th.text, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Text("Texts then arrive and send here. Picture messages (MMS) aren’t supported yet.", color = th.sub, fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Box(Modifier.clip(RoundedCornerShape(20.dp)).background(Brush.horizontalGradient(th.sent)).clickable { onMakeDefault() }.padding(horizontal = 14.dp, vertical = 9.dp)) {
+                        Text("Set default", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
             if (shown.isEmpty()) {
@@ -565,6 +731,9 @@ private fun ChatBackdrop(v: String) {
     if (v.startsWith("g:")) {
         val c = ChatBgs.firstOrNull { "g:" + it.id == v }
         if (c != null) Box(Modifier.fillMaxSize().background(Brush.verticalGradient(c.colors)))
+    } else if (v.startsWith("c:")) {
+        val c = customColor(v)
+        if (c != null) Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(c, lerp(c, Color.Black, 0.35f)))))
     } else if (v.startsWith("p:")) {
         val bmp by produceState<ImageBitmap?>(null, v) {
             value = withContext(Dispatchers.IO) {
@@ -582,7 +751,7 @@ private fun ChatBackdrop(v: String) {
 @Composable
 private fun ChatScreen(
     address: String, name: String, msgs: List<MsgItem>, th: MsgTheme, draft: String,
-    onBack: () -> Unit, onForward: (String) -> Unit, onDelete: (List<MsgItem>) -> Unit, onSend: (String) -> Unit
+    onBack: () -> Unit, onForward: (String) -> Unit, onDelete: (List<MsgItem>) -> Unit, onSend: (String) -> Boolean
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -593,6 +762,8 @@ private fun ChatScreen(
     var bgSheet by remember { mutableStateOf(false) }
     var allChats by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    val orbs = remember(address) { mutableStateListOf<SentOrb>() }
+    var orbSeq by remember(address) { mutableStateOf(0) }
     val selected = remember(address) { mutableStateListOf<Long>() }
     val selecting = selected.isNotEmpty()
     val chosen = msgs.filter { it.id in selected }
@@ -601,13 +772,6 @@ private fun ChatScreen(
 
     fun applyBg(v: String) { setChatBg(ctx, key, v, allChats); bg = v }
     fun toggle(id: Long) { if (id in selected) selected.remove(id) else selected.add(id) }
-
-    val pick = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) scope.launch {
-            val f = withContext(Dispatchers.IO) { savePhotoBg(ctx, uri) }
-            if (f != null) applyBg("p:$f") else android.widget.Toast.makeText(ctx, "Couldn’t use that photo", android.widget.Toast.LENGTH_SHORT).show()
-        }
-    }
 
     BackHandler(enabled = selecting || bgSheet) { if (bgSheet) bgSheet = false else selected.clear() }
 
@@ -701,45 +865,28 @@ private fun ChatScreen(
                 val ready = text.isNotBlank()
                 Box(
                     Modifier.size(48.dp).clip(CircleShape).background(if (ready) Brush.linearGradient(th.sent) else SolidColor(ui.card))
-                        .clickable(enabled = ready) { onSend(text.trim()); text = "" },
+                        .clickable(enabled = ready) {
+                            val t = text.trim()
+                            if (onSend(t)) {
+                                if (orbs.size >= 4) orbs.removeAt(0)
+                                orbs.add(SentOrb(System.nanoTime(), t, orbSeq++))
+                            }
+                            text = ""
+                        },
                     contentAlignment = Alignment.Center
                 ) { Icon(Icons.Filled.Send, "Send", tint = if (ready) Color.White else ui.sub, modifier = Modifier.size(22.dp)) }
             }
         }
 
+        // each sent message floats on an orb: tap to read it, tap again to hide it, drag it to the bottom to remove it
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val wPx = constraints.maxWidth.toFloat()
+            val hPx = constraints.maxHeight.toFloat()
+            for (o in orbs) key(o.id) { FloatingOrb(o, th, wPx, hPx) { orbs.remove(o) } }
+        }
+
         // chat background picker
-        AnimatedVisibility(bgSheet, enter = fadeIn(), exit = fadeOut()) {
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).clickable { bgSheet = false })
-        }
-        AnimatedVisibility(
-            bgSheet, modifier = Modifier.align(Alignment.BottomCenter),
-            enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()
-        ) {
-            Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(Color(0xFF0E1626)).navigationBarsPadding()
-                    .padding(horizontal = 18.dp, vertical = 18.dp)
-            ) {
-                Text("Chat background", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(14.dp))
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    BgTile("Default", Brush.verticalGradient(th.bg), bg.isEmpty() || bg == "-", th.accent) { applyBg("-") }
-                    ChatBgs.forEach { c -> BgTile(c.name, Brush.verticalGradient(c.colors), bg == "g:" + c.id, th.accent) { applyBg("g:" + c.id) } }
-                    Column(Modifier.width(72.dp).clickable { pick.launch("image/*") }, horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(
-                            Modifier.size(72.dp, 96.dp).clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.08f))
-                                .border(if (bg.startsWith("p:")) 2.dp else 1.dp, if (bg.startsWith("p:")) th.accent else Color.White.copy(alpha = 0.25f), RoundedCornerShape(16.dp)),
-                            contentAlignment = Alignment.Center
-                        ) { Icon(if (bg.startsWith("p:")) Icons.Filled.Check else Icons.Filled.Add, null, tint = if (bg.startsWith("p:")) th.accent else Color.White, modifier = Modifier.size(26.dp)) }
-                        Text("My photo", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp, modifier = Modifier.padding(top = 5.dp), maxLines = 1)
-                    }
-                }
-                Spacer(Modifier.height(14.dp))
-                Row(Modifier.fillMaxWidth().clickable { allChats = !allChats }, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Use for all chats", color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                    Switch(checked = allChats, onCheckedChange = { allChats = it })
-                }
-            }
-        }
+        BackgroundSheet(bgSheet, bg, th, "Chat background", allChats, { allChats = it }, { bgSheet = false }) { v -> applyBg(v) }
 
         if (confirmDelete) {
             val n = chosen.size
@@ -752,5 +899,195 @@ private fun ChatScreen(
                 dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } }
             )
         }
+    }
+}
+
+
+/* ------------------------------------------------------------------ */
+/*  Background picker (message list and chats)                          */
+/* ------------------------------------------------------------------ */
+
+@Composable
+private fun BoxScope.BackgroundSheet(
+    visible: Boolean, current: String, th: MsgTheme, title: String,
+    allChats: Boolean?, onAllChats: (Boolean) -> Unit, onDismiss: () -> Unit, onApply: (String) -> Unit
+) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var showColor by remember { mutableStateOf(false) }
+    val start = remember { FloatArray(3).also { android.graphics.Color.colorToHSV((customColor(current) ?: Color(0xFF2563EB)).toArgb(), it) } }
+    var hue by remember { mutableStateOf(start[0]) }
+    var sat by remember { mutableStateOf(start[1].coerceIn(0.15f, 1f)) }
+    var bri by remember { mutableStateOf(start[2].coerceIn(0.15f, 1f)) }
+    fun emit() {
+        val c = android.graphics.Color.HSVToColor(floatArrayOf(hue, sat, bri))
+        onApply("c:" + "%06X".format(c and 0xFFFFFF))
+    }
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) scope.launch {
+            val f = withContext(Dispatchers.IO) { savePhotoBg(ctx, uri) }
+            if (f != null) onApply("p:$f") else android.widget.Toast.makeText(ctx, "Couldn’t use that photo", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+    AnimatedVisibility(visible, enter = fadeIn(), exit = fadeOut()) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).clickable { onDismiss() })
+    }
+    AnimatedVisibility(
+        visible, modifier = Modifier.align(Alignment.BottomCenter),
+        enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()
+    ) {
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(Color(0xFF0E1626)).navigationBarsPadding()
+                .padding(horizontal = 18.dp, vertical = 18.dp)
+        ) {
+            Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                BgTile("Default", Brush.verticalGradient(th.bg), current.isEmpty() || current == "-", th.accent) { onApply("-") }
+                ChatBgs.forEach { c -> BgTile(c.name, Brush.verticalGradient(c.colors), current == "g:" + c.id, th.accent) { onApply("g:" + c.id) } }
+                val cc = customColor(current)
+                BgTile(
+                    "Any colour",
+                    if (cc != null) Brush.verticalGradient(listOf(cc, cc)) else Brush.horizontalGradient(listOf(Color(0xFFEF4444), Color(0xFFF59E0B), Color(0xFF22C55E), Color(0xFF06B6D4), Color(0xFF6366F1), Color(0xFFD946EF))),
+                    cc != null, th.accent
+                ) { showColor = !showColor; if (showColor) emit() }
+                Column(Modifier.width(72.dp).clickable { pick.launch("image/*") }, horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(
+                        Modifier.size(72.dp, 96.dp).clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.08f))
+                            .border(if (current.startsWith("p:")) 2.dp else 1.dp, if (current.startsWith("p:")) th.accent else Color.White.copy(alpha = 0.25f), RoundedCornerShape(16.dp)),
+                        contentAlignment = Alignment.Center
+                    ) { Icon(if (current.startsWith("p:")) Icons.Filled.Check else Icons.Filled.Add, null, tint = if (current.startsWith("p:")) th.accent else Color.White, modifier = Modifier.size(26.dp)) }
+                    Text("My photo", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp, modifier = Modifier.padding(top = 5.dp), maxLines = 1)
+                }
+            }
+            if (showColor) {
+                Spacer(Modifier.height(10.dp))
+                Text("Colour", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
+                Slider(value = hue, onValueChange = { hue = it; emit() }, valueRange = 0f..360f)
+                Text("Richness", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
+                Slider(value = sat, onValueChange = { sat = it; emit() }, valueRange = 0.15f..1f)
+                Text("Brightness", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
+                Slider(value = bri, onValueChange = { bri = it; emit() }, valueRange = 0.15f..1f)
+            }
+            if (allChats != null) {
+                Spacer(Modifier.height(14.dp))
+                Row(Modifier.fillMaxWidth().clickable { onAllChats(!allChats) }, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Use for all chats", color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                    Switch(checked = allChats, onCheckedChange = { onAllChats(it) })
+                }
+            }
+        }
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Sent-message orbs                                                   */
+/* ------------------------------------------------------------------ */
+
+private class SentOrb(val id: Long, val text: String, val slot: Int)
+
+/**
+ * A sent message, carried by a glowing orb that floats over the chat background.
+ * Tap it once to show the message, tap again to hide it and get the plain orb back. Drag it to the bottom to remove it.
+ */
+@Composable
+private fun FloatingOrb(orb: SentOrb, th: MsgTheme, w: Float, h: Float, onRemove: () -> Unit) {
+    val d = LocalDensity.current
+    val haptic = LocalHapticFeedback.current
+    val orbPx = with(d) { 58.dp.toPx() }
+    val gap = with(d) { 16.dp.toPx() }
+    val zoneH = with(d) { 110.dp.toPx() }
+    val maxX = (w - orbPx).coerceAtLeast(0f)
+    val maxY = (h - orbPx).coerceAtLeast(0f)
+    val startX = (w - orbPx - gap).coerceIn(0f, maxX)
+    val startY = (h - orbPx - gap * 3f).coerceIn(0f, maxY)
+    val targetX = startX
+    val targetY = (h * 0.26f + (orb.slot % 4) * (orbPx + gap)).coerceIn(0f, maxY)
+
+    var ox by remember { mutableStateOf(startX) }
+    var oy by remember { mutableStateOf(startY) }
+    var open by remember { mutableStateOf(false) }
+    var dragging by remember { mutableStateOf(false) }
+    var moved by remember { mutableStateOf(false) }
+    var gone by remember { mutableStateOf(false) }
+
+    // flies up from the send button to its floating spot
+    LaunchedEffect(Unit) {
+        animate(0f, 1f, animationSpec = spring(dampingRatio = 0.55f, stiffness = 90f)) { t, _ ->
+            if (!moved) { ox = startX + (targetX - startX) * t; oy = startY + (targetY - startY) * t }
+        }
+    }
+    val scale by animateFloatAsState(if (gone) 0f else 1f, tween(220), label = "orbScale", finishedListener = { if (gone) onRemove() })
+    val inf = rememberInfiniteTransition(label = "orb")
+    val bob by inf.animateFloat(-1f, 1f, infiniteRepeatable(tween(1900 + (orb.slot % 3) * 300, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "bob")
+    val glow by inf.animateFloat(0.85f, 1.25f, infiniteRepeatable(tween(1500, easing = LinearEasing), RepeatMode.Reverse), label = "glow")
+    val inZone = oy + orbPx / 2f > h - zoneH
+
+    Box(Modifier.fillMaxSize()) {
+        // remove zone, only while dragging
+        AnimatedVisibility(
+            dragging, modifier = Modifier.align(Alignment.BottomCenter),
+            enter = fadeIn() + slideInVertically { it }, exit = fadeOut() + slideOutVertically { it }
+        ) {
+            Column(Modifier.navigationBarsPadding().padding(bottom = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    Modifier.size(if (inZone) 78.dp else 62.dp).clip(CircleShape).background(if (inZone) Color(0xFFEF4444) else Color.White.copy(alpha = 0.22f)),
+                    contentAlignment = Alignment.Center
+                ) { Icon(Icons.Filled.Delete, "Remove", tint = Color.White, modifier = Modifier.size(28.dp)) }
+                Text(if (inZone) "Let go to remove" else "Drag here to remove", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+            }
+        }
+
+        // the message, shown while the orb is opened
+        val card: @Composable () -> Unit = {
+            AnimatedVisibility(open && !dragging, enter = fadeIn() + scaleIn(initialScale = 0.85f), exit = fadeOut() + scaleOut(targetScale = 0.85f)) {
+                Box(
+                    Modifier.widthIn(max = 280.dp).clip(RoundedCornerShape(20.dp)).background(Brush.linearGradient(th.sent))
+                        .clickable { open = false }.padding(horizontal = 16.dp, vertical = 12.dp)
+                ) { Text(orb.text, color = th.sentText, fontSize = 16.sp, maxLines = 12, overflow = TextOverflow.Ellipsis) }
+            }
+        }
+        if (oy > h * 0.30f) {
+            Box(Modifier.fillMaxWidth().height((with(d) { oy.toDp() } - 10.dp).coerceAtLeast(0.dp)).padding(horizontal = 14.dp), contentAlignment = Alignment.BottomCenter) { card() }
+        } else {
+            Box(Modifier.fillMaxWidth().padding(top = with(d) { (oy + orbPx).toDp() } + 10.dp).padding(horizontal = 14.dp), contentAlignment = Alignment.TopCenter) { card() }
+        }
+
+        // the orb
+        Box(
+            Modifier.offset { IntOffset(ox.roundToInt(), oy.roundToInt()) }
+                .size(58.dp)
+                .graphicsLayer {
+                    val sc = scale * (if (open) 1.1f else 1f)
+                    scaleX = sc; scaleY = sc; alpha = scale
+                    translationY = if (dragging) 0f else bob * 7.dp.toPx()
+                }
+                .drawBehind {
+                    val r = size.minDimension / 2f
+                    drawCircle(Brush.radialGradient(listOf(th.accent.copy(alpha = 0.45f), Color.Transparent), center = center, radius = r * 2.1f * glow), r * 2.1f * glow, center)
+                    drawCircle(
+                        Brush.radialGradient(listOf(Color.White.copy(alpha = 0.95f), th.accent, th.sent.last()), center = Offset(size.width * 0.38f, size.height * 0.30f), radius = r * 1.5f),
+                        r, center
+                    )
+                    drawCircle(Color.White.copy(alpha = 0.55f), r, center, style = Stroke(width = 1.5.dp.toPx()))
+                }
+                .pointerInput(Unit) { detectTapGestures(onTap = { open = !open; haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) }) }
+                .pointerInput(w, h) {
+                    detectDragGestures(
+                        onDragStart = { dragging = true; moved = true },
+                        onDrag = { change, amount ->
+                            change.consume()
+                            ox = (ox + amount.x).coerceIn(0f, maxX)
+                            oy = (oy + amount.y).coerceIn(0f, maxY)
+                        },
+                        onDragEnd = {
+                            dragging = false
+                            if (oy + orbPx / 2f > h - zoneH) { haptic.performHapticFeedback(HapticFeedbackType.LongPress); gone = true }
+                        },
+                        onDragCancel = { dragging = false }
+                    )
+                },
+            contentAlignment = Alignment.Center
+        ) { Icon(Icons.Filled.Send, null, tint = Color.White.copy(alpha = 0.95f), modifier = Modifier.size(24.dp)) }
     }
 }
