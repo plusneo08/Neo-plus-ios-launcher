@@ -97,7 +97,7 @@ object SiteVault {
         save(ctx, load(ctx).map { if (it.domain == domain) SiteEntry(it.domain, it.username, it.password, on) else it })
     }
 
-    fun remove(ctx: Context, domain: String) = save(ctx, load(ctx).filter { it.domain != domain })
+    fun remove(ctx: Context, domain: String) { save(ctx, load(ctx).filter { it.domain != domain }); SessionKeeper.forget(ctx, domain) }
 
     /**
      * The saved login (switched on) for an account the user names, e.g. "google.com", "Google Drive" or "facebook".

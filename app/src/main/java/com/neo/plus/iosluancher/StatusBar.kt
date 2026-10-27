@@ -55,6 +55,7 @@ import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.pointerInput
@@ -426,4 +427,10 @@ fun IosStatusBar(modifier: Modifier = Modifier) {
             BatteryRing(pct, charging, lowPower)
         }
     }
+}
+
+/** The home-screen bar itself, drawn over every other app on solid black so Android's own bar underneath is fully covered. */
+@Composable
+fun SystemWideStatusBar() {
+    Box(Modifier.fillMaxSize().background(Color.Black)) { IosStatusBar() }
 }

@@ -175,6 +175,9 @@ class IosControlService : AccessibilityService() {
     private var hudShown = false
     private var lastShade = 0L
     private var statusOverlay: StatusOverlayView? = null
+    /** The real home-screen bar over other apps (null while the launcher is in front); the drawn StatusOverlayView is only the fallback. */
+    private var composeBar: View? = null
+    private var useCompose = true
     private var launcherFront = true
     private var lastBringBack = 0L
     private var imeCache: Set<String> = emptySet()
@@ -283,6 +286,7 @@ class IosControlService : AccessibilityService() {
     }
 
     private fun addStatusOverlay() {
+        if (useCompose) { refreshOverlay(); return }
         val v = StatusOverlayView(this)
         v.visibility = View.GONE
         val lp = WindowManager.LayoutParams(
@@ -302,11 +306,41 @@ class IosControlService : AccessibilityService() {
         val wm = getSystemService(WindowManager::class.java)
         try { statusOverlay?.let { wm.removeView(it) } } catch (e: Exception) { }
         statusOverlay = null
+        try { composeBar?.let { wm.removeView(it) } } catch (e: Exception) { }
+        composeBar = null
         addStatusOverlay()
     }
 
     /** Updates the clock, SIM signal and battery and shows the top bar whenever another app is in front: portrait, landscape and fullscreen apps. */
+    /** The home-screen top bar itself (not a copy) over every other app. It is added only while another app is in front. */
+    private fun showComposeBar(show: Boolean) {
+        val wm = getSystemService(WindowManager::class.java)
+        if (show && composeBar == null) {
+            try {
+                val v = SystemBar.create(this)
+                val lp = WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.MATCH_PARENT, statusBarHeight(),
+                    WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                    PixelFormat.TRANSLUCENT
+                )
+                lp.gravity = Gravity.TOP or Gravity.START
+                wm.addView(v, lp)
+                composeBar = v
+            } catch (t: Throwable) {
+                useCompose = false   // Compose could not start in this window: fall back to the drawn bar
+                composeBar = null
+                addStatusOverlay()
+            }
+        } else if (!show && composeBar != null) {
+            try { wm.removeView(composeBar) } catch (e: Exception) { }
+            composeBar = null
+        }
+    }
+
     private fun refreshOverlay() {
+        if (useCompose) { showComposeBar(!launcherFront); return }
         val v = statusOverlay ?: return
         val show = !launcherFront
         if (show) {

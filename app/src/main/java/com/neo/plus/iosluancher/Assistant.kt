@@ -126,7 +126,7 @@ object PhoneActions {
     )
 
     /** Actions that fetch something to tell the user (the note is the answer). */
-    val infoActions = setOf("calendar", "weather", "lookup", "news", "stock", "sports", "read_sms", "call_log", "screen", "read_messages", "read_notifications", "read_app", "last_message", "sleep_mode", "sleep_report", "sleep_voice", "time_lock", "send_money", "money_setup", "web_search", "look", "excel_create", "excel_edit", "excel_read", "web_task", "web_batch", "file_read", "ui_list", "app_task", "goal", "call_assist", "lock_app", "post_apps", "queue", "approvals", "schedule", "schedules", "report_number")
+    val infoActions = setOf("calendar", "weather", "lookup", "news", "stock", "sports", "read_sms", "call_log", "screen", "read_messages", "read_notifications", "read_app", "last_message", "sleep_mode", "sleep_report", "sleep_voice", "time_lock", "send_money", "money_setup", "web_search", "look", "excel_create", "excel_edit", "excel_read", "web_task", "web_batch", "page_source", "file_read", "ui_list", "app_task", "goal", "call_assist", "lock_app", "post_apps", "queue", "approvals", "schedule", "schedules", "report_number")
 
     fun run(ctx: Context, name: String, a: JSONObject, apps: List<AppEntry>): ActionResult {
         // Neo Plus lock: while it is locked nothing is done for whoever is holding the phone (jobs the owner set up to run alone are not blocked)
@@ -258,6 +258,7 @@ object PhoneActions {
             "web_task" -> return WebTask.run(ctx, a)
             "web_batch" -> return WebTask.runBatch(ctx, a)
             "file_read" -> return FileTools.read(ctx, a)
+            "page_source" -> return PageSource.run(ctx, a)
             "continue_web_task" -> return if (WebTask.resume()) "Continuing the website task" else "The website task is not waiting for you"
             "stop_web_task" -> { WebTask.cancel(); return if (WebTask.running) "Stopping the website task" else "No website task is running" }
             "screen_share" -> return screenShare(a.optBoolean("on", true))
@@ -1321,6 +1322,9 @@ internal fun buildSystemPrompt(ctx: Context, apps: List<AppEntry>): String {
     } ?: "unknown"
     val names = apps.joinToString(", ") { it.shownLabel }.take(2500)
     val facts = PhoneActions.memoryFacts(ctx)
+    val doIt = if (DoItPrefs.noReask(ctx))
+        "When the user asks you to do something, do it straight away. Never ask “are you sure”, “shall I go ahead”, “do you want me to” or for permission, and never repeat the request back and wait for a yes. If a detail is missing but you can reasonably work it out (the usual app, the contact they obviously mean, the latest file, a sensible default), decide and do it. Ask one short question only when a detail you cannot guess is truly needed (for example the amount, or who to send money to). Once the user has answered, never ask the same thing again.\n\n"
+    else ""
     val mem = if (facts.isEmpty()) "" else "What you know about the user: " + facts.joinToString("; ") + ".\n"
     return """
 You are Neo Plus Assistant, the built-in assistant of the NEO PLUS iOS launcher on an Android phone. Talk naturally and warmly, like Gemini or Siri: chat, answer questions, explain, write, translate, do maths, give advice. Keep replies short unless the user wants detail. Use plain text only: no markdown, no headings. Always reply in the language the user wrote or spoke in, including Chichewa (Chinyanja) and Swahili.
@@ -1331,12 +1335,13 @@ The user may ask several things in one message (two questions, or a question and
 
 You can also control the phone. To do something, add action tags on their own lines at the very end of your reply, in the form [[do:NAME {json}]]. Always include the "do:" prefix, for example [[do:open_app {"app":"Gmail"}]] and never [[open_app {...}]]. Only act when the user asks for it. Say in a few words what you are doing, then add the tags. Never claim you did something unless you added its tag. If something is not possible, say so.
 
-Actions:
+${doIt}Actions:
 open_app {"app":"Camera"}
 alarm {"hour":7,"minute":30,"label":""}   (24-hour clock)
 timer {"seconds":300,"label":""}
 flashlight {"on":true}
 wifi / bluetooth / airplane / mobile_data / dark_mode / low_power (battery saver) / dnd  {"on":true}
+page_source {"url":"optional address","max":6000}   (the raw HTML source of a web page: the address given, or the page open in the phone's browser; the full file is saved in the Neo Plus folder)
 read_app {"app":"messages|whatsapp|whatsapp business|messenger|facebook|tiktok|instagram|gmail|email|gemini","from":"optional name"}   (reads the messages inside that app itself: opens it and reads the chat list, or the chat with "from")
 volume {"level":0-200} (above 100 = extra loudness boost, media only) or {"direction":"up|down|mute"}, optional "stream":"ring"
 brightness {"level":0-100}

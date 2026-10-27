@@ -24,10 +24,18 @@ object CallSim {
 
             if (sim in 1..2) {
                 val h = handleForSlot(ctx, handles, sim - 1) ?: return none
+                DoItPrefs.setLastSim(ctx, sim)
                 return Choice(h, sim)
             }
             val def = tel.getDefaultOutgoingPhoneAccount("tel")
-            if (def != null) Choice(def, slotOf(ctx, handles, def)) else Choice(null, null, ask = true)
+            if (def != null) return Choice(def, slotOf(ctx, handles, def))
+            if (DoItPrefs.noReask(ctx)) {
+                // no default calling SIM: use the one the user chose last time (SIM 1 the first time) instead of asking again
+                val slot = DoItPrefs.lastSim(ctx)
+                val h = handleForSlot(ctx, handles, slot - 1) ?: handles.firstOrNull()
+                if (h != null) return Choice(h, slot)
+            }
+            Choice(null, null, ask = true)
         } catch (e: Exception) { none }
     }
 

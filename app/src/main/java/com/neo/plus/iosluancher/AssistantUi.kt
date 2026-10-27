@@ -403,6 +403,8 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                             color = Color.White.copy(alpha = 0.65f), fontSize = 12.sp, lineHeight = 16.sp
                         )
                     }
+                    var noReask by remember { mutableStateOf(DoItPrefs.noReask(ctx)) }
+                    WebSwitch("Do what I ask without asking again", "The assistant acts on your request at once: no “are you sure”, no repeated questions, and calls use the SIM you chose last. It only asks when a detail it can’t guess is missing.", noReask) { noReask = !noReask; DoItPrefs.setNoReask(ctx, noReask) }
                     MenuRow("Lock", if (AppLock.enabled(ctx)) "On: Neo Plus and ${AppLock.lockedApps(ctx).size} app(s) are locked" else "Lock Neo Plus and chosen apps with your phone’s unlock or your voice", 7)
                     MenuRow("Saved PINs", if (PinVault.names(ctx).isEmpty()) "Let the phone type a PIN for you, the AI never sees it" else PinVault.names(ctx).size.toString() + " saved", 6)
                     MenuRow("Call awareness",
@@ -665,6 +667,28 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                             .clickable { showSites = true }.padding(vertical = 12.dp),
                         contentAlignment = Alignment.Center
                     ) { Text("Authorised websites", color = Color.White, fontSize = 15.sp) }
+                    Text("How far the website assistant may go", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    var domainMode by remember { mutableStateOf(WebTaskPrefs.domainMode(ctx)) }
+                    var extraHosts by remember { mutableStateOf(WebTaskPrefs.extraHostsRaw(ctx)) }
+                    var risky by remember { mutableStateOf(WebTaskPrefs.risky(ctx)) }
+                    var confirmMoney by remember { mutableStateOf(WebTaskPrefs.confirmMoney(ctx)) }
+                    var deepRead by remember { mutableStateOf(WebTaskPrefs.deepRead(ctx)) }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        WebChip("My sites only", domainMode == "strict", Modifier.weight(1f)) { domainMode = "strict"; WebTaskPrefs.setDomainMode(ctx, "strict") }
+                        WebChip("Also these", domainMode == "list", Modifier.weight(1f)) { domainMode = "list"; WebTaskPrefs.setDomainMode(ctx, "list") }
+                        WebChip("Any site", domainMode == "any", Modifier.weight(1f)) { domainMode = "any"; WebTaskPrefs.setDomainMode(ctx, "any") }
+                    }
+                    if (domainMode == "list") GlassField(extraHosts, { extraHosts = it; WebTaskPrefs.setExtraHosts(ctx, it) }, "Other sites it may open, e.g. paypal.com, stripe.com")
+                    Text(
+                        if (domainMode == "any") "It can follow links anywhere. The saved login is still typed only on the authorised site."
+                        else if (domainMode == "list") "It can also open the sites above. The saved login is typed only on the authorised site."
+                        else "Links to any other site are blocked.",
+                        color = note, fontSize = 12.sp, lineHeight = 16.sp
+                    )
+                    WebSwitch("Purchases, deleting and messaging", "Allowed when your request clearly asks for it. Off: it never does these.", risky) { risky = !risky; WebTaskPrefs.setRisky(ctx, risky) }
+                    if (risky) WebSwitch("Confirm before paying", "Off by default. On: the phone stops and asks you to tap Continue before a pay / order button is pressed.", confirmMoney) { confirmMoney = !confirmMoney; WebTaskPrefs.setConfirmMoney(ctx, confirmMoney) }
+                    WebSwitch("Read the code behind the page", "HTML, frames and the page’s own server calls, to understand pages that are hard to read. Passwords and tokens are always hidden.", deepRead) { deepRead = !deepRead; WebTaskPrefs.setDeepRead(ctx, deepRead) }
+                    Text("A CAPTCHA always stops the task for you to solve; that can’t be switched off.", color = note, fontSize = 12.sp, lineHeight = 16.sp)
                     Text("Daily limit for website tasks", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     GlassField(limitText, { limitText = it.filter { c -> c.isDigit() }.take(6) }, "Requests per day (0 = no limit)")
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -1512,5 +1536,30 @@ private fun LockPanel(apps: List<AppEntry>, onBack: () -> Unit) {
                 .clickable { if (on) AppLock.lockNow(ctx) }.padding(vertical = 12.dp),
             contentAlignment = Alignment.Center
         ) { Text("Lock now", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+    }
+}
+
+@Composable
+private fun WebChip(text: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier.clip(RoundedCornerShape(50)).background(if (selected) Color(0xFF2EA8FF) else Color.White.copy(alpha = 0.16f))
+            .clickable(onClick = onClick).padding(vertical = 10.dp, horizontal = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, color = Color.White, fontSize = 13.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+private fun WebSwitch(label: String, desc: String, on: Boolean, onToggle: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.12f)).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text(desc, color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp, lineHeight = 16.sp)
+        }
+        WebChip(if (on) "On" else "Off", on, Modifier.width(60.dp)) { onToggle() }
     }
 }
