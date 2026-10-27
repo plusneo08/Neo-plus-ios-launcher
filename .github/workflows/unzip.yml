@@ -8,18 +8,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: |
+          ZIP=call-screen-update.zip
           rm -rf /tmp/neo && mkdir /tmp/neo
-          unzip -q -o NEO-PLUS-IOS-LAUNCHER-fixed.zip -d /tmp/neo
-          # if the zip has one top-level folder, use its contents; otherwise use everything
+          unzip -q -o "$ZIP" -d /tmp/neo
+          rm -f /tmp/neo/NOTES.txt
           if [ "$(ls -A /tmp/neo | wc -l)" = "1" ] && [ -d "/tmp/neo/$(ls /tmp/neo)" ]; then
             SRC="/tmp/neo/$(ls /tmp/neo)"
           else
             SRC=/tmp/neo
           fi
           cp -rf "$SRC"/. .
-          rm -f NEO-PLUS-IOS-LAUNCHER-fixed.zip
+          rm -f "$ZIP"
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add -A
-          git diff --cached --quiet && echo "Nothing to commit" || git commit -m "Unzip project"
+          git diff --cached --quiet && echo "Nothing to commit" || git commit -m "Update call screen"
           git push
