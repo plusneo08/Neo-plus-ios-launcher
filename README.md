@@ -1,3 +1,11 @@
+## Website tasks: the site now trusts the phone on the second login (new)
+- The saved "trusted" cookies used to be read only from the bare domain (example.com). Most sites live on www. or sign in on login. / accounts., and a cookie set only for such a host was never saved, so after the app or phone restarted the site saw a new device again (CAPTCHA, code). Now every host the task visited is saved and put back.
+- Cookies that had the same value on two hosts of the site are put back as domain cookies; the rest go back to the host they came from.
+- Put-back cookies now carry SameSite=None (they came back as Lax before, which hid the CAPTCHA frames' trust cookies), and trust cookies are kept 180 days (was 30).
+- hCaptcha and Cloudflare Turnstile trust cookies are kept too (Google reCAPTCHA already was).
+- Changing the saved username for a site now clears the old account's login cookies on every host, not only the bare domain. Device-trust cookies still stay.
+- The task feed line "Cookies before restore ... After restore" now lists the count per host, so you can see what came back. If a site still asks again, send that line.
+
 ## Neo lock: PIN, password or pattern, replacing Android's lock (new)
 - Assistant settings > Lock > "Neo lock": choose PIN (4 or 6 digits), Password or Pattern. Neo Plus keeps only a salted hash. Every 5 wrong tries add a wait (30 s, 60 s ... up to 30 min), and the count survives restarts. The same prompt also opens locked apps and confirms changes to the lock settings.
 - "Replace Android's lock with the Neo lock" (device owner only): Android's lock screen is switched off (DevicePolicyManager.setKeyguardDisabled) and the clock screen + Neo PIN pad / password / pattern is the phone's lock. It closes when the screen turns off and after every restart. While it is up the home button and notification shade are off. Wake-up and approval calls still appear above it.

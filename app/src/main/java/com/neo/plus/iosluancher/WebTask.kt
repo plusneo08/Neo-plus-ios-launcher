@@ -312,7 +312,8 @@ return 'none';}catch(e){return 'none';}})()"""
                     started += System.currentTimeMillis() - waitStart // time spent waiting for the user does not count against the task
                     when (outcome) {
                         "continue" -> {
-                            runCatching { SessionKeeper.save(s.ctx, s.entry.domain) } // the site now trusts this device: keep that at once
+                            runCatching { SessionKeeper.save(s.ctx, s.entry.domain, s.entry.username) } // the site now trusts this device: keep that at once
+                            TaskLog.add(TaskLine.Kind.INFO, "Saved trust cookies after your step: " + SessionKeeper.snapshot(s.entry.domain))
                             if (s.recording != null && s.recValid) s.recording!!.add(Rec(JSONObject().put("action", "need_user").put("reason", why).put("captcha", capNow), null, "", false))
                             TaskLog.add(TaskLine.Kind.OK, "You finished the step, carrying on")
                             steps += "$n. (paused for you: $why)"
@@ -607,7 +608,8 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
                     if (a.optBoolean("captcha") && st != "pending") { TaskLog.add(TaskLine.Kind.INFO, "      replay ${i + 1}/$total: no CAPTCHA this time"); continue }
                     when (awaitUser(s, a.optString("reason").ifBlank { "a step only you can do" })) {
                         "continue" -> {
-                            runCatching { SessionKeeper.save(s.ctx, s.entry.domain) } // the site now trusts this device: keep that at once
+                            runCatching { SessionKeeper.save(s.ctx, s.entry.domain, s.entry.username) } // the site now trusts this device: keep that at once
+                            TaskLog.add(TaskLine.Kind.INFO, "Saved trust cookies after your step: " + SessionKeeper.snapshot(s.entry.domain))
                             if (unquote(js(s, FAST_SUBMIT_JS, 1_500)) == "submitted") TaskLog.add(TaskLine.Kind.OK, "      replay ${i + 1}/$total: pressed sign in right after your step")
                             settle(s)
                             continue
@@ -1404,7 +1406,9 @@ return out.length?out.join('\n'):'none yet';}"""
         }
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(wv, true)
-        SessionKeeper.restore(s.ctx, s.entry.domain)
+        val before = SessionKeeper.snapshot(s.entry.domain)
+        SessionKeeper.restore(s.ctx, s.entry.domain, s.entry.username)
+        TaskLog.add(TaskLine.Kind.INFO, "Cookies before restore: $before. After restore: " + SessionKeeper.snapshot(s.entry.domain))
         wv.addJavascriptInterface(object {
             @JavascriptInterface fun saveBlob(name: String, mime: String, b64: String) {
                 try {
@@ -1417,8 +1421,8 @@ return out.length?out.join('\n'):'none yet';}"""
             }
         }, "NeoBridge")
         wv.webViewClient = object : WebViewClient() {
-            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) { s.loading = true }
-            override fun onPageFinished(view: WebView?, url: String?) { s.loading = false }
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) { s.loading = true; SessionKeeper.noteVisit(s.entry.domain, url) }
+            override fun onPageFinished(view: WebView?, url: String?) { s.loading = false; SessionKeeper.noteVisit(s.entry.domain, url) }
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest): Boolean {
                 val u = request.url
                 val ok = (u.scheme == "https" || u.scheme == "http") && hostAllowed(s, u.toString())
@@ -1465,7 +1469,7 @@ return out.length?out.join('\n'):'none yet';}"""
     private fun teardown(s: Session) {
         if (current === s) current = null
         StepOverlay.stop()
-        runCatching { SessionKeeper.save(s.ctx, s.entry.domain) }
+        runCatching { SessionKeeper.save(s.ctx, s.entry.domain, s.entry.username) }
         try {
             val wm = s.ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
             s.banner?.let { runCatching { wm.removeView(it) } }; s.banner = null
