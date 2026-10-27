@@ -1,3 +1,28 @@
+## Footsteps counter 👣 on the home and lock screens (new)
+- Shows "👣 3,482": today's steps, from the phone's own step counter chip (it counts with the screen off). On the home screen it sits under the seconds ring of the clock card; on the lock it is under the time (the Neo Plus clock screen and the Neo PIN / pattern screen).
+- **Resets to 0 at midnight** (local time). The screens check the clock every 30 s and exactly at midnight, so it resets even if you are looking at it; it is also checked on every reading.
+- The chip only gives a total since the phone started, so Neo Plus keeps today's number (`StepCounter.kt`). A phone restart (total goes down) is detected and counting carries on. If the app was closed over midnight, steps taken before its first reading of the new day are not counted for either day (they cannot be split).
+- Needs the phone's "Physical activity" permission. The app declares it; apps built for Android 9 get it automatically. If no number appears, allow it in phone Settings > Apps > Neo Plus > Permissions. On a phone with no step counter nothing is shown.
+- The counter starts when the launcher starts, so steps are counted while the launcher process is alive. If your phone kills it in the background, steps taken meanwhile are added at the next reading the same day.
+
+## Dead-connection resend is stricter (new)
+- A Gemini request is sent again at once only when a reused connection was cut. "No network", "cannot connect" and TLS errors are not resent, so a bad network does not double requests.
+
+## Faster Gemini requests and replies (new)
+- **Connection kept alive.** Every request used to send `Connection: close`, so each one paid for a new DNS + TLS handshake (about 0.2-0.6 s on mobile data). Connections are now reused. If a kept connection turns out to be dead, the same request is sent again at once on a fresh one (no waiting).
+- **Connection warmed up early.** The connection to Google is opened when you start speaking to the orb and when the assistant panel is created, so the real request finds it ready.
+- **Phone actions start while the reply is still streaming.** Simple instant controls (open app, switches, volume, brightness, media, system, settings, alarm, timer, navigate, open URL) run the moment the model has written their tag, not after the whole reply. Anything that sends, pays, posts or reads data still waits for the full reply, and order is kept: the first action that is not on the list stops early running.
+- **Web search only when it can help.** Live search is no longer attached to plain phone commands ("open Gmail", "set a timer", "turn the volume down"). Questions, chat, and commands that mention something recent ("play the latest ...") keep it.
+- **Less sent each time.** Older chat turns longer than 400 characters are cut (the newest two turns stay whole), in both the chat panel and the orb.
+
+## Faster phone commands (new)
+- **Instant matcher for switches and controls.** New `QuickCmd.kt` understands, as whole phrases and with no AI request: Wi‑Fi, Bluetooth, airplane mode, mobile data, flashlight / torch, dark mode, battery saver and Focus in any natural form ("wifi off", "enable bluetooth", "turn the torch on", "turn off wifi, bluetooth and the torch"), volume up / down / mute / "set volume to 50", "brightness 70", pause / resume / next song / previous track, recent apps, power menu, Control Center and "open wifi settings". Before, only "turn on/off wifi|bluetooth|torch|dark mode|battery saver" was understood on the phone and every other wording waited 1-3 s for Gemini. A sentence with any word it does not understand ("turn off wifi when I get home") is still left to the AI, so nothing is half-done.
+- **Starts before you finish the sentence (voice).** A single plain switch, volume up / down / mute or media command starts as soon as the recogniser's words stop changing for 0.4 s, instead of after the recogniser decides you are done. Commands with a number or more than one part still wait for the final result.
+- **Shorter wait after you stop talking.** The recogniser is asked to treat 0.7 s of silence as the end of a command (the default is about 1.5-2 s). It is not used while you dictate the text of a message reply. Some recogniser versions ignore this hint; the early start above works regardless.
+- **Opening an app is checked every 60 ms** (was 350 ms), so "open ..." answers up to a third of a second sooner. The chat panel closes 120 ms after an action (was 450 ms).
+- **Root switches cannot freeze.** A `su` command that nobody answers (unanswered root prompt) is stopped after 4 s.
+- Still depends on the network: a spoken answer to a phrase the voice has not said yet in this session (the first "Wi‑Fi off.") is made by the Gemini voice. The switch itself has already happened by then.
+
 ## Website tasks: the site now trusts the phone on the second login (new)
 - The saved "trusted" cookies used to be read only from the bare domain (example.com). Most sites live on www. or sign in on login. / accounts., and a cookie set only for such a host was never saved, so after the app or phone restarted the site saw a new device again (CAPTCHA, code). Now every host the task visited is saved and put back.
 - Cookies that had the same value on two hosts of the site are put back as domain cookies; the rest go back to the host they came from.
@@ -341,3 +366,11 @@ Say: “Find the best pic on my phone and post it on my Instagram story with a g
 - Neo Plus dialer: opened by Dial and tel: links; a number in the link is filled in, not dialled; "Call" button places the call.
 - Code: NeoCalls.kt (NeoInCallService, NeoCallActivity, NeoDialerActivity), NeoCallUi.kt (screens).
 - Not included: call history list, video calls, conference merge / swap screens (only the main call is shown). Call assistant rules (decline, greeting, ...) keep working as before.
+
+## Modes and answering calls for you (new)
+- **Modes**: sleep, work, journey, chill, meeting. Say "meeting mode until 3pm", "journey mode for 2 hours", "work mode", "chill mode", "sleep mode, call me at 6:30". "Turn off meeting mode" ends it. Defaults when no time is given: sleep 07:00, work 17:00, meeting 1 hour, journey and chill 2 hours.
+- A mode does what Sleep mode does: chat messages are answered as your assistant (it says what you are doing: busy at work, travelling, taking some time to relax, in a meeting), money messages are never answered, everything is logged, and at the end time the assistant phones you with a summary (night summary for sleep, otherwise "meeting summary" etc.).
+- **Calls**: while a mode is on, a caller without a rule of their own is answered by the assistant, which says it is an AI assistant, says what you are doing, talks to the caller in the caller's language, takes a message, hangs up, and the call is added to the summary. A rule for a person (for example `{"do":"rule","who":"Mum","action":"announce"}`) still wins, so they ring through. Outside a mode, use `{"do":"rule","who":"unknown","action":"conversation"}`.
+- Needs the microphone and Phone calls permissions and a Gemini key; if one is missing callers get the short greeting. Save how it should speak with `{"do":"conversation_setup","style":"...","brief":"...","info":"...","languages":"en-US,sw-TZ"}`.
+- Android can't give an app the caller's voice, so the caller is heard through the loudspeaker and microphone. If a call summary says "heard nothing", your phone blocks the microphone during calls.
+- Code: Modes.kt (modes and voice commands), CallConversation.kt (the call), CallAssist.kt (rules), SleepMode.kt / SleepReport.kt (the mode engine and summary).

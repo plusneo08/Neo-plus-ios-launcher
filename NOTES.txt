@@ -1,0 +1,19 @@
+MODES + CALL CONVERSATION - what changed
+========================================
+NEW      Modes.kt              sleep / work / journey / chill / meeting (built on Sleep mode) + voice commands
+NEW      CallConversation.kt   the assistant talks to the caller (language follows the caller), then hangs up and summarises
+CHANGED  CallAssist.kt         "conversation" action; while a mode is on, callers with no rule of their own get the conversation
+CHANGED  SleepMode.kt          remembers which mode, mode-aware "off" message and ring text
+CHANGED  SleepReport.kt        summary wording follows the mode ("Welcome back", "while you were in a meeting")
+CHANGED  WakeCallActivity.kt   the call that reads the summary knows which mode ended
+CHANGED  AssistantLine.kt, Assistant.kt, Scheduler.kt, Money.kt   action "mode", voice-command hook, instructions, small wording
+CHANGED  README.md             new section at the end
+
+Copy every file over the same path in your project and build. NOT compiled here (no Gradle/Kotlin in my sandbox);
+brackets balance in every changed file. Send me the first build error if there is one.
+
+Say to the assistant:
+  meeting mode until 3pm | journey mode for 2 hours | work mode | chill mode | sleep mode, call me at 6:30
+  turn off meeting mode | which mode am I in
+Let someone ring through during a mode:  {"do":"rule","who":"Mum","action":"announce"}
+Save how it speaks on calls:  {"do":"conversation_setup","style":"short, friendly","brief":"take a message","info":"...","languages":"en-US,sw-TZ"}

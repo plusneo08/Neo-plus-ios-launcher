@@ -56,7 +56,7 @@ object MoneySender {
     /** Called by the assistant. Only opens the authorisation screen. */
     fun request(ctx: Context, a: JSONObject): String {
         val app = ctx.applicationContext
-        if (SleepMode.isOn(app)) return "Couldn’t prepare a transfer: sleep mode is on. Switch it off, then ask me again."
+        if (SleepMode.isOn(app)) return "Couldn’t prepare a transfer: " + Modes.labelNow(app).lowercase() + " is on. Switch it off, then ask me again."
         val to = a.optString("to").trim()
         if (to.isEmpty()) return "Couldn’t prepare the transfer: who should get the money? Give a name or a phone number."
         val amount = cleanAmount(a.optString("amount")) ?: return "Couldn’t prepare the transfer: tell me the amount, for example 5000."

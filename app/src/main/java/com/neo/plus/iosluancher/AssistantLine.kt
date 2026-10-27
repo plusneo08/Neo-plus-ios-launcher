@@ -79,7 +79,7 @@ object AssistantLine {
         val sim = a.optInt("sim", 0)
         if (sim in 1..2) p.putInt("slot", sim)
         val act = a.optString("action").trim().lowercase()
-        if (act in listOf("announce", "decline", "decline_text", "speaker", "greeting")) p.putString("call_action", act).putString("call_text", a.optString("text").trim())
+        if (act in listOf("announce", "decline", "decline_text", "speaker", "greeting", "conversation")) p.putString("call_action", act).putString("call_text", a.optString("text").trim())
         when (a.optString("sms").lowercase()) { "on" -> p.putBoolean("sms_on", true); "off" -> p.putBoolean("sms_on", false) }
         if (a.has("brief")) p.putString("brief", a.optString("brief").trim().take(400))
         if (a.has("info")) p.putString("info", a.optString("info").trim().take(800))
