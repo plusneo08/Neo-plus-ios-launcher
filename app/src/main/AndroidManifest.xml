@@ -355,6 +355,7 @@
         <receiver android:name=".SmsStatusReceiver" android:exported="false" />
         <!-- Reply / Mark as read buttons on a text's notification -->
         <receiver android:name=".SmsActionReceiver" android:exported="false" />
+        <receiver android:name=".SplitReplyReceiver" android:exported="false" />
         <!-- A text arrived: float an orb carrying it over the home screen and other apps -->
         <receiver android:name=".SmsOrbReceiver" android:exported="true" android:permission="android.permission.BROADCAST_SMS">
             <intent-filter><action android:name="android.provider.Telephony.SMS_RECEIVED" /></intent-filter>
