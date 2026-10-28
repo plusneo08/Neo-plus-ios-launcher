@@ -181,7 +181,8 @@ fun LauncherRoot(
                 val rowH = iconSize + 36.dp
                 val rows = ((maxHeight - 72.dp) / rowH).toInt().coerceIn(3, 7)
                 val perPage = rows * 4
-                val firstCap = ((maxHeight - 72.dp - 120.dp - 280.dp) / rowH).toInt().coerceIn(1, 3) * 4
+                val taskRoom = if (TaskLog.lines.isNotEmpty() && !TaskLog.dismissed) 190.dp else 0.dp   // room for the steps panel under the weather card
+                val firstCap = ((maxHeight - 72.dp - 120.dp - 280.dp - taskRoom) / rowH).toInt().coerceIn(1, 3) * 4
                 val homeList = vm.homeApps
                 val homePages = remember(homeList, perPage, firstCap) {
                     listOf(homeList.take(firstCap)) + homeList.drop(firstCap).chunked(perPage)
@@ -419,6 +420,8 @@ fun HomeGrid(apps: List<AppEntry>, vm: LauncherViewModel, iconSize: Dp, rowH: Dp
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp)) {
         if (withWidgets) {
             HomePanel(Modifier.fillMaxWidth().height(216.dp).padding(horizontal = 4.dp, vertical = 4.dp))
+            // Live task steps, in their own panel directly below the weather card (hides itself when there is no task)
+            TaskPanel(onStop = { TaskLog.stop() }, maxListHeight = 110.dp)
             Spacer(Modifier.weight(1f))   // the wallpaper's logo shows here
         }
         apps.chunked(4).forEach { row ->
