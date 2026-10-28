@@ -8,19 +8,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: |
-          ZIP=call-screen-update.zip
-          rm -rf /tmp/neo && mkdir /tmp/neo
-          unzip -q -o "$ZIP" -d /tmp/neo
-          rm -f /tmp/neo/NOTES.txt
-          if [ "$(ls -A /tmp/neo | wc -l)" = "1" ] && [ -d "/tmp/neo/$(ls /tmp/neo)" ]; then
-            SRC="/tmp/neo/$(ls /tmp/neo)"
-          else
-            SRC=/tmp/neo
+          shopt -s nullglob nocaseglob
+          zips=(*.zip)
+          if [ ${#zips[@]} -eq 0 ]; then
+            echo "No zip file found in the repo root"; exit 1
           fi
-          cp -rf "$SRC"/. .
-          rm -f "$ZIP"
+          for z in "${zips[@]}"; do
+            rm -rf /tmp/x && mkdir /tmp/x
+            unzip -q "$z" -d /tmp/x
+            # if the zip contains one top-level folder, use what's inside it
+            if [ "$(ls -A /tmp/x | wc -l)" -eq 1 ] && [ -d "/tmp/x/$(ls -A /tmp/x)" ]; then
+              src="/tmp/x/$(ls -A /tmp/x)"
+            else
+              src=/tmp/x
+            fi
+            rsync -a --exclude='.git/' --exclude='.github/' "$src"/ ./
+            rm -f "$z"
+          done
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add -A
-          git diff --cached --quiet && echo "Nothing to commit" || git commit -m "Update call screen"
+          git diff --cached --quiet || git commit -m "Unzip project"
           git push
