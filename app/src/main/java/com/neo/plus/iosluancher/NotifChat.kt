@@ -302,7 +302,7 @@ object ReplyCard {
                 if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT
-            ).apply { gravity = Gravity.TOP; x = 0; y = dp(c, 40) }
+            ).apply { gravity = Gravity.TOP; this.x = 0; this.y = dp(c, 40) }
             // small side margins
             val outer = LinearLayout(c).apply { setPadding(dp(c, 10), 0, dp(c, 10), 0); addView(box, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)) }
             w.addView(outer, p)
