@@ -1652,14 +1652,15 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     fun send(raw: String, apps: List<AppEntry>, voice: Boolean = false) {
         val text = raw.trim()
         if (text.isEmpty()) return
-        // Split screen is on: typed commands are ignored, the voice (wake phrase) controls everything.
-        if (SplitTasks.active && !voice) {
-            add(ChatMsg(nextId(), false, "Split screen is on, so typed commands are ignored. Say “Hey Neo” and speak your request."))
-            return
-        }
         // A website task waiting for the user (CAPTCHA / code): "continue" or "cancel" must get through even though the chat is busy.
         WebTask.handleSpoken(text)?.let { reply ->
             add(ChatMsg(nextId(), true, text)); add(ChatMsg(nextId(), false, reply)); return
+        }
+        // Split screen: while task pages are open (or split mode is on) a typed message opens another page, or answers one
+        // ("2: …" / "task 2 …"). Quick phone controls and everything else carry on below as before.
+        if (!voice) {
+            val r = SplitTasks.handle(ctx, text, apps, spoken = false, force = false)
+            if (r != null) { add(ChatMsg(nextId(), true, text)); add(ChatMsg(nextId(), false, r)); return }
         }
         if (busy) return
         add(ChatMsg(nextId(), true, text))
