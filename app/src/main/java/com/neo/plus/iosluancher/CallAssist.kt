@@ -146,18 +146,18 @@ object CallAssist {
 
     private fun telecom(ctx: Context) = ctx.applicationContext.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
 
-    private fun endCall(ctx: Context): Boolean {
+    internal fun endCall(ctx: Context): Boolean {
         if (!granted(ctx, Manifest.permission.ANSWER_PHONE_CALLS)) return false
         return try { Build.VERSION.SDK_INT >= 28 && telecom(ctx).endCall() } catch (e: Exception) { false }
     }
 
-    private fun accept(ctx: Context): Boolean {
+    internal fun accept(ctx: Context): Boolean {
         if (!granted(ctx, Manifest.permission.ANSWER_PHONE_CALLS)) return false
         return try { telecom(ctx).acceptRingingCall(); true } catch (e: Exception) { false }
     }
 
     @Suppress("DEPRECATION")
-    private fun speakerOn(ctx: Context) {
+    internal fun speakerOn(ctx: Context) {
         try {
             val am = ctx.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             am.isSpeakerphoneOn = true
@@ -211,7 +211,7 @@ object CallAssist {
 
     /* ---------------- notification with buttons ---------------- */
 
-    private fun notify(ctx: Context, title: String, text: String, buttons: Boolean) {
+    internal fun notify(ctx: Context, title: String, text: String, buttons: Boolean) {
         try {
             val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
             if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CH) == null) {
