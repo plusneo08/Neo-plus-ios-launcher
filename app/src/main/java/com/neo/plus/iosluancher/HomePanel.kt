@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -179,101 +180,125 @@ fun HomePanel(modifier: Modifier = Modifier) {
     val sky = rememberSkyKind()
     val kind = if (w != null) weatherKind(w.code, w.isDay) else sky
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        // ---- clock card: big rolling digits, live seconds and a glowing seconds sweep along the bottom edge
+        // ---- clock: big glowing digits, a 24-hour day bar, and the seconds ring
         Box(
-            Modifier.weight(1.1f).fillMaxWidth().neoCard(card)
+            Modifier.weight(1f).fillMaxWidth().neoCard(card)
                 .clickable { ctx.safeStart(Intent(AlarmClock.ACTION_SHOW_ALARMS)) }
         ) {
             Canvas(Modifier.matchParentSize()) { clockStreaks() }
-            Row(Modifier.fillMaxSize().padding(start = 18.dp, end = 12.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        AnimatedContent(
-                            targetState = hours,
-                            transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
-                            label = "clockHours"
-                        ) { h -> Text(h, color = Color.White, fontSize = 56.sp, fontWeight = FontWeight.Light, style = GlowText, maxLines = 1, softWrap = false) }
-                        PulsingColon()
-                        AnimatedContent(
-                            targetState = minutes,
-                            transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
-                            label = "clockMinutes"
-                        ) { m -> Text(m, color = Color(0xFFBDEBFF), fontSize = 56.sp, fontWeight = FontWeight.Light, style = GlowText, maxLines = 1, softWrap = false) }
-                        if (ampm.isNotEmpty()) {
-                            Text(ampm, color = NeoCyanC, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 5.dp, bottom = 11.dp))
+            Column(Modifier.fillMaxSize().padding(start = 18.dp, end = 14.dp, top = 8.dp, bottom = 10.dp), verticalArrangement = Arrangement.Center) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            AnimatedContent(
+                                targetState = hours,
+                                transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
+                                label = "clockHours"
+                            ) { h -> Text(h, color = Color.White, fontSize = 58.sp, fontWeight = FontWeight.Thin, style = GlowText, maxLines = 1, softWrap = false) }
+                            PulsingColon()
+                            AnimatedContent(
+                                targetState = minutes,
+                                transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
+                                label = "clockMinutes"
+                            ) { m -> Text(m, color = Color(0xFF7DD3FC), fontSize = 58.sp, fontWeight = FontWeight.Thin, style = GlowText, maxLines = 1, softWrap = false) }
+                            if (ampm.isNotEmpty()) {
+                                Text(ampm, color = NeoCyanC, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 5.dp, bottom = 12.dp))
+                            }
+                        }
+                        // day and date as two glass chips
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.clickable {
+                                val uri = CalendarContract.CONTENT_URI.buildUpon().appendPath("time").appendPath(System.currentTimeMillis().toString()).build()
+                                ctx.safeStart(Intent(Intent.ACTION_VIEW, uri))
+                            }
+                        ) {
+                            Chip(weekday.uppercase(loc), NeoCyanC.copy(alpha = 0.22f), NeoCyanC)
+                            Chip(dayMonth.uppercase(loc), Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.9f))
                         }
                     }
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickable {
-                            val uri = CalendarContract.CONTENT_URI.buildUpon().appendPath("time").appendPath(System.currentTimeMillis().toString()).build()
-                            ctx.safeStart(Intent(Intent.ACTION_VIEW, uri))
-                        }
-                    ) {
-                        Box(Modifier.size(6.dp).background(NeoCyanC, RoundedCornerShape(50)))
-                        Spacer(Modifier.width(7.dp))
-                        Text("$weekday, $dayMonth", color = Color.White.copy(alpha = 0.92f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false))
-                        Spacer(Modifier.width(6.dp))
-                        FrameEmoji(CLOCK_FACES, 250L, size = 14.sp)   // hands of the clock go round
-                    }
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                    Box(Modifier.size(68.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(74.dp), contentAlignment = Alignment.Center) {
                         SecondsRing(Modifier.matchParentSize())
                         LiveSeconds()
                     }
                 }
+                Spacer(Modifier.height(8.dp))
+                DayBar(now)
             }
         }
 
-        // ---- weather card: the live sky for the current weather moves behind a large animated icon
-        Box(
-            Modifier.weight(1f).fillMaxWidth().neoCard(card)
-                .clickable {
-                    when {
-                        w != null -> ctx.safeStart(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=" + Uri.encode("weather"))))
-                        !permitted -> askLocation.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
-                        else -> tick++
+        // ---- bottom row: weather and footsteps as two square glass tiles
+        Row(Modifier.weight(1.15f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(
+                Modifier.weight(1f).fillMaxHeight().neoCard(card)
+                    .clickable {
+                        when {
+                            w != null -> ctx.safeStart(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=" + Uri.encode("weather"))))
+                            !permitted -> askLocation.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+                            else -> tick++
+                        }
                     }
-                }
-        ) {
-            WeatherScene(kind, Modifier.matchParentSize())
-            Canvas(Modifier.matchParentSize()) { mountains() }
-            WeatherEmojis(kind, Modifier.matchParentSize())   // emojis act out the weather: rain falls, clouds drift, stars twinkle
-            Row(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            ) {
+                WeatherScene(kind, Modifier.matchParentSize())
+                Canvas(Modifier.matchParentSize()) { mountains() }
+                WeatherEmojis(kind, Modifier.matchParentSize())
+                Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.25f), Color.Transparent, Color.Black.copy(alpha = 0.35f)))))
                 if (w != null) {
-                    WeatherGlyph(kind, Modifier.size(80.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("${w.temp}°", color = Color.White, fontSize = 46.sp, fontWeight = FontWeight.Light, style = GlowText)
-                        Text(weatherText(w.code), color = Color.White.copy(alpha = 0.94f), fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    if (w.place.isNotBlank()) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.widthIn(max = 130.dp)) {
-                            Icon(Icons.Filled.LocationOn, null, tint = NeoCyanC, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(3.dp))
-                            Text(w.place, color = NeoCyanC, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.SpaceBetween) {
+                        Row(verticalAlignment = Alignment.Top) {
+                            Text("${w.temp}°", color = Color.White, fontSize = 44.sp, fontWeight = FontWeight.Thin, style = GlowText, modifier = Modifier.weight(1f))
+                            WeatherGlyph(kind, Modifier.size(52.dp))
+                        }
+                        Column {
+                            Text(weatherText(w.code), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (w.place.isNotBlank()) Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.LocationOn, null, tint = NeoCyanC, modifier = Modifier.size(13.dp))
+                                Spacer(Modifier.width(2.dp))
+                                Text(w.place, color = NeoCyanC, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
                         }
                     }
                 } else {
-                    Column {
-                        Text("Weather", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            if (!permitted) "Tap to allow location" else "Getting forecast…",
-                            color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp, modifier = Modifier.padding(top = 3.dp)
-                        )
+                    Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.Center) {
+                        Text("Weather", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if (!permitted) "Tap to allow location" else "Getting forecast…", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp))
                     }
                 }
             }
+            StepsCard(Modifier.weight(1f).fillMaxHeight().neoCard(card))
         }
-
-        // ---- footsteps card: today's steps from the phone's step counter, distance, energy, goal and the last 7 days
-        StepsCard(Modifier.weight(0.72f).fillMaxWidth().neoCard(card))
     }
 }
 
-/** 👣 Footsteps: counts the steps you take with the phone on you (also while the screen is off). Tap to change the daily goal. */
+@Composable
+private fun Chip(text: String, bg: Color, fg: Color) {
+    Text(
+        text, color = fg, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, letterSpacing = 0.8.sp,
+        modifier = Modifier.background(bg, RoundedCornerShape(50)).padding(horizontal = 10.dp, vertical = 4.dp)
+    )
+}
+
+/** 24 little bars for the 24 hours of the day: hours that have passed glow, the current hour pulses brightest. */
+@Composable
+private fun DayBar(now: Long) {
+    val cal = java.util.Calendar.getInstance().apply { timeInMillis = now }
+    val hour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+    Canvas(Modifier.fillMaxWidth().height(10.dp)) {
+        val gap = 3.dp.toPx()
+        val bw = (size.width - gap * 23) / 24f
+        for (i in 0 until 24) {
+            val c = when {
+                i == hour -> NeoCyanC
+                i < hour -> NeoBlueC.copy(alpha = 0.75f)
+                else -> Color.White.copy(alpha = 0.14f)
+            }
+            val h = if (i == hour) size.height else size.height * 0.6f
+            drawRoundRect(c, Offset(i * (bw + gap), size.height - h), androidx.compose.ui.geometry.Size(bw, h), androidx.compose.ui.geometry.CornerRadius(bw / 2f))
+        }
+    }
+}
+
+/** 👣 Footsteps tile: a glowing progress ring around today's steps, distance / energy below and the last 7 days as small bars. Tap to change the goal. */
 @Composable
 private fun StepsCard(modifier: Modifier) {
     val appCtx = LocalContext.current.applicationContext
@@ -294,39 +319,42 @@ private fun StepsCard(modifier: Modifier) {
         goal = when (goal) { 4000 -> 6000; 6000 -> 8000; 8000 -> 10000; 10000 -> 12000; else -> 4000 }
         StepCounter.setGoal(appCtx, goal)
     }) {
-        Row(Modifier.fillMaxSize().padding(start = 16.dp, end = 14.dp, top = 6.dp, bottom = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    FrameEmoji(WALK_FRAMES, 350L, size = 20.sp)
-                    Spacer(Modifier.width(6.dp))
-                    Text(java.text.NumberFormat.getIntegerInstance().format(steps), color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Light, style = GlowText, maxLines = 1, softWrap = false)
-                    Text(" steps", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp), maxLines = 1)
+        Column(Modifier.fillMaxSize().padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween) {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Canvas(Modifier.fillMaxHeight().aspectRatio(1f)) {
+                    val sw = 7.dp.toPx()
+                    val inset = sw / 2f + 1.dp.toPx()
+                    val sz = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2)
+                    drawArc(Color.White.copy(alpha = 0.12f), -90f, 360f, false, Offset(inset, inset), sz, style = Stroke(sw, cap = StrokeCap.Round))
+                    if (frac > 0f) {
+                        drawArc(NeoCyanC.copy(alpha = 0.25f), -90f, 360f * frac, false, Offset(inset, inset), sz, style = Stroke(sw * 1.9f, cap = StrokeCap.Round))
+                        drawArc(Brush.sweepGradient(listOf(NeoBlueC, NeoCyanC, NeoBlueC)), -90f, 360f * frac, false, Offset(inset, inset), sz, style = Stroke(sw, cap = StrokeCap.Round))
+                    }
                 }
-                Text(
-                    if (!StepCounter.working.value && steps == 0) "Carry your phone: counting starts with your first steps"
-                    else String.format(Locale.US, "%.1f %s  ·  %d kcal  ·  goal %,d", dist, if (miles) "mi" else "km", StepCounter.kcal(steps), goal),
-                    color = Color(0xFF7DD3FC), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    FrameEmoji(WALK_FRAMES, 350L, size = 16.sp)
+                    Text(java.text.NumberFormat.getIntegerInstance().format(steps), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Light, style = GlowText, maxLines = 1, softWrap = false)
+                    Text("of ${java.text.NumberFormat.getIntegerInstance().format(goal)}", color = Color.White.copy(alpha = 0.55f), fontSize = 10.sp, maxLines = 1)
+                }
             }
-            // the last 7 days, today on the right and bright
-            Canvas(Modifier.width(88.dp).fillMaxHeight()) {
+            Text(
+                if (!StepCounter.working.value && steps == 0) "Carry your phone to start"
+                else String.format(Locale.US, "%.1f %s · %d kcal", dist, if (miles) "mi" else "km", StepCounter.kcal(steps)),
+                color = Color(0xFF7DD3FC), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp)
+            )
+            Canvas(Modifier.fillMaxWidth().height(16.dp).padding(top = 5.dp)) {
                 val top = maxOf(goal, week.maxOrNull() ?: 0).toFloat()
                 val gap = 4.dp.toPx()
                 val bw = (size.width - gap * 6) / 7f
                 week.forEachIndexed { i, v ->
-                    val h = maxOf(3.dp.toPx(), size.height * (v / top))
+                    val h = maxOf(2.dp.toPx(), size.height * (v / top))
                     drawRoundRect(
-                        if (i == week.lastIndex) NeoCyanC else Color.White.copy(alpha = 0.30f),
+                        if (i == week.lastIndex) NeoCyanC else Color.White.copy(alpha = 0.28f),
                         Offset(i * (bw + gap), size.height - h), androidx.compose.ui.geometry.Size(bw, h),
                         androidx.compose.ui.geometry.CornerRadius(2.dp.toPx())
                     )
                 }
             }
-        }
-        // progress towards today's goal along the bottom edge
-        Canvas(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp)) {
-            drawRect(Color.White.copy(alpha = 0.12f))
-            drawRect(Brush.horizontalGradient(listOf(NeoBlueC, NeoCyanC)), size = androidx.compose.ui.geometry.Size(size.width * frac, size.height))
         }
     }
 }

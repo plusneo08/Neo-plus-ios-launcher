@@ -72,7 +72,8 @@ data class NotifItem(
     val icon: ImageBitmap?,
     val intent: PendingIntent?,
     val clearable: Boolean,
-    val reply: Notification.Action? = null
+    val reply: Notification.Action? = null,
+    val pkg: String = ""
 )
 
 /** Receives every notification so the iOS-style panel can show them (needs Notification access). */
@@ -102,6 +103,7 @@ class NeoNotificationService : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         if (sbn != null) {
             try { NotifReader.onPosted(applicationContext, sbn) } catch (e: Exception) { }
+            try { ReplyCard.onPosted(applicationContext, sbn) } catch (e: Exception) { }
         }
         refresh()
     }
@@ -132,7 +134,8 @@ class NeoNotificationService : NotificationListenerService() {
                 icon = iconFor(sbn.packageName),
                 intent = sbn.notification.contentIntent,
                 clearable = sbn.isClearable,
-                reply = sbn.notification.actions?.firstOrNull { a -> a.remoteInputs?.isNotEmpty() == true && a.actionIntent != null }
+                reply = sbn.notification.actions?.firstOrNull { a -> a.remoteInputs?.isNotEmpty() == true && a.actionIntent != null },
+                pkg = sbn.packageName
             )
         }
         items.clear()
@@ -242,8 +245,22 @@ fun NotificationPanel(onClose: () -> Unit) {
                         }
                         if (n.reply != null) {
                             if (!replying) {
-                                Text(if (sentOk) "Sent" else "Reply", color = Color(0xFF7DD3FC), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.padding(start = 62.dp, bottom = 10.dp, end = 12.dp).clickable { replying = true; sentOk = false })
+                                val tkey = NotifChats.keyOf(n.pkg, n.title)
+                                val typingNow = if (NotifChats.version.intValue >= 0) TypingWatch.statusFor(tkey) else null
+                                Row(Modifier.padding(start = 62.dp, bottom = 10.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(if (sentOk) "Sent" else "Reply", color = Color(0xFF7DD3FC), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.clickable { replying = true; sentOk = false })
+                                    Spacer(Modifier.width(18.dp))
+                                    Text("Open chat", color = Color(0xFF7DD3FC), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.clickable {
+                                            ctx.safeStart(Intent(ctx, NotifChatActivity::class.java).putExtra("thread", tkey))
+                                            onClose()
+                                        })
+                                    if (typingNow != null) {
+                                        Spacer(Modifier.width(14.dp))
+                                        Text(typingNow, color = Color(0xFF30D158), fontSize = 13.sp)
+                                    }
+                                }
                             } else {
                                 Row(Modifier.fillMaxWidth().padding(start = 62.dp, end = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Box(Modifier.weight(1f).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.16f)).padding(horizontal = 14.dp, vertical = 9.dp)) {

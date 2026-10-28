@@ -56,6 +56,8 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.WRITE_CONTACTS" />
+    <uses-permission android:name="android.permission.GET_ACCOUNTS" />
     <!-- Assistant: send texts and report sent / delivered -->
     <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />
@@ -417,6 +419,13 @@
                 <action android:name="android.media.action.CLOSE_AUDIO_EFFECT_CONTROL_SESSION" />
             </intent-filter>
         </receiver>
+
+        <activity
+            android:name=".NotifChatActivity"
+            android:exported="false"
+            android:label="Chat"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Neo" />
 
         <!-- Feeds the iOS-style Notification Centre (user must switch on Notification access once) -->
         <service

@@ -147,8 +147,11 @@ fun ContactEditDialog(number: String, name: String, progress: String? = null, on
             else android.widget.Toast.makeText(ctx, "Couldn’t use that photo", android.widget.Toast.LENGTH_SHORT).show()
         }
     }
+    var full by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        androidx.compose.foundation.layout.Column(
+        if (full) {
+            ContactEditorForm(number, name) { saved -> full = false; if (saved) { tick++; onDismiss() } }
+        } else androidx.compose.foundation.layout.Column(
             androidx.compose.ui.Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(26.dp))
                 .background(androidx.compose.ui.graphics.Color(0xFF111A2B)).padding(22.dp),
             horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
@@ -171,7 +174,7 @@ fun ContactEditDialog(number: String, name: String, progress: String? = null, on
             androidx.compose.material3.Text("This picture shows when they call you", color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.55f), fontSize = 12.sp, modifier = androidx.compose.ui.Modifier.padding(top = 6.dp, bottom = 14.dp))
             DialogButton(if (photo == null) "Add picture" else "Change picture", true) { pick.launch("image/*") }
             if (own) DialogButton("Remove my picture", false) { ContactPhotos.remove(ctx, number); tick++ }
-            DialogButton("Edit name and details", false) { ContactEdit.open(ctx, number, name); onDismiss() }
+            DialogButton("Edit name, number, email and where it is saved", false) { full = true }
             DialogButton(if (progress != null) "Next contact" else "Done", false) { ContactPhotoVersion.intValue++; onDismiss() }
             if (onStopAll != null) DialogButton("Stop editing", false) { ContactPhotoVersion.intValue++; onStopAll() }
         }

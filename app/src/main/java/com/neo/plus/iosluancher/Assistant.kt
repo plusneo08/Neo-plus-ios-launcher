@@ -230,7 +230,7 @@ object PhoneActions {
 
             "post" -> return SocialPoster.post(ctx, a, apps)
             "post_apps" -> return SocialPoster.supported(ctx)
-            "app_task" -> return AppTask.run(ctx, a, apps)
+            "app_task" -> return SplitTasks.withScreen { AppTask.run(ctx, a, apps) }
             "goal" -> return Goals.handle(ctx, a, apps)
             "call_assist" -> return CallAssist.handle(ctx, a)
             "lock_app" -> return AppLock.handle(ctx, a)
@@ -255,8 +255,8 @@ object PhoneActions {
             "excel_create" -> return ExcelActions.create(ctx, a)
             "excel_edit" -> return ExcelActions.edit(ctx, a)
             "excel_read" -> return ExcelActions.read(ctx, a)
-            "web_task" -> return WebTask.run(ctx, a)
-            "web_batch" -> return WebTask.runBatch(ctx, a)
+            "web_task" -> return SplitTasks.withScreen { WebTask.run(ctx, a) }
+            "web_batch" -> return SplitTasks.withScreen { WebTask.runBatch(ctx, a) }
             "file_read" -> return FileTools.read(ctx, a)
             "page_source" -> return PageSource.run(ctx, a)
             "continue_web_task" -> return if (WebTask.resume()) "Continuing the website task" else "The website task is not waiting for you"
@@ -1649,9 +1649,14 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun send(raw: String, apps: List<AppEntry>) {
+    fun send(raw: String, apps: List<AppEntry>, voice: Boolean = false) {
         val text = raw.trim()
         if (text.isEmpty()) return
+        // Split screen is on: typed commands are ignored, the voice (wake phrase) controls everything.
+        if (SplitTasks.active && !voice) {
+            add(ChatMsg(nextId(), false, "Split screen is on, so typed commands are ignored. Say “Hey Neo” and speak your request."))
+            return
+        }
         // A website task waiting for the user (CAPTCHA / code): "continue" or "cancel" must get through even though the chat is busy.
         WebTask.handleSpoken(text)?.let { reply ->
             add(ChatMsg(nextId(), true, text)); add(ChatMsg(nextId(), false, reply)); return

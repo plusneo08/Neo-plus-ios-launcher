@@ -855,7 +855,18 @@ class OrbService : Service() {
             return
         }
         WebTask.handleSpoken(cmd)?.let { speakReply(it); return }
+        // Split-screen tasks: a task spoken now opens its own pane (or a pane is closed / split mode is switched).
+        SplitTasks.onVoice(applicationContext, cmd, OrbBridge.apps())?.let { speakReply(it); return }
         process(cmd)
+    }
+
+    /** Puts the orb and its subtitles above the split-screen panes (windows added later sit on top). */
+    fun raiseToFront() {
+        main.post {
+            if (!alive) return@post
+            try { val r = orbRoot; val l = orbLp; if (r != null && l != null) { wm.removeView(r); wm.addView(r, l) } } catch (e: Exception) { }
+            try { val t = sub; val l = subLp; if (t != null && l != null) { wm.removeView(t); wm.addView(t, l) } } catch (e: Exception) { }
+        }
     }
 
     /** Runs a request exactly like the chat panel does (phone commands first, then the AI model). */
