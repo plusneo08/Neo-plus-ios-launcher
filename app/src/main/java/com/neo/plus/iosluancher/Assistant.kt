@@ -255,8 +255,8 @@ object PhoneActions {
             "excel_create" -> return ExcelActions.create(ctx, a)
             "excel_edit" -> return ExcelActions.edit(ctx, a)
             "excel_read" -> return ExcelActions.read(ctx, a)
-            "compare_files" -> return ReportActions.compare(ctx, a)
-            "word_report" -> return ReportActions.wordReport(ctx, a)
+            "compare_files" -> return ReportActions.compare(ctx, a).note
+            "word_report" -> return ReportActions.wordReport(ctx, a).note
             "web_task" -> return WebTask.run(ctx, a)
             "web_batch" -> return WebTask.runBatch(ctx, a)
             "file_read" -> return FileTools.read(ctx, a)

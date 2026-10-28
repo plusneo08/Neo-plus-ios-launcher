@@ -29,11 +29,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontStyle
@@ -41,13 +43,25 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /**
  * Shown while the assistant answers a call for you (CallConversation). You watch the conversation as it happens:
  * the caller's words on the left, the assistant's replies on the right, who is talking now, the language it detected,
  * and the mode that is on. Two choices: Take over (the loudspeaker goes off so you can talk, the assistant stops) or End call.
  */
+/** The contact's own photo for a phone number, or null (no contact, no photo, no permission). */
+private fun contactPhoto(ctx: android.content.Context, number: String): ImageBitmap? = try {
+    val uri = android.net.Uri.withAppendedPath(android.provider.ContactsContract.PhoneLookup.CONTENT_FILTER_URI, android.net.Uri.encode(number))
+    ctx.contentResolver.query(uri, arrayOf(android.provider.ContactsContract.PhoneLookup.PHOTO_URI), null, null, null)?.use { c ->
+        val p = if (c.moveToFirst()) c.getString(0) else null
+        if (p == null) null
+        else ctx.contentResolver.openInputStream(android.net.Uri.parse(p))?.use { android.graphics.BitmapFactory.decodeStream(it)?.asImageBitmap() }
+    }
+} catch (e: Exception) { null }
+
 @Composable
 fun NeoAiAnsweringScreen(onFinish: () -> Unit) {
     val ctx = LocalContext.current
@@ -57,7 +71,9 @@ fun NeoAiAnsweringScreen(onFinish: () -> Unit) {
     var secs by remember { mutableStateOf(0) }
     val name = CallConversation.uiWho.ifBlank { "Unknown caller" }
     val number = CallConversation.uiNumber
-    val photo = remember(number) { if (number.isBlank()) null else ContactPhotos.get(ctx, number)?.asImageBitmap() }
+    val photo by produceState<ImageBitmap?>(null, number) {
+        value = if (number.isBlank()) null else withContext(Dispatchers.IO) { contactPhoto(ctx, number) }
+    }
     val mode = remember(active) { Modes.current(ctx) }
     val until = remember(active) { Modes.endTime(ctx) }
 
