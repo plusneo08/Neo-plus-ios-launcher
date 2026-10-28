@@ -178,7 +178,9 @@ class IosControlService : AccessibilityService() {
     /** The real home-screen bar over other apps (null while the launcher is in front); the drawn StatusOverlayView is only the fallback. */
     private var composeBar: View? = null
     private var useCompose = true
-    private var launcherFront = true
+    @Volatile private var launcherFront = true
+    /** One of our own screens other than the home screen is in front (Neo Messages, the dialer...): it has no bar of its own. */
+    @Volatile private var ownScreenFront = false
     private var lastBringBack = 0L
     private var imeCache: Set<String> = emptySet()
     private var imeAt = 0L
@@ -187,7 +189,9 @@ class IosControlService : AccessibilityService() {
     private val tick = object : Runnable {
         override fun run() {
             refreshOverlay()
-            main.postDelayed(this, 6_000)
+            // Re-read which window is in front: a missed window event must never leave an app (Settings...) without the bar
+            try { frontExec.submit { if (refreshFront()) main.post { refreshOverlay() } } } catch (e: Exception) { }
+            main.postDelayed(this, 3_000)
         }
     }
     private val hide = Runnable {
@@ -393,10 +397,28 @@ class IosControlService : AccessibilityService() {
         return homeCache
     }
 
+    /** 1 = home screen, 2 = another normal screen of ours (gets the bar), 3 = lock / call screen (own design, no bar), 0 = not a screen. */
+    private fun ownScreenKind(cls: String): Int {
+        val n = cls.substringAfterLast('.')
+        return when {
+            n == "MainActivity" -> 1
+            n in setOf("LockActivity", "NeoLockScreenActivity", "WakeCallActivity", "ApprovalCallActivity", "NeoCallActivity", "RecorderPermissionActivity", "MoneyAuthActivity") -> 3
+            n.endsWith("Activity") -> 2
+            else -> 0
+        }
+    }
+
     /** Remembers which app is in front, and pulls the user straight back if the stock Android home screen ever shows. */
     private fun trackForeground(pkg: String, cls: String) {
         if (pkg != "android" && pkg !in imePackages()) AppLock.onForeground(this, pkg, cls)
-        if (pkg == packageName) { launcherFront = true; refreshOverlay(); return }
+        if (pkg == packageName) {
+            val own = ownScreenKind(cls)
+            if (own == 0) return                       // a dialog or popup inside one of our screens: nothing changed
+            ownScreenFront = own == 2
+            launcherFront = own != 2                   // home, lock and call screens draw their own design; every other screen gets the bar
+            refreshOverlay(); return
+        }
+        ownScreenFront = false
         if (pkg == "android" || pkg in imePackages()) return
         if ("$pkg/$cls" in otherHomeActivities()) {
             val now = System.currentTimeMillis()
@@ -468,7 +490,7 @@ class IosControlService : AccessibilityService() {
             try { root.recycle() } catch (e: Exception) { }
             if (p == null) return false
             if (p == "android" || p == "com.android.systemui" || p in imePackages()) return launcherFront
-            launcherFront = p == packageName
+            launcherFront = p == packageName && !ownScreenFront
             return true
         } catch (e: Exception) { return false }
     }

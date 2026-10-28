@@ -12,7 +12,7 @@ import android.os.PowerManager
  * Switching the phone off and waking / unlocking it.
  *
  * Power off needs more than a normal app may do. It is tried in this order, and the first one that works wins:
- *  1. root (Magisk): `reboot -p`
+ *  1. Shizuku or root (Magisk): `reboot -p`
  *  2. system app (Magisk module / priv-app with the SHUTDOWN or REBOOT permission, see rom/ folder)
  *  3. the Android power menu (the user taps "Power off")
  *
@@ -44,9 +44,9 @@ object PowerControl {
     }
 
     private fun shutdown(app: Context): Boolean {
-        // 1) root
+        // 1) Shizuku or root
         for (cmd in arrayOf("reboot -p", "svc power shutdown", "/system/bin/reboot -p")) {
-            if (attempt { Runtime.getRuntime().exec(arrayOf("su", "-c", cmd)).waitFor() == 0 }) return true
+            if (attempt { Shell.ok(cmd) }) return true
         }
         // 2) system / privileged app
         if (attempt {
@@ -99,8 +99,8 @@ object PowerControl {
                 .putExtra("unlock", true)
         )
         if (!secure) {
-            // No lock set: a rooted phone can also dismiss it directly
-            Thread { attempt { Runtime.getRuntime().exec(arrayOf("su", "-c", "wm dismiss-keyguard")).waitFor() == 0 } }.start()
+            // No lock set: a phone with Shizuku or root can also dismiss it directly
+            Thread { attempt { Shell.ok("wm dismiss-keyguard") } }.start()
         }
         return when {
             !started -> "Couldn’t open the unlock screen"

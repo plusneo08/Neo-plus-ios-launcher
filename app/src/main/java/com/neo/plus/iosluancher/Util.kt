@@ -132,9 +132,10 @@ fun Context.openAppVerified(app: AppEntry): String? {
     for ((c, i) in tries) {
         try { c.startActivity(Intent(i)); accepted = true } catch (e: Exception) { continue }
         if (svc == null) return null                       // cannot check without the accessibility service
-        repeat(9) {
+        // Looks every 60 ms (it used to look every 350 ms, which added up to a third of a second to every "open ..."), same ~3 s window.
+        repeat(52) {
             if (UiDriver.foregroundPkg() == app.realPkg) return null
-            try { Thread.sleep(350) } catch (e: InterruptedException) { }
+            try { Thread.sleep(60) } catch (e: InterruptedException) { }
         }
     }
     return if (accepted)

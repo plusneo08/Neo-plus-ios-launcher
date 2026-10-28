@@ -49,6 +49,12 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Create
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.MarkEmailUnread
+import androidx.compose.material.icons.filled.MarkEmailRead
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Send
@@ -313,17 +319,101 @@ private fun markRead(ctx: Context, address: String) {
     } catch (e: Exception) { }
 }
 
+/**
+ * Read / unread. When Neo Messages is the default app the phone's own message store is changed; on top of that the choice is
+ * remembered here ("ov_<chat>" = "u" for unread, "r:<time>" for read up to that time) so it also works when it is not the default.
+ */
+private fun unreadFor(ctx: Context, t: MsgThread): Int {
+    val real = t.msgs.count { !it.sent && !it.read }
+    val ov = prefs(ctx).getString("ov_" + t.key, null) ?: return real
+    return when {
+        ov == "u" -> maxOf(real, 1)
+        ov.startsWith("r:") -> { val at = ov.substring(2).toLongOrNull() ?: 0L; t.msgs.count { !it.sent && !it.read && it.date > at } }
+        else -> real
+    }
+}
+
+/** [lastIncomingId] = the newest received message of the chat, which goes back to "unread" in the phone's store. */
+private fun setReadState(ctx: Context, address: String, read: Boolean, lastIncomingId: Long = 0L) {
+    val k = keyOf(address)
+    if (read) {
+        markRead(ctx, address)
+        prefs(ctx).edit().putString("ov_$k", "r:" + System.currentTimeMillis()).apply()
+        try { (ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager).cancel(address.hashCode()) } catch (e: Exception) { }
+    } else {
+        if (lastIncomingId > 0) try {
+            val v = ContentValues().apply { put(Telephony.Sms.READ, 0); put(Telephony.Sms.SEEN, 0) }
+            ctx.contentResolver.update(Telephony.Sms.Inbox.CONTENT_URI, v, "_id=?", arrayOf(lastIncomingId.toString()))
+        } catch (e: Exception) { }
+        prefs(ctx).edit().putString("ov_$k", "u").apply()
+    }
+}
+
+private fun displayNameFor(ctx: Context, number: String): String {
+    if (!has(ctx, Manifest.permission.READ_CONTACTS)) return number
+    return try {
+        ctx.contentResolver.query(
+            Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(number)),
+            arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME), null, null, null
+        )?.use { if (it.moveToFirst()) it.getString(0) else null }?.takeIf { it.isNotBlank() } ?: number
+    } catch (e: Exception) { number }
+}
+
+private const val NOTIF_REPLY = "com.neo.plus.iosluancher.SMS_NOTIF_REPLY"
+private const val NOTIF_READ = "com.neo.plus.iosluancher.SMS_NOTIF_READ"
+private const val NOTIF_KEY = "reply_text"
+
+/** A new text: the notification can be answered right there (Reply) or dismissed as read (Mark as read). */
 private fun notifyIncoming(ctx: Context, from: String, body: String) {
     try {
         val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
         if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(android.app.NotificationChannel("neo_msgs_in", "Messages", android.app.NotificationManager.IMPORTANCE_HIGH))
+        val id = from.hashCode()
+        val who = displayNameFor(ctx, from)
         val open = Intent(ctx, NeoMessagesActivity::class.java).setData(Uri.fromParts("smsto", from, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        val pi = android.app.PendingIntent.getActivity(ctx, from.hashCode(), open, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE)
-        val n = android.app.Notification.Builder(ctx, "neo_msgs_in")
-            .setSmallIcon(android.R.drawable.stat_notify_chat).setContentTitle(from).setContentText(body)
-            .setStyle(android.app.Notification.BigTextStyle().bigText(body)).setAutoCancel(true).setContentIntent(pi).build()
-        nm.notify(from.hashCode(), n)
+        val pi = android.app.PendingIntent.getActivity(ctx, id, open, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE)
+        fun action(act: String, code: Int, mutable: Boolean): android.app.PendingIntent {
+            val i = Intent(ctx, SmsActionReceiver::class.java).setAction(act).putExtra("from", from)
+            val flags = android.app.PendingIntent.FLAG_UPDATE_CURRENT or
+                if (mutable) (if (Build.VERSION.SDK_INT >= 31) android.app.PendingIntent.FLAG_MUTABLE else 0) else android.app.PendingIntent.FLAG_IMMUTABLE
+            return android.app.PendingIntent.getBroadcast(ctx, id * 3 + code, i, flags)
+        }
+        val replyAction = android.app.Notification.Action.Builder(
+            android.graphics.drawable.Icon.createWithResource(ctx, android.R.drawable.ic_menu_send), "Reply", action(NOTIF_REPLY, 1, true)
+        ).addRemoteInput(android.app.RemoteInput.Builder(NOTIF_KEY).setLabel("Reply to $who").build()).build()
+        val readAction = android.app.Notification.Action.Builder(
+            android.graphics.drawable.Icon.createWithResource(ctx, android.R.drawable.ic_menu_view), "Mark as read", action(NOTIF_READ, 2, false)
+        ).build()
+        val b = android.app.Notification.Builder(ctx, "neo_msgs_in")
+            .setSmallIcon(android.R.drawable.stat_notify_chat).setContentTitle(who).setContentText(body)
+            .setStyle(android.app.Notification.BigTextStyle().bigText(body)).setAutoCancel(true).setContentIntent(pi)
+            .addAction(replyAction).addAction(readAction)
+        try { ContactPhotos.thumb(ctx, from)?.let { b.setLargeIcon(it) } } catch (e: Throwable) { }
+        nm.notify(id, b.build())
     } catch (e: Exception) { }
+}
+
+/** The buttons on a text's notification: "Reply" sends the typed answer (from the SIM chosen in Neo Messages) and "Mark as read" clears it. */
+class SmsActionReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val app = context.applicationContext
+        val from = intent.getStringExtra("from").orEmpty()
+        if (from.isEmpty()) return
+        val nm = app.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        when (intent.action) {
+            NOTIF_READ -> { setReadState(app, from, true); nm.cancel(from.hashCode()) }
+            NOTIF_REPLY -> {
+                val text = android.app.RemoteInput.getResultsFromIntent(intent)?.getCharSequence(NOTIF_KEY)?.toString()?.trim().orEmpty()
+                if (text.isEmpty()) { nm.cancel(from.hashCode()); return }
+                val err = sendSms(app, from, text)
+                if (err == null) { setReadState(app, from, true); nm.cancel(from.hashCode()) }
+                else {
+                    android.widget.Toast.makeText(app, err, android.widget.Toast.LENGTH_LONG).show()
+                    nm.cancel(from.hashCode())
+                }
+            }
+        }
+    }
 }
 
 /** Receives texts while Neo Messages is the default app: the phone no longer files them, so we write them to the inbox. */
@@ -478,7 +568,7 @@ private fun buildThreads(items: List<MsgItem>, names: Map<String, Pair<String, S
 private fun sendSms(ctx: Context, to: String, text: String): String? {
     if (!has(ctx, Manifest.permission.SEND_SMS)) return "Allow sending messages first"
     return try {
-        val sm = if (Build.VERSION.SDK_INT >= 31) ctx.getSystemService(SmsManager::class.java) else @Suppress("DEPRECATION") SmsManager.getDefault()
+        val sm = SimChoice.manager(ctx)
         val parts = sm.divideMessage(text)
         val now = System.currentTimeMillis()
         // The network tells us when the text was sent and when it reached the other phone (a "delivery report").
@@ -495,6 +585,7 @@ private fun sendSms(ctx: Context, to: String, text: String): String? {
             )
         } else sm.sendTextMessage(to, null, text, pi(SmsStatusReceiver.ACTION_SENT, 0), pi(SmsStatusReceiver.ACTION_DELIVERED, 0))
         if (!(isDefaultSms(ctx) && insertSent(ctx, to, text, now))) saveOutbox(ctx, to, text, now)
+        SimChoice.afterUse(ctx)
         null
     } catch (e: Exception) { "Couldn’t send: " + (e.message ?: "unknown error") }
 }
@@ -528,10 +619,12 @@ private sealed class Screen {
 }
 
 @Composable
-private fun Avatar(name: String, th: MsgTheme, size: Dp) {
+private fun Avatar(name: String, th: MsgTheme, size: Dp, address: String = "") {
+    val photo = rememberContactPhoto(address)
     Box(Modifier.size(size).clip(CircleShape).background(Brush.linearGradient(th.sent)), contentAlignment = Alignment.Center) {
         val c = name.trim().firstOrNull { it.isLetter() }
-        if (c != null) Text(c.uppercase(), color = Color.White, fontSize = (size.value * 0.42f).sp, fontWeight = FontWeight.SemiBold)
+        if (photo != null) Image(photo, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        else if (c != null) Text(c.uppercase(), color = Color.White, fontSize = (size.value * 0.42f).sp, fontWeight = FontWeight.SemiBold)
         else Icon(Icons.Filled.Create, null, tint = Color.White, modifier = Modifier.size(size * 0.45f))
     }
 }
@@ -578,7 +671,8 @@ private fun MessagesApp(initialTo: String, onClose: () -> Unit) {
     val threads = remember(items, names) { buildThreads(items, names) }
     LaunchedEffect(screen, isDefault) {
         val sc = screen
-        if (isDefault && sc is Screen.Chat) withContext(Dispatchers.IO) { markRead(ctx, sc.address) }
+        // opening a chat reads it (also remembered here when Neo Messages is not the default app)
+        if (sc is Screen.Chat) withContext(Dispatchers.IO) { setReadState(ctx, sc.address, true) }
     }
 
     BackHandler(enabled = true) {
@@ -605,7 +699,7 @@ private fun MessagesApp(initialTo: String, onClose: () -> Unit) {
                 Spacer(Modifier.height(22.dp))
                 Box(
                     Modifier.clip(RoundedCornerShape(28.dp)).background(Brush.horizontalGradient(th.sent)).clickable {
-                        perms.launch(arrayOf(Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS, Manifest.permission.READ_CONTACTS))
+                        perms.launch(arrayOf(Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS, Manifest.permission.READ_CONTACTS, Manifest.permission.READ_PHONE_STATE))
                     }.padding(horizontal = 34.dp, vertical = 13.dp)
                 ) { Text("Allow access", color = Color.White, fontWeight = FontWeight.SemiBold) }
             }
@@ -616,7 +710,8 @@ private fun MessagesApp(initialTo: String, onClose: () -> Unit) {
                     try { defaultLauncher.launch(defaultSmsIntent(ctx)) }
                     catch (e: Exception) { android.widget.Toast.makeText(ctx, "Couldn’t open the setting. Choose Neo Messages under Settings, Apps, Default apps, SMS app.", android.widget.Toast.LENGTH_LONG).show() }
                 },
-                { picker = true }, { screen = Screen.New }
+                { picker = true }, { screen = Screen.New },
+                { t, read -> scope.launch { withContext(Dispatchers.IO) { setReadState(ctx, t.address, read, t.msgs.lastOrNull { !it.sent && it.id > 0 }?.id ?: 0L) }; tick++ } }
             ) { screen = Screen.Chat(it) }
             is Screen.New -> NewScreen(names, th, { screen = Screen.List }) { screen = Screen.Chat(it) }
             is Screen.Chat -> {
@@ -626,7 +721,12 @@ private fun MessagesApp(initialTo: String, onClose: () -> Unit) {
                     s.address, t?.name ?: names[k]?.first ?: s.address, t?.msgs ?: emptyList(), th, s.draft,
                     { screen = Screen.List },
                     { fwd -> screen = Screen.Forward(fwd, s.address) },
-                    { list -> scope.launch { withContext(Dispatchers.IO) { deleteMessages(ctx, list) }; tick++ } }
+                    { list -> scope.launch { withContext(Dispatchers.IO) { deleteMessages(ctx, list) }; tick++ } },
+                    {
+                        val lastIn = t?.msgs?.lastOrNull { !it.sent && it.id > 0 }?.id ?: 0L
+                        scope.launch { withContext(Dispatchers.IO) { setReadState(ctx, s.address, false, lastIn) }; tick++ }
+                        screen = Screen.List
+                    }
                 ) { text ->
                     val err = sendSms(ctx, s.address, text)
                     if (err != null) android.widget.Toast.makeText(ctx, err, android.widget.Toast.LENGTH_SHORT).show() else tick++
@@ -681,17 +781,20 @@ private fun MessagesApp(initialTo: String, onClose: () -> Unit) {
 @Composable
 private fun ListScreen(
     threads: List<MsgThread>, th0: MsgTheme, bg: String, isDefault: Boolean, onBg: () -> Unit, onMakeDefault: () -> Unit,
-    onTheme: () -> Unit, onNew: () -> Unit, onOpen: (String) -> Unit
+    onTheme: () -> Unit, onNew: () -> Unit, onSetRead: (MsgThread, Boolean) -> Unit, onOpen: (String) -> Unit
 ) {
     val th = chromeTheme(th0, bgIsLight(bg))
     var q by remember { mutableStateOf("") }
     val shown = remember(q, threads) { if (q.isBlank()) threads else threads.filter { it.name.contains(q, true) || it.address.contains(q) || it.msgs.last().body.contains(q, true) } }
+    var menuFor by remember { mutableStateOf<String?>(null) }
+    var editFor by remember { mutableStateOf<Pair<String, String>?>(null) }
+    editFor?.let { e -> ContactEditDialog(e.first, e.second) { editFor = null } }
     Box(Modifier.fillMaxSize()) {
         ChatBackdrop(bg)
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             val lctx = LocalContext.current
             var orbsOn by remember { mutableStateOf(MessageOrbs.enabled(lctx)) }
-            val unread = remember(threads) { threads.count { t -> t.msgs.any { !it.sent && !it.read } } }
+            val unread = threads.count { t -> unreadFor(lctx, t) > 0 }
             Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier.size(46.dp).clip(RoundedCornerShape(16.dp)).background(Brush.linearGradient(th.sent)),
@@ -756,13 +859,28 @@ private fun ListScreen(
             } else LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
                 items(shown, key = { it.key }) { t ->
                     val last = t.msgs.last()
-                    val unread = t.msgs.count { !it.sent && !it.read }
+                    val unread = unreadFor(lctx, t)
                     Row(
                         Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(RoundedCornerShape(20.dp)).background(th.card)
-                            .clickable { onOpen(t.address) }.padding(horizontal = 12.dp, vertical = 11.dp),
+                            .pointerInput(t.key) {
+                                detectTapGestures(onTap = { onOpen(t.address) }, onLongPress = { menuFor = t.key })
+                            }.padding(horizontal = 12.dp, vertical = 11.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Avatar(t.name, th, 50.dp)
+                        // press and hold a chat: mark it read / unread, or edit the contact
+                        androidx.compose.material3.DropdownMenu(expanded = menuFor == t.key, onDismissRequest = { menuFor = null }) {
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(if (unread > 0) "Mark as read" else "Mark as unread") },
+                                leadingIcon = { Icon(if (unread > 0) Icons.Filled.MarkEmailRead else Icons.Filled.MarkEmailUnread, null) },
+                                onClick = { menuFor = null; onSetRead(t, unread == 0) }
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("Edit contact") },
+                                leadingIcon = { Icon(Icons.Filled.Edit, null) },
+                                onClick = { menuFor = null; editFor = t.address to t.name }
+                            )
+                        }
+                        Avatar(t.name, th, 50.dp, t.address)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(t.name, color = th.text, fontSize = 16.sp, fontWeight = if (unread > 0) FontWeight.Bold else FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -811,7 +929,7 @@ private fun NewScreen(names: Map<String, Pair<String, String>>, th: MsgTheme, on
             }
             items(matches) { (n, num) ->
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onPick(num) }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Avatar(n, th, 44.dp); Spacer(Modifier.width(12.dp))
+                    Avatar(n, th, 44.dp, num); Spacer(Modifier.width(12.dp))
                     Column { Text(n, color = th.text, fontSize = 16.sp, fontWeight = FontWeight.Medium); Text(num, color = th.sub, fontSize = 13.sp) }
                 }
             }
@@ -859,7 +977,7 @@ private fun ChatBackdrop(v: String) {
 @Composable
 private fun ChatScreen(
     address: String, name: String, msgs: List<MsgItem>, th: MsgTheme, draft: String,
-    onBack: () -> Unit, onForward: (String) -> Unit, onDelete: (List<MsgItem>) -> Unit, onSend: (String) -> Boolean
+    onBack: () -> Unit, onForward: (String) -> Unit, onDelete: (List<MsgItem>) -> Unit, onMarkUnread: () -> Unit, onSend: (String) -> Boolean
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -868,6 +986,9 @@ private fun ChatScreen(
     var text by remember(address, draft) { mutableStateOf(draft) }
     var bg by remember(address) { mutableStateOf(chatBgValue(ctx, key)) }
     var bgSheet by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(false) }
+    var moreMenu by remember { mutableStateOf(false) }
+    if (editing) ContactEditDialog(address, name) { editing = false }
     var allChats by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     val orbs = remember(address) { mutableStateListOf<SentOrb>() }
@@ -931,13 +1052,30 @@ private fun ChatScreen(
                 ) {
                     TopIcon(Icons.Filled.ArrowBack, ui, "Back", false, onBack)
                     Spacer(Modifier.width(4.dp))
-                    Avatar(name, th, 40.dp)
+                    Avatar(name, th, 40.dp, address)
                     Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
+                    // tap the name to see / change the contact's picture, name and details
+                    Column(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable { editing = true }) {
                         Text(name, color = ui.text, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         if (name != address) Text(address, color = ui.sub, fontSize = 12.sp, maxLines = 1)
                     }
-                    TopIcon(Icons.Filled.Palette, ui, "Chat background", false) { bgSheet = true }
+                    Box {
+                        TopIcon(Icons.Filled.MoreVert, ui, "More", false) { moreMenu = true }
+                        androidx.compose.material3.DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("Edit contact") }, leadingIcon = { Icon(Icons.Filled.Edit, null) },
+                                onClick = { moreMenu = false; editing = true }
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("Mark as unread") }, leadingIcon = { Icon(Icons.Filled.MarkEmailUnread, null) },
+                                onClick = { moreMenu = false; onMarkUnread() }
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("Chat background") }, leadingIcon = { Icon(Icons.Filled.Palette, null) },
+                                onClick = { moreMenu = false; bgSheet = true }
+                            )
+                        }
+                    }
                     Spacer(Modifier.width(4.dp))
                     Box(
                         Modifier.size(40.dp).clip(CircleShape).background(Brush.linearGradient(th.sent))
@@ -990,6 +1128,33 @@ private fun ChatScreen(
                     BasicTextField(text, { text = it }, textStyle = TextStyle(color = ui.text, fontSize = 16.sp), cursorBrush = SolidColor(th.accent), maxLines = 5, modifier = Modifier.fillMaxWidth())
                 }
                 Spacer(Modifier.width(10.dp))
+                // two SIM cards: choose which one sends (tap to switch)
+                var simTick by remember { mutableStateOf(0) }
+                val phonePerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { simTick++ }
+                LaunchedEffect(Unit) {
+                    if (!has(ctx, Manifest.permission.READ_PHONE_STATE)) phonePerm.launch(Manifest.permission.READ_PHONE_STATE)
+                }
+                var simSlot by remember(simTick) { mutableStateOf(SimChoice.current(ctx)) }
+                val twoSims = remember(simTick) { SimChoice.activeSlots(ctx).size >= 2 }
+                var keep by remember(simTick) { mutableStateOf(SimChoice.remember(ctx)) }
+                if (twoSims) {
+                    Column(
+                        Modifier.clickable { keep = !keep; SimChoice.setRemember(ctx, keep) }.padding(end = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(if (keep) Icons.Filled.CheckBox else Icons.Filled.CheckBoxOutlineBlank, "Remember my SIM choice", tint = if (keep) th.accent else ui.sub, modifier = Modifier.size(22.dp))
+                        Text("Remember", color = ui.sub, fontSize = 9.sp, maxLines = 1)
+                    }
+                    Column(
+                        Modifier.height(48.dp).clip(RoundedCornerShape(24.dp)).background(ui.card)
+                            .clickable { simSlot = SimChoice.toggle(ctx) }.padding(horizontal = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
+                    ) {
+                        Text("SIM $simSlot", color = th.accent, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text(SimChoice.label(ctx, simSlot), color = ui.sub, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 64.dp))
+                    }
+                    Spacer(Modifier.width(8.dp))
+                }
                 val ready = text.isNotBlank()
                 Box(
                     Modifier.size(48.dp).clip(CircleShape).background(if (ready) Brush.linearGradient(th.sent) else SolidColor(ui.card))
@@ -999,6 +1164,7 @@ private fun ChatScreen(
                                 if (orbs.size >= 4) orbs.removeAt(0)
                                 orbs.add(SentOrb(System.nanoTime(), t, orbSeq++))
                             }
+                            simSlot = SimChoice.current(ctx)
                             text = ""
                         },
                     contentAlignment = Alignment.Center

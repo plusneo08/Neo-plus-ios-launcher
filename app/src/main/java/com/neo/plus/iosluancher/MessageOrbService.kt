@@ -56,6 +56,9 @@ class SmsOrbReceiver : BroadcastReceiver() {
     }
 }
 
+/** One text waiting in an orb: who it is shown as, the raw number to answer, and the text. */
+class OrbMsg(val name: String, val number: String, val body: String)
+
 object MessageOrbs {
     private fun prefs(ctx: Context) = ctx.applicationContext.getSharedPreferences("neo_msg_orbs", Context.MODE_PRIVATE)
     fun enabled(ctx: Context): Boolean = prefs(ctx).getBoolean("on", true)
@@ -64,7 +67,7 @@ object MessageOrbs {
 
     fun show(ctx: Context, from: String, body: String) {
         val app = ctx.applicationContext
-        MessageOrbService.queue.add(nameFor(app, from) to body)
+        MessageOrbService.queue.add(OrbMsg(nameFor(app, from), from, body))
         try {
             val i = Intent(app, MessageOrbService::class.java)
             if (Build.VERSION.SDK_INT >= 26) app.startForegroundService(i) else app.startService(i)
@@ -88,10 +91,10 @@ object MessageOrbs {
  */
 class MessageOrbService : Service() {
     companion object {
-        val queue = ConcurrentLinkedQueue<Pair<String, String>>()
+        val queue = ConcurrentLinkedQueue<OrbMsg>()
     }
 
-    private class Orb(val root: LinearLayout, val card: LinearLayout, val orb: OrbView, val lp: WindowManager.LayoutParams) {
+    private class Orb(val root: LinearLayout, val card: LinearLayout, val orb: OrbView, val lp: WindowManager.LayoutParams, val msg: OrbMsg) {
         var open = false
         var above = false
         var shift = 0
@@ -120,7 +123,7 @@ class MessageOrbService : Service() {
         startFg()
         while (true) {
             val m = queue.poll() ?: break
-            try { addOrb(m.first, m.second) } catch (e: Exception) { }
+            try { addOrb(m) } catch (e: Exception) { }
         }
         if (orbs.isEmpty()) stopSelf()
         return START_NOT_STICKY
@@ -140,7 +143,7 @@ class MessageOrbService : Service() {
         val n = Notification.Builder(this, "neo_msg_orbs")
             .setSmallIcon(android.R.drawable.stat_notify_chat)
             .setContentTitle("New message")
-            .setContentText("Tap the orb to read it. Drag it to the bottom to remove it.")
+            .setContentText("Tap the orb to read it, tap again to open and reply. Drag it to the bottom to remove it.")
             .setOngoing(true)
             .build()
         startForeground(7412, n)
@@ -162,15 +165,27 @@ class MessageOrbService : Service() {
     private fun showZone() { zone?.animate()?.alpha(1f)?.setDuration(150)?.start() }
     private fun hideZone() { zone?.setHot(false); zone?.animate()?.alpha(0f)?.setDuration(120)?.start() }
 
+    /** The whole screen, status and navigation bars included, so an orb can be dragged right to every edge. */
+    @Suppress("DEPRECATION")
+    private fun real(): android.util.DisplayMetrics {
+        val m = android.util.DisplayMetrics()
+        wm.defaultDisplay.getRealMetrics(m)
+        return m
+    }
+
+    /** Only the remove circle itself (bottom middle) removes an orb, so orbs can be parked anywhere along the bottom edge too. */
     private fun inZone(o: Orb): Boolean {
         val loc = IntArray(2)
         o.orb.getLocationOnScreen(loc)
-        return loc[1] + o.orb.height / 2 > resources.displayMetrics.heightPixels - dpi(150f)
+        val dm = real()
+        val cx = loc[0] + o.orb.width / 2
+        val cy = loc[1] + o.orb.height / 2
+        return abs(cx - dm.widthPixels / 2) < dpi(80f) && cy > dm.heightPixels - dpi(190f)
     }
 
     /* ---------------- orbs ---------------- */
 
-    private fun buildCard(name: String, body: String): LinearLayout {
+    private fun buildCard(name: String, body: String, hint: String): LinearLayout {
         val card = LinearLayout(this)
         card.orientation = LinearLayout.VERTICAL
         card.setPadding(dpi(16f), dpi(12f), dpi(16f), dpi(12f))
@@ -195,6 +210,12 @@ class MessageOrbService : Service() {
             ellipsize = TextUtils.TruncateAt.END
             setPadding(0, dpi(4f), 0, 0)
         })
+        card.addView(TextView(this).apply {
+            text = hint
+            setTextColor(Color.argb(150, 255, 255, 255))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            setPadding(0, dpi(6f), 0, 0)
+        })
         card.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
             topMargin = dpi(4f); bottomMargin = dpi(4f)
         }
@@ -202,11 +223,11 @@ class MessageOrbService : Service() {
         return card
     }
 
-    private fun addOrb(name: String, body: String) {
+    private fun addOrb(m: OrbMsg) {
         if (orbs.size >= 4) removeNow(orbs[0])
         val dm = resources.displayMetrics
         val orbView = OrbView(this)
-        val card = buildCard(name, body)
+        val card = buildCard(m.name, m.body, "Tap again to open it full screen and reply")
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
         root.gravity = Gravity.END
@@ -222,8 +243,8 @@ class MessageOrbService : Service() {
             x = dpi(4f)
             y = (dm.heightPixels * 0.24f).toInt() + (slot++ % 4) * dpi(84f)
         }
-        val o = Orb(root, card, orbView, lp)
-        card.setOnClickListener { toggle(o) }
+        val o = Orb(root, card, orbView, lp, m)
+        card.setOnClickListener { openFull(o) }
         attachTouch(o)
         wm.addView(root, lp)
         orbs.add(o)
@@ -252,7 +273,7 @@ class MessageOrbService : Service() {
             var startY = 0
             var drag = false
             override fun onTouch(v: View, e: MotionEvent): Boolean {
-                val dm = resources.displayMetrics
+                val dm = real()
                 when (e.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
                         downX = e.rawX; downY = e.rawY; startX = o.lp.x; startY = o.lp.y; drag = false
@@ -278,7 +299,7 @@ class MessageOrbService : Service() {
                             val hot = inZone(o)
                             hideZone()
                             if (hot) dismiss(o)
-                        } else v.post { toggle(o) }
+                        } else v.post { if (o.open) openFull(o) else toggle(o) }
                     }
                     MotionEvent.ACTION_CANCEL -> hideZone()
                 }
@@ -287,7 +308,17 @@ class MessageOrbService : Service() {
         })
     }
 
-    /** One tap shows the message, the next tap hides it again and leaves the plain orb. */
+    /** Second tap: the message opens full screen in Neo Messages, with its reply box, and the orb goes away. */
+    private fun openFull(o: Orb) {
+        if (o.gone) return
+        val i = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(o.msg.number)))
+            .setClass(this, NeoMessagesActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        try { startActivity(i) } catch (e: Exception) { return }
+        dismiss(o)
+    }
+
+    /** One tap shows the message (the next tap opens it full screen). */
     private fun toggle(o: Orb) {
         if (o.gone) return
         val dm = resources.displayMetrics
@@ -385,7 +416,7 @@ private class OrbView(ctx: Context) : View(ctx) {
 }
 
 /** The circle that appears at the bottom while an orb is dragged; let go on it to remove the orb. */
-private class ZoneView(ctx: Context) : View(ctx) {
+internal class ZoneView(ctx: Context) : View(ctx) {
     private val d = ctx.resources.displayMetrics.density
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val cross = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 3f * d; color = Color.WHITE; strokeCap = Paint.Cap.ROUND }

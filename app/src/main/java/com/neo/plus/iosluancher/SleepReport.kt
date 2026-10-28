@@ -47,13 +47,13 @@ Phone calls, goal progress (app starts with Goal), texts on the assistant line a
                 .append(o.optString("text").take(160).replace('\n', ' ')).append(" | my reply: ")
                 .append(o.optString("reply").ifBlank { "none" }.take(160).replace('\n', ' ')).append('\n')
         }
-        if (arr.length() == 0) return Modes.quiet(app)
+        if (arr.length() == 0) return "Good morning. It was a quiet night: nothing came in."
         val key = AssistantConfig.load(app).key
         val text = try {
             if (key.isBlank()) throw Exception("no key")
-            Llm.chat(Provider.GEMINI, key, GeminiModels.FLASH, Modes.reportSystem(app, SLEEP_REPORT_SYSTEM),
+            Llm.chat(Provider.GEMINI, key, GeminiModels.FLASH, SLEEP_REPORT_SYSTEM,
                 listOf(true to ("Kinds: REPLIED=I answered, MONEY=money message not answered, MSG=message not answered, GROUP=group chat not answered, AUTO=automated message, NOTE=other notification, FAILED=could not answer.\n\n" + sb)), null, false).trim()
-        } catch (e: Exception) { fallbackReport(arr).replace("Good morning.", Modes.greeting(app)) }
+        } catch (e: Exception) { fallbackReport(arr) }
         prefs(app).edit().putString("report", text).apply()
         return text
     }

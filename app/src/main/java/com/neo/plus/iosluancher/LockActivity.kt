@@ -343,6 +343,7 @@ private fun LockScreen(
             Spacer(Modifier.height(76.dp))
             Text(clock, color = Color.White, fontSize = 84.sp, fontWeight = FontWeight.ExtraLight)
             Text(date, color = Color.White.copy(alpha = 0.7f), fontSize = 16.sp)
+            StepsPill(color = Color.White.copy(alpha = 0.8f), size = 15.sp)   // 👣 today's steps, back to 0 at midnight
             Spacer(Modifier.weight(1f))
             Box(Modifier.size(220.dp).offset(x = shake.value.dp).graphicsLayer { scaleX = pulse; scaleY = pulse }
                 .clickable(enabled = showVoice) { onVoice() }, contentAlignment = Alignment.Center) {

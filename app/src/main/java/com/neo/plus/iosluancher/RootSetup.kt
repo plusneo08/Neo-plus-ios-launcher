@@ -3,22 +3,18 @@ package com.neo.plus.iosluancher
 import android.content.Context
 
 /**
- * Rooted phones: does everything the grant-all.sh script does, from inside the app, with one su session per step.
+ * Rooted phones, or phones with Shizuku running (no root): does everything the grant-all.sh script does, from inside the app.
+ * Every step goes through [Shell], which uses Shizuku when it is allowed and `su` otherwise.
  * Grants every permission, switches on the accessibility service, notification access, device admin,
  * makes NEO PLUS the default home app, switches to gesture navigation and tries to become device owner
  * (full-phone launcher mode; that last step only succeeds while no accounts are signed in).
  */
 object RootSetup {
-    private fun run(cmd: String): String = try {
-        val p = Runtime.getRuntime().exec(arrayOf("su", "-c", cmd))
-        val out = p.inputStream.bufferedReader().readText()
-        p.waitFor()
-        out.trim()
-    } catch (e: Throwable) { "" }
+    private fun run(cmd: String): String = Shell.run(cmd).out
 
-    fun available(): Boolean = run("id").contains("uid=0")
+    fun available(): Boolean = Shell.available()
 
-    /** Returns false when the phone is not rooted (or root was denied). */
+    /** Returns false when neither Shizuku (running and allowed) nor root is available. */
     fun applyAll(ctx: Context): Boolean {
         if (!available()) return false
         val p = ctx.packageName

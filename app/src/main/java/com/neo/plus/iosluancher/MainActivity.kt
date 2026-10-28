@@ -66,6 +66,7 @@ class MainActivity : ComponentActivity() {
         )
         super.onCreate(savedInstanceState)
         BeepMute.recover(this)
+        StepCounter.start(this) // footsteps counter: starts counting as soon as the launcher runs
         current = this
         Kiosk.configure(this)
         if (Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
@@ -91,8 +92,10 @@ class MainActivity : ComponentActivity() {
         }
         askPermissionsOnce()
         val p0 = getSharedPreferences("neo_launcher", MODE_PRIVATE)
+        // Shizuku (no root): asks for its permission and finishes the setup as soon as Shizuku is running and allowed
+        ShizukuSetup.start(applicationContext)
         if (!p0.getBoolean("root_setup_v1", false)) {
-            // Rooted phone: grant everything and switch the services on automatically (one root prompt)
+            // Rooted phone or Shizuku already allowed: grant everything and switch the services on automatically
             val app = applicationContext
             Thread {
                 if (RootSetup.applyAll(app)) p0.edit().putBoolean("root_setup_v1", true).apply()

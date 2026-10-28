@@ -42,13 +42,26 @@ object EnableAssistant {
 
     private fun toast(ctx: Context, msg: String) = Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
 
-    /** Rooted phone: sets everything up silently. Otherwise opens the next settings page. */
+    /** Shizuku or root: sets everything up silently. Otherwise opens the next settings page. */
     fun next(ctx: Context) {
         val app = ctx.applicationContext
         Thread {
-            val rooted = RootSetup.applyAll(app)
+            val via = Shell.label()
+            val done = RootSetup.applyAll(app)
             android.os.Handler(android.os.Looper.getMainLooper()).post {
-                if (rooted) toast(app, "Enabled with root. Everything is switched on.") else pages(ctx)
+                when {
+                    done -> toast(app, "Enabled with $via. Everything is switched on.")
+                    // Shizuku is installed and running but NEO PLUS is not allowed yet: ask, then press Enable again
+                    ShizukuSetup.running() && !Shell.shizukuReady() ->
+                        if (ShizukuSetup.requestPermission()) toast(app, "Allow NEO PLUS in the Shizuku prompt")
+                        else { toast(app, "Allow NEO PLUS inside the Shizuku app, then press Enable again"); ShizukuSetup.openShizukuApp(app) }
+                    // Shizuku is installed but stopped (it stops after every restart): hint, then carry on with the settings pages
+                    ShizukuSetup.installed(app) && !ShizukuSetup.running() -> {
+                        toast(app, "Shizuku isn't running. Start it (Wireless debugging) for automatic setup")
+                        pages(ctx)
+                    }
+                    else -> pages(ctx)
+                }
             }
         }.start()
     }

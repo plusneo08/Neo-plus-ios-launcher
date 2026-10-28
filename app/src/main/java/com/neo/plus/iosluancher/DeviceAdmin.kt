@@ -52,7 +52,7 @@ object DeviceAdmin {
  * WRITE_SECURE_SETTINGS is what lets Dark mode and Battery saver flip directly (no Settings screen).
  * Android never lets an app give this permission to itself, so [ensure] tries every on-device route:
  *  - already granted (adb grant, priv-app install) -> done
- *  - root (`su -c pm grant`)
+ *  - Shizuku or root (`pm grant`)
  *  - device owner (`dpm set-device-owner`) -> the app grants the permission to itself
  */
 object SecureAccess {
@@ -65,10 +65,7 @@ object SecureAccess {
 
     fun ensure(ctx: Context): Boolean {
         if (has(ctx)) return true
-        attempt {
-            val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "pm grant ${ctx.packageName} $PERM"))
-            p.waitFor() == 0
-        }
+        attempt { Shell.ok("pm grant ${ctx.packageName} $PERM") }
         if (has(ctx)) return true
         attempt {
             val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
@@ -117,12 +114,12 @@ object Kiosk {
         }
     }
 
-    /** Rooted phones can become device owner from inside the app (fails harmlessly if accounts are signed in). */
+    /** Phones with root or Shizuku can become device owner from inside the app (fails harmlessly if accounts are signed in). */
     fun becomeOwnerViaRoot(ctx: Context): Boolean {
         if (isOwner(ctx)) return true
         attempt {
             val c = "dpm set-device-owner ${ctx.packageName}/${NeoDeviceAdminReceiver::class.java.name}"
-            Runtime.getRuntime().exec(arrayOf("su", "-c", c)).waitFor() == 0
+            Shell.ok(c)
         }
         return isOwner(ctx)
     }

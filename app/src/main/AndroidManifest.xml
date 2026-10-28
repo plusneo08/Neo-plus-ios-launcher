@@ -92,6 +92,8 @@
     <!-- Power off: only granted when installed as a system app (see rom/) -->
     <uses-permission android:name="android.permission.SHUTDOWN" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.REBOOT" tools:ignore="ProtectedPermissions" />
+    <!-- Shizuku (runs the shell commands without root) -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
@@ -150,6 +152,15 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!-- Lets the Shizuku app hand NEO PLUS its connection (shell commands without root) -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
         <!-- Lets WhatsApp, Messenger, Instagram and Gmail read the photo / song / file the assistant sends for you -->
         <provider
@@ -284,16 +295,6 @@
             android:turnScreenOn="true"
             android:theme="@style/Theme.Neo" />
 
-        <!-- Shown while the assistant answers a call for you (live conversation, Take over, End call) -->
-        <activity
-            android:name=".AiCallActivity"
-            android:exported="false"
-            android:launchMode="singleTask"
-            android:excludeFromRecents="true"
-            android:showWhenLocked="true"
-            android:turnScreenOn="true"
-            android:theme="@style/Theme.Neo" />
-
         <activity
             android:name=".NeoDialerActivity"
             android:exported="true"
@@ -350,6 +351,8 @@
             <intent-filter><action android:name="android.provider.Telephony.SMS_DELIVER" /></intent-filter>
         </receiver>
         <receiver android:name=".SmsStatusReceiver" android:exported="false" />
+        <!-- Reply / Mark as read buttons on a text's notification -->
+        <receiver android:name=".SmsActionReceiver" android:exported="false" />
         <!-- A text arrived: float an orb carrying it over the home screen and other apps -->
         <receiver android:name=".SmsOrbReceiver" android:exported="true" android:permission="android.permission.BROADCAST_SMS">
             <intent-filter><action android:name="android.provider.Telephony.SMS_RECEIVED" /></intent-filter>

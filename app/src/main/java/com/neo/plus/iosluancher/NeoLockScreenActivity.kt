@@ -563,6 +563,7 @@ private fun ClockScreen(onUnlock: () -> Unit) {
                 ),
                 textAlign = TextAlign.Center
             )
+            StepsPill(color = Color.White.copy(alpha = 0.92f), size = 17.sp)   // 👣 today's steps, back to 0 at midnight
             if (waiting > 0) {
                 Spacer(Modifier.height(6.dp))
                 Box(

@@ -22,6 +22,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -128,12 +129,19 @@ fun ClockWidget(modifier: Modifier) {
             Spacer(Modifier.size(7.dp))
             Text("NEO PLUS", color = TdCyan, fontSize = 11.sp,
                 letterSpacing = 1.5.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            ActionEmoji("⏰", Move.SHAKE, size = 18.sp, periodMs = 2400)   // the alarm rings in bursts
         }
         Spacer(Modifier.weight(1f))
         Text(SimpleDateFormat(pattern, Locale.getDefault()).format(Date(now)),
             color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.Light, style = TdGlow)
-        Text(SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(Date(now)),
-            color = Color(0xFFBDEBFF), fontSize = 14.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(Date(now)),
+                color = Color(0xFFBDEBFF), fontSize = 14.sp, maxLines = 1,
+                modifier = Modifier.weight(1f, fill = false))
+            Spacer(Modifier.size(6.dp))
+            FrameEmoji(CLOCK_FACES, 250L, size = 14.sp)   // hands of the clock go round
+        }
     }
 }
 
@@ -146,12 +154,22 @@ fun CalendarWidget(modifier: Modifier) {
             .appendPath(System.currentTimeMillis().toString()).build()
         ctx.safeStart(Intent(Intent.ACTION_VIEW, uri))
     }) {
-        Text(SimpleDateFormat("EEEE", Locale.getDefault()).format(now).uppercase(),
-            color = TdCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(SimpleDateFormat("EEEE", Locale.getDefault()).format(now).uppercase(),
+                color = TdCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                modifier = Modifier.weight(1f, fill = false))
+            Spacer(Modifier.weight(1f))
+            ActionEmoji("📅", Move.FLIP, size = 18.sp, periodMs = 3200)   // page flips over
+        }
         Text(SimpleDateFormat("d", Locale.getDefault()).format(now),
             color = Color.White, fontSize = 56.sp, fontWeight = FontWeight.Light, style = ShadowStyle)
-        Text(SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(now),
-            color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(now),
+                color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp, maxLines = 1,
+                modifier = Modifier.weight(1f, fill = false))
+            Spacer(Modifier.size(5.dp))
+            ActionEmoji("✨", Move.PULSE, size = 13.sp, periodMs = 1500)
+        }
     }
 }
 
@@ -186,8 +204,16 @@ private fun rememberBattery(): Pair<Int, Boolean> {
 fun BatteryWidget(modifier: Modifier) {
     val (pct, charging) = rememberBattery()
     WidgetCard(modifier) {
-        Text("BATTERY", color = TdCyan, fontSize = 11.sp,
-            letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("BATTERY", color = TdCyan, fontSize = 11.sp,
+                letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            when {
+                charging -> ActionEmoji("⚡", Move.FLASH, size = 18.sp, periodMs = 1100)        // power flowing in
+                pct <= 20 -> ActionEmoji("🪫", Move.SHAKE, size = 18.sp, periodMs = 1800)       // low: shaking
+                else -> ActionEmoji("🔋", Move.PULSE, size = 18.sp, periodMs = 1800)            // healthy: gently pulsing
+            }
+        }
         Spacer(Modifier.weight(1f))
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             Canvas(Modifier.size(78.dp)) {
@@ -202,8 +228,13 @@ fun BatteryWidget(modifier: Modifier) {
             Text("$pct%", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.weight(1f))
-        Text(if (charging) "Charging" else "On battery", color = Color.White.copy(alpha = 0.9f),
-            fontSize = 12.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            Text(if (charging) "Charging" else "On battery", color = Color.White.copy(alpha = 0.9f),
+                fontSize = 12.sp, maxLines = 1)
+            Spacer(Modifier.size(5.dp))
+            if (charging) ActionEmoji("🔌", Move.BOB, size = 13.sp, periodMs = 700)            // plug hops in
+            else ActionEmoji("⏳", Move.FLIP, size = 13.sp, periodMs = 3600)                    // time running down
+        }
     }
 }
 
@@ -220,12 +251,19 @@ fun StorageWidget(modifier: Modifier) {
     val frac = (used.toFloat() / total.coerceAtLeast(1)).coerceIn(0f, 1f)
     fun gb(b: Long) = String.format(Locale.getDefault(), "%.0f GB", b / 1_073_741_824.0)
     WidgetCard(modifier) {
-        Text("STORAGE", color = TdCyan, fontSize = 11.sp,
-            letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("STORAGE", color = TdCyan, fontSize = 11.sp,
+                letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            ActionEmoji("💿", Move.SPIN, size = 18.sp, periodMs = 2000)   // the disc spins while it reads
+        }
         Spacer(Modifier.weight(1f))
         Text(gb(used), color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Light, style = ShadowStyle)
         Text("of ${gb(total)} used", color = Color.White.copy(alpha = 0.9f), fontSize = 13.sp)
-        Spacer(Modifier.height(10.dp))
+        // a package keeps sliding along the bar, like data being moved in
+        BoxWithConstraints(Modifier.fillMaxWidth().height(18.dp)) {
+            ActionEmoji("📦", Move.TRAVEL, size = 13.sp, periodMs = 3800, travel = maxWidth - 16.dp)
+        }
         Box(Modifier.fillMaxWidth().height(8.dp).clip(CircleShape).background(TdCyan.copy(alpha = 0.15f))) {
             Box(
                 Modifier.fillMaxHeight().fillMaxWidth(frac)

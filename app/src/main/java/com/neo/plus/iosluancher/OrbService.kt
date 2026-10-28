@@ -112,9 +112,10 @@ object NotifReader {
 /**
  * The floating assistant: a round NEO PLUS logo that stays on top of every app and the home screen, listens through the
  * microphone in the background, answers out loud and shows what it says as subtitles under the logo.
- *  - ✕ on the logo removes it (so does "stop listening" / "goodbye", or Stop in the notification)
- *  - tap the logo to mute / un-mute the microphone (tap while it is talking to interrupt it)
- *  - drag the logo to move it
+ *  - it is always in wake mode: it listens by itself, say "Hey Neo" and then your request (no tap needed)
+ *  - drag the orb anywhere on the screen, right to every edge; drag it onto the circle at the bottom to remove it
+ *    (so does "stop listening" / "goodbye", or Stop in the notification)
+ *  - tap the orb to talk right now without the wake phrase (tap while it is talking to interrupt it)
  *  - when a notification arrives it asks "Do you want me to read it?" and reads it if you say yes
  */
 class OrbService : Service() {
@@ -156,8 +157,8 @@ class OrbService : Service() {
     private var orbLp: WindowManager.LayoutParams? = null
     private var sub: TextView? = null
     private var subLp: WindowManager.LayoutParams? = null
-    private var ring: View? = null
-    private var pulse: ObjectAnimator? = null
+    private var glow: GlowOrbView? = null
+    private var bob: ObjectAnimator? = null
 
     private var recognizer: SpeechRecognizer? = null
     private var st = St.IDLE
@@ -170,7 +171,7 @@ class OrbService : Service() {
     private var mode = "manual"
     private var manualActive = false
     private var armedUntil = 0L
-    private var badge: TextView? = null
+    private var zone: ZoneView? = null
     private var shareBadge: TextView? = null
     private var shareScreen = false // resets to off every time the orb starts
 
@@ -222,7 +223,10 @@ class OrbService : Service() {
             stopSelf()
             return
         }
-        mode = prefs.getString("mode", "manual") ?: "manual"
+        // one-time switch to the new default: hidden standby, the orb only appears when the wake phrase is heard
+        if (!prefs.getBoolean("standby_v2", false)) prefs.edit().putBoolean("stealth", true).putBoolean("standby_v2", true).apply()
+        mode = "wake" // always on its own: no tap needed, just say "Hey Neo"
+        prefs.edit().putString("mode", "wake").apply()
         if (!createRecognizer()) {
             stopSelf()
             return
@@ -239,7 +243,7 @@ class OrbService : Service() {
         if (stealth()) Toast.makeText(this, "Neo Plus is waiting in the background. Say “Hey Neo” or 147.", Toast.LENGTH_LONG).show()
         Speaker.prewarm(this)   // opens the connection to the cloud voice and caches "Yes?" / "Okay." before they are needed
         setState(St.IDLE)
-        subtitle(if (mode == "wake") "Say “Hey Neo”, then your request. Tap ✕ to close me." else "Tap the logo, then speak. Tap ✕ to close me.", false)
+        subtitle("Say “Hey Neo”, then your request. Drag me down to the ✕ to remove me.", false)
         subtitleLater(3500)
         scheduleRestart(500)
     }
@@ -251,7 +255,9 @@ class OrbService : Service() {
         try { recognizer?.destroy() } catch (e: Exception) { }
         recognizer = null
         Speaker.stop()
-        pulse?.cancel()
+        bob?.cancel()
+        try { zone?.let { wm.removeView(it) } } catch (e: Exception) { }
+        zone = null
         try { orbRoot?.let { wm.removeView(it) } } catch (e: Exception) { }
         try { sub?.let { wm.removeView(it) } } catch (e: Exception) { }
         orbRoot = null
@@ -274,7 +280,7 @@ class OrbService : Service() {
             this, 1, Intent(this, OrbService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val hidden = prefs.getString("mode", "manual") == "wake" && prefs.getBoolean("stealth", true)
+        val hidden = prefs.getBoolean("stealth", true)
         val n = Notification.Builder(this, CHANNEL_QUIET)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentTitle(if (hidden) "Neo Plus is waiting" else "Neo Plus is listening")
@@ -298,73 +304,28 @@ class OrbService : Service() {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     private fun buildOverlay() {
-        val box = dp(96)
+        val box = dp(80)
+        addZone() // the remove circle sits under the orb
 
-        val ringView = View(this).apply {
-            layoutParams = FrameLayout.LayoutParams(dp(84), dp(84), Gravity.CENTER)
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.TRANSPARENT)
-                setStroke(dp(4), 0x66FFFFFF)
-            }
-        }
-        ring = ringView
-        pulse = ObjectAnimator.ofPropertyValuesHolder(
-            ringView,
-            PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.14f),
-            PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.14f)
-        ).apply {
-            duration = 650
-            repeatCount = ValueAnimator.INFINITE
-            repeatMode = ValueAnimator.REVERSE
-        }
-
-        val logo = ImageView(this).apply {
-            layoutParams = FrameLayout.LayoutParams(dp(72), dp(72), Gravity.CENTER)
-            setImageResource(R.drawable.neo_icon)
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            outlineProvider = object : ViewOutlineProvider() {
-                override fun getOutline(view: View, outline: Outline) { outline.setOval(0, 0, view.width, view.height) }
-            }
-            clipToOutline = true
+        // The same glowing orb as the message bubbles, with the NEO PLUS logo in the middle.
+        val orbView = GlowOrbView(this, R.drawable.neo_icon).apply {
+            layoutParams = FrameLayout.LayoutParams(dp(76), dp(76), Gravity.CENTER)   // same size as the message orbs
             elevation = dp(6).toFloat()
             contentDescription = "Neo Plus assistant. Tap to talk."
             setOnTouchListener(DragListener())
         }
-
-        val close = TextView(this).apply {
-            layoutParams = FrameLayout.LayoutParams(dp(28), dp(28), Gravity.TOP or Gravity.END)
-            text = "✕"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            gravity = Gravity.CENTER
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(0xE6000000.toInt())
-                setStroke(dp(1), 0x66FFFFFF)
-            }
-            elevation = dp(8).toFloat()
-            contentDescription = "Remove the floating assistant"
-            setOnClickListener { stopSelf() }
+        glow = orbView
+        // flies in with a little bounce, then bobs gently
+        orbView.scaleX = 0f
+        orbView.scaleY = 0f
+        orbView.animate().scaleX(1f).scaleY(1f).setDuration(450).setInterpolator(android.view.animation.OvershootInterpolator(1.8f)).start()
+        bob = ObjectAnimator.ofFloat(orbView, View.TRANSLATION_Y, -dp(6).toFloat(), dp(6).toFloat()).apply {
+            duration = 1900
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.REVERSE
+            interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+            start()
         }
-
-        val badgeView = TextView(this).apply {
-            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, dp(18), Gravity.BOTTOM or Gravity.START)
-            text = if (mode == "wake") "WAKE" else "TAP"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
-            gravity = Gravity.CENTER
-            setPadding(dp(8), 0, dp(8), 0)
-            background = GradientDrawable().apply {
-                cornerRadius = dp(9).toFloat()
-                setColor(0xE6000000.toInt())
-                setStroke(dp(1), 0x66FFFFFF)
-            }
-            elevation = dp(8).toFloat()
-            contentDescription = "Switch between tap to talk and the Hey Neo wake phrase"
-            setOnClickListener { toggleMode() }
-        }
-        badge = badgeView
 
         val seeView = TextView(this).apply {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, dp(18), Gravity.BOTTOM or Gravity.END)
@@ -391,10 +352,7 @@ class OrbService : Service() {
         val root = FrameLayout(this).apply {
             minimumWidth = box
             minimumHeight = box
-            addView(ringView)
-            addView(logo)
-            addView(close)
-            addView(badgeView)
+            addView(orbView)
             addView(seeView)
         }
 
@@ -403,7 +361,8 @@ class OrbService : Service() {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
@@ -443,19 +402,59 @@ class OrbService : Service() {
         wm.addView(text, slp)
     }
 
-    private fun clamp(lp: WindowManager.LayoutParams) {
-        val dm = resources.displayMetrics
-        val maxX = dm.widthPixels / 2 - dp(48)
-        lp.x = lp.x.coerceIn(-maxX, maxX)
-        lp.y = lp.y.coerceIn(dp(100), dm.heightPixels - dp(240))
+    /** The whole screen, status and navigation bars included, so the orb can go right to every edge. */
+    @Suppress("DEPRECATION")
+    private fun real(): android.util.DisplayMetrics {
+        val m = android.util.DisplayMetrics()
+        wm.defaultDisplay.getRealMetrics(m)
+        return m
     }
 
-    /** Keeps the subtitle directly underneath the logo, wherever the logo was dragged to. */
+    /** Anywhere on the screen, edge to edge (the position is from the bottom middle of the screen). */
+    private fun clamp(lp: WindowManager.LayoutParams) {
+        val dm = real()
+        val w = orbRoot?.width?.takeIf { it > 0 } ?: dp(80)
+        val h = orbRoot?.height?.takeIf { it > 0 } ?: dp(80)
+        val maxX = maxOf(0, (dm.widthPixels - w) / 2)
+        lp.x = lp.x.coerceIn(-maxX, maxX)
+        lp.y = lp.y.coerceIn(0, maxOf(0, dm.heightPixels - h))
+    }
+
+    /** Keeps the subtitle next to the orb, wherever it was dragged to: underneath it, or above it when the orb is at the bottom. */
     private fun layoutSubtitle() {
         val lp = orbLp ?: return
         val slp = subLp ?: return
-        slp.y = (lp.y - dp(88)).coerceAtLeast(dp(8))
+        val dm = real()
+        val below = lp.y - dp(80)
+        slp.y = if (below >= dp(8)) below else (lp.y + dp(80)).coerceAtMost(dm.heightPixels - dp(120))
         try { if (sub?.isAttachedToWindow == true) wm.updateViewLayout(sub, slp) } catch (e: Exception) { }
+    }
+
+    /* ---------------- the remove circle at the bottom (the same as the message orbs) ---------------- */
+
+    private fun addZone() {
+        val z = ZoneView(this)
+        val lp = WindowManager.LayoutParams(
+            dp(150), dp(130), WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        ).apply { gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; y = dp(30) }
+        z.alpha = 0f
+        try { wm.addView(z, lp); zone = z } catch (e: Exception) { }
+    }
+
+    private fun showZone() { zone?.animate()?.alpha(1f)?.setDuration(150)?.start() }
+    private fun hideZone() { zone?.setHot(false); zone?.animate()?.alpha(0f)?.setDuration(120)?.start() }
+
+    /** True while the orb is over the remove circle (bottom middle), so it can still be parked anywhere else along the bottom. */
+    private fun overZone(): Boolean {
+        val root = orbRoot ?: return false
+        val loc = IntArray(2)
+        root.getLocationOnScreen(loc)
+        val dm = real()
+        val cx = loc[0] + root.width / 2
+        val cy = loc[1] + root.height / 2
+        return abs(cx - dm.widthPixels / 2) < dp(80) && cy > dm.heightPixels - dp(190)
     }
 
     private inner class DragListener : View.OnTouchListener {
@@ -472,19 +471,41 @@ class OrbService : Service() {
                     startX = e.rawX; startY = e.rawY; lastX = e.rawX; lastY = e.rawY; moved = false
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    if (!moved && (abs(e.rawX - startX) > dp(8) || abs(e.rawY - startY) > dp(8))) moved = true
+                    if (!moved && (abs(e.rawX - startX) > dp(8) || abs(e.rawY - startY) > dp(8))) {
+                        moved = true
+                        dragging = true
+                        v.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                        showZone()
+                    }
                     if (moved) {
                         lp.x += (e.rawX - lastX).toInt()
                         lp.y -= (e.rawY - lastY).toInt() // gravity is BOTTOM, so y grows upwards
                         clamp(lp)
                         try { wm.updateViewLayout(orbRoot, lp) } catch (ex: Exception) { }
                         layoutSubtitle()
+                        val over = overZone()
+                        zone?.setHot(over)
+                        val k = if (over) 0.7f else 1f
+                        if (glow?.scaleX != k) glow?.animate()?.scaleX(k)?.scaleY(k)?.setDuration(120)?.start()
                     }
                     lastX = e.rawX; lastY = e.rawY
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (!moved) onOrbTap() else prefs.edit().putInt("x", lp.x).putInt("y", lp.y).apply()
+                    if (!moved) onOrbTap()
+                    else {
+                        val hot = overZone()
+                        dragging = false
+                        hideZone()
+                        if (hot) {
+                            // sucked into the ✕, then the assistant is switched off
+                            glow?.animate()?.scaleX(0f)?.scaleY(0f)?.alpha(0f)?.setDuration(160)?.withEndAction { stopSelf() }?.start()
+                        } else {
+                            glow?.animate()?.scaleX(1f)?.scaleY(1f)?.setDuration(120)?.start()
+                            prefs.edit().putInt("x", lp.x).putInt("y", lp.y).apply()
+                        }
+                    }
                 }
+                MotionEvent.ACTION_CANCEL -> { dragging = false; hideZone(); glow?.animate()?.scaleX(1f)?.scaleY(1f)?.setDuration(120)?.start() }
             }
             return true
         }
@@ -498,8 +519,11 @@ class OrbService : Service() {
     private fun stealth() = mode == "wake" && prefs.getBoolean("stealth", true)
 
     /** True while the assistant is awake or busy and the logo should be on screen. */
-    private fun awake() = st == St.THINKING || st == St.SPEAKING || engaged() ||
-        System.currentTimeMillis() < armedUntil || sub?.visibility == View.VISIBLE
+    private var peekUntil = 0L      // the wake phrase was just heard in a half-finished sentence
+    private var dragging = false    // the orb is being moved to the ✕
+
+    private fun awake() = st == St.THINKING || st == St.SPEAKING || engaged() || dragging ||
+        System.currentTimeMillis() < armedUntil || System.currentTimeMillis() < peekUntil || sub?.visibility == View.VISIBLE
 
     private fun updateVisibility() {
         val root = orbRoot ?: return
@@ -548,17 +572,10 @@ class OrbService : Service() {
             St.THINKING -> 0xFFFF9F0A.toInt()
             St.SPEAKING -> 0xFF0A84FF.toInt()
             St.PAUSED -> 0xFF8E8E93.toInt()
-            St.IDLE -> 0x66FFFFFF
+            St.IDLE -> 0
         }
-        (ring?.background as? GradientDrawable)?.setStroke(dp(4), color)
+        glow?.setLook(color, s == St.LISTENING || s == St.SPEAKING || s == St.THINKING)
         updateVisibility()
-        if (s == St.LISTENING || s == St.SPEAKING || s == St.THINKING) {
-            if (pulse?.isRunning != true) pulse?.start()
-        } else {
-            pulse?.cancel()
-            ring?.scaleX = 1f
-            ring?.scaleY = 1f
-        }
     }
 
     private fun onOrbTap() {
@@ -618,31 +635,6 @@ class OrbService : Service() {
         scheduleRestart(50)
     }
 
-    private fun updateBadge() {
-        badge?.text = if (mode == "wake") "WAKE" else "TAP"
-    }
-
-    /** Switches between tap-to-talk and the “Hey Neo” wake phrase. */
-    private fun toggleMode() {
-        mode = if (mode == "wake") "manual" else "wake"
-        prefs.edit().putString("mode", mode).apply()
-        goForeground()
-        updateVisibility()
-        manualActive = false
-        armedUntil = 0L
-        cancelListening()
-        updateBadge()
-        if (st != St.SPEAKING && st != St.THINKING) setState(St.IDLE)
-        if (mode == "wake") {
-            subtitle("Wake phrase on. Say “Hey Neo”, then your request.", false)
-            subtitleLater(3500)
-            scheduleRestart(300)
-        } else {
-            subtitle("Tap the logo, then speak.", false)
-            subtitleLater(3000)
-        }
-    }
-
     /* ------------------------------------------------------------------ */
     /*  Listening                                                          */
     /* ------------------------------------------------------------------ */
@@ -675,6 +667,12 @@ class OrbService : Service() {
             .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+        // Commands are short: treat ~0.7 s of silence as "finished" instead of the recogniser's default 1.5-2 s. Not while the user is
+        // dictating the text of a reply (replyStep 2), where a longer pause between sentences is normal.
+        if (replyStep != 2) {
+            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 700L)
+                .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 600L)
+        }
         try {
             beepGuard()
             r.startListening(intent)
@@ -687,12 +685,46 @@ class OrbService : Service() {
 
     private fun cancelListening() {
         main.removeCallbacks(restart)
+        main.removeCallbacks(earlyFire)
         try { recognizer?.cancel() } catch (e: Exception) { }
+    }
+
+    /* ---- instant start: a plain switch / volume / media command starts as soon as the words stop changing ---- */
+
+    private var earlyText = ""
+    private val earlyFire = Runnable {
+        val t = earlyText
+        earlyText = ""
+        // still listening (the final result has not arrived and nothing else took over): run it exactly like a final result
+        if (alive && st == St.LISTENING && t.isNotBlank()) handle(t)
+    }
+
+    /** The request inside [heard] (after the wake phrase, when one is needed), or null when it is not meant for the assistant. */
+    private fun requestIn(heard: String): String? {
+        if (replyStep != 0 || awaiting != null) return null
+        var c = heard.trim()
+        if (mode == "wake") {
+            val m = wakeRegex.find(c)
+            if (m != null) c = c.substring(m.range.last + 1)
+            else if (System.currentTimeMillis() >= armedUntil) return null
+        } else if (mode == "manual" && !manualActive) return null
+        c = c.trim().trimStart(',', '.', ' ').lowercase(Locale.ROOT).trimEnd('.', '!', '?', ',')
+        return c.replace(Regex("^(?:please |can you |could you |would you )"), "").ifBlank { null }
+    }
+
+    private fun armEarly(heard: String) {
+        main.removeCallbacks(earlyFire)
+        earlyText = ""
+        val req = requestIn(heard) ?: return
+        if (!QuickCmd.isInstant(req)) return
+        earlyText = heard
+        // ~0.4 s of the same words = the sentence is over (people do not pause that long inside "turn off wifi")
+        main.postDelayed(earlyFire, 400)
     }
 
     private val listener = object : RecognitionListener {
         override fun onReadyForSpeech(params: Bundle?) {}
-        override fun onBeginningOfSpeech() {}
+        override fun onBeginningOfSpeech() { Llm.warm() } // open the connection to Gemini while the user is still talking
         override fun onRmsChanged(rmsdB: Float) {}
         override fun onBufferReceived(buffer: ByteArray?) {}
         override fun onEndOfSpeech() { beepGuard() }
@@ -700,13 +732,24 @@ class OrbService : Service() {
 
         override fun onPartialResults(partialResults: Bundle?) {
             if (!alive || st != St.LISTENING) return
-            if (mode == "wake" && !engaged() && System.currentTimeMillis() >= armedUntil) return
+            if (mode == "wake" && !engaged() && System.currentTimeMillis() >= armedUntil) {
+                // standby: as soon as the wake phrase shows up the orb appears and shows that it is listening
+                val heard = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                if (!heard.isNullOrBlank() && (wakeRegex.containsMatchIn(heard) || WakeCode.re.containsMatchIn(heard)) && System.currentTimeMillis() >= peekUntil) {
+                    peekUntil = System.currentTimeMillis() + 4000
+                    updateVisibility()
+                    subtitle("Listening…", true)
+                    subtitleLater(1500)
+                }
+                return
+            }
             val t = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-            if (!t.isNullOrBlank()) subtitle(t, true)
+            if (!t.isNullOrBlank()) { subtitle(t, true); armEarly(t) }
         }
 
         override fun onResults(results: Bundle?) {
             if (!alive) return
+            main.removeCallbacks(earlyFire)
             beepGuard()
             errorStreak = 0
             val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
@@ -883,7 +926,9 @@ class OrbService : Service() {
     /** Last turns as alternating user / assistant pairs, starting with the user. */
     private fun alternating(): List<Pair<Boolean, String>> {
         val out = mutableListOf<Pair<Boolean, String>>()
-        history.takeLast(12).forEach { m ->
+        val recent = history.takeLast(12)
+        recent.forEachIndexed { i, m0 ->
+            val m = if (i < recent.size - 2 && m0.second.length > 400) m0.first to (m0.second.take(400) + "…") else m0
             val last = out.lastOrNull()
             if (last != null && last.first == m.first) out[out.lastIndex] = last.first to (last.second + "\n" + m.second)
             else out += m

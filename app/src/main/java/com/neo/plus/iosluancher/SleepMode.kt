@@ -104,7 +104,7 @@ object SleepMode {
         }
         if (cal.timeInMillis <= System.currentTimeMillis() + 60_000) cal.add(Calendar.DAY_OF_YEAR, 1)
         prefs(app).edit().putBoolean("on", true).putLong("wake_at", cal.timeInMillis).putLong("started", System.currentTimeMillis())
-            .putString("activity", act).putString("mode", "").putString("log", "[]").putString("replied", "{}").putString("replied_n", "{}").putInt("retries", 0).putString("report", "").putInt("prep_n", -1).apply()
+            .putString("activity", act).putString("log", "[]").putString("replied", "{}").putString("replied_n", "{}").putInt("retries", 0).putString("report", "").putInt("prep_n", -1).apply()
         synchronized(seen) { seen.clear() }
         NotifStore.convoClear()
         // Capture what is already waiting in the notification shade, so nothing that arrived just before bed is missed
@@ -138,7 +138,7 @@ object SleepMode {
         val app = ctx.applicationContext
         val wasOn = isOn(app)
         finish(app)
-        return if (wasOn) Modes.offMessage(app) else "No mode was on."
+        return if (wasOn) "Sleep mode is off. Say “what did I miss” for the night summary." else "Sleep mode was not on."
     }
 
     internal fun finish(app: Context) {
@@ -192,7 +192,7 @@ object SleepMode {
         val n = Notification.Builder(app, CHANNEL)
             .setSmallIcon(android.R.drawable.sym_call_incoming)
             .setContentTitle("Neo Plus Assistant")
-            .setContentText("Incoming call: your " + Modes.summaryWord(app))
+            .setContentText("Incoming call: your night summary")
             .setCategory(Notification.CATEGORY_CALL)
             .setOngoing(true)
             .setFullScreenIntent(pi, true)
@@ -218,7 +218,7 @@ object SleepMode {
             val n = Notification.Builder(app, CHANNEL)
                 .setSmallIcon(android.R.drawable.sym_call_missed)
                 .setContentTitle("Missed call: Neo Plus Assistant")
-                .setContentText("Say “what did I miss” to hear your " + Modes.summaryWord(app) + ".")
+                .setContentText("Say “what did I miss” to hear your night summary.")
                 .setAutoCancel(true)
                 .build()
             nm.notify(NOTIF_ID, n)

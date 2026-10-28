@@ -212,12 +212,17 @@ fun HomePanel(modifier: Modifier = Modifier) {
                     ) {
                         Box(Modifier.size(6.dp).background(NeoCyanC, RoundedCornerShape(50)))
                         Spacer(Modifier.width(7.dp))
-                        Text("$weekday, $dayMonth", color = Color.White.copy(alpha = 0.92f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("$weekday, $dayMonth", color = Color.White.copy(alpha = 0.92f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false))
+                        Spacer(Modifier.width(6.dp))
+                        FrameEmoji(CLOCK_FACES, 250L, size = 14.sp)   // hands of the clock go round
                     }
                 }
-                Box(Modifier.size(68.dp), contentAlignment = Alignment.Center) {
-                    SecondsRing(Modifier.matchParentSize())
-                    LiveSeconds()
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Box(Modifier.size(68.dp), contentAlignment = Alignment.Center) {
+                        SecondsRing(Modifier.matchParentSize())
+                        LiveSeconds()
+                    }
                 }
             }
         }
@@ -235,6 +240,7 @@ fun HomePanel(modifier: Modifier = Modifier) {
         ) {
             WeatherScene(kind, Modifier.matchParentSize())
             Canvas(Modifier.matchParentSize()) { mountains() }
+            WeatherEmojis(kind, Modifier.matchParentSize())   // emojis act out the weather: rain falls, clouds drift, stars twinkle
             Row(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (w != null) {
                     WeatherGlyph(kind, Modifier.size(80.dp))
@@ -260,6 +266,67 @@ fun HomePanel(modifier: Modifier = Modifier) {
                     }
                 }
             }
+        }
+
+        // ---- footsteps card: today's steps from the phone's step counter, distance, energy, goal and the last 7 days
+        StepsCard(Modifier.weight(0.72f).fillMaxWidth().neoCard(card))
+    }
+}
+
+/** 👣 Footsteps: counts the steps you take with the phone on you (also while the screen is off). Tap to change the daily goal. */
+@Composable
+private fun StepsCard(modifier: Modifier) {
+    val appCtx = LocalContext.current.applicationContext
+    LaunchedEffect(Unit) {
+        StepCounter.start(appCtx)
+        while (true) {
+            StepCounter.refresh(appCtx)
+            delay(minOf(30_000L, StepCounter.msToMidnight() + 300L))
+        }
+    }
+    var goal by remember { mutableStateOf(StepCounter.goal(appCtx)) }
+    val steps = StepCounter.steps.intValue
+    val week = remember(steps) { StepCounter.history(appCtx, 7) }
+    val miles = Locale.getDefault().country in setOf("US", "GB", "LR", "MM")
+    val dist = StepCounter.km(steps).let { if (miles) it * 0.621371 else it }
+    val frac = (steps.toFloat() / goal).coerceIn(0f, 1f)
+    Box(modifier.clickable {
+        goal = when (goal) { 4000 -> 6000; 6000 -> 8000; 8000 -> 10000; 10000 -> 12000; else -> 4000 }
+        StepCounter.setGoal(appCtx, goal)
+    }) {
+        Row(Modifier.fillMaxSize().padding(start = 16.dp, end = 14.dp, top = 6.dp, bottom = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FrameEmoji(WALK_FRAMES, 350L, size = 20.sp)
+                    Spacer(Modifier.width(6.dp))
+                    Text(java.text.NumberFormat.getIntegerInstance().format(steps), color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Light, style = GlowText, maxLines = 1, softWrap = false)
+                    Text(" steps", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp), maxLines = 1)
+                }
+                Text(
+                    if (!StepCounter.working.value && steps == 0) "Carry your phone: counting starts with your first steps"
+                    else String.format(Locale.US, "%.1f %s  ·  %d kcal  ·  goal %,d", dist, if (miles) "mi" else "km", StepCounter.kcal(steps), goal),
+                    color = Color(0xFF7DD3FC), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+            }
+            // the last 7 days, today on the right and bright
+            Canvas(Modifier.width(88.dp).fillMaxHeight()) {
+                val top = maxOf(goal, week.maxOrNull() ?: 0).toFloat()
+                val gap = 4.dp.toPx()
+                val bw = (size.width - gap * 6) / 7f
+                week.forEachIndexed { i, v ->
+                    val h = maxOf(3.dp.toPx(), size.height * (v / top))
+                    drawRoundRect(
+                        if (i == week.lastIndex) NeoCyanC else Color.White.copy(alpha = 0.30f),
+                        Offset(i * (bw + gap), size.height - h), androidx.compose.ui.geometry.Size(bw, h),
+                        androidx.compose.ui.geometry.CornerRadius(2.dp.toPx())
+                    )
+                }
+            }
+        }
+        // progress towards today's goal along the bottom edge
+        Canvas(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp)) {
+            drawRect(Color.White.copy(alpha = 0.12f))
+            drawRect(Brush.horizontalGradient(listOf(NeoBlueC, NeoCyanC)), size = androidx.compose.ui.geometry.Size(size.width * frac, size.height))
         }
     }
 }

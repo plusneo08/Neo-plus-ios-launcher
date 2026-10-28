@@ -33,6 +33,10 @@ object WebTaskPrefs {
     fun deepRead(ctx: Context): Boolean = p(ctx).getBoolean("deep_read", true)
     fun setDeepRead(ctx: Context, on: Boolean) { p(ctx).edit().putBoolean("deep_read", on).apply() }
 
+    /** The assistant may send requests straight to the website's own server (backend) when the user asks it to. */
+    fun backendCalls(ctx: Context): Boolean = p(ctx).getBoolean("backend_calls", true)
+    fun setBackendCalls(ctx: Context, on: Boolean) { p(ctx).edit().putBoolean("backend_calls", on).apply() }
+
     /** May the agent open [url] although it is not one of the authorised sites? */
     fun allows(ctx: Context, url: String): Boolean {
         val u = try { android.net.Uri.parse(if (url.startsWith("http")) url else "https://$url") } catch (e: Exception) { return false }

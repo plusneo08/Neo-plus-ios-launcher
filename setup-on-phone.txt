@@ -1,44 +1,70 @@
-NEO PLUS iOS Launcher - setup on the phone itself (no computer)
-================================================================
-Needs Android 11 or newer, Wi-Fi, and the free LADB app (adb that runs on the phone).
+NEO PLUS iOS Launcher - full setup on the phone itself, NO ROOT, no computer
+==============================================================================
+This does everything the root setup does. adb (which LADB runs on the phone) is allowed to give an app the
+permissions that normal apps cannot get. The grants stay after a restart; they are lost only if you UNINSTALL the app
+(updating over the top keeps them).
 
-1. Install LADB (search "LADB" - github.com/tytydraco/LADB, or the Play Store).
-2. Settings > About phone > tap Build number 7 times. Then Settings > System > Developer options > turn on "Wireless debugging".
-3. Open LADB and follow its pairing screen (it shows how to enter the pairing code from Wireless debugging).
-4. When LADB shows a shell prompt, paste these lines ONE AT A TIME (press Enter after each).
-   Replace nothing - they are already correct:
+Needs: Android 11 or newer, Wi-Fi, and the free LADB app (github.com/tytydraco/LADB or the Play Store).
 
-pm grant com.neo.plus.iosluancher android.permission.WRITE_SECURE_SETTINGS
+1. Settings > About phone > tap Build number 7 times. Then Settings > System > Developer options >
+   turn on "Wireless debugging".
+2. Open LADB and follow its pairing screen (Wireless debugging > Pair device with pairing code).
+3. When LADB shows a shell prompt, paste these lines ONE AT A TIME (Enter after each).
+   Lines that say "unknown permission" or "Bad argument" only mean your Android version does not have that one: ignore them.
+
+--- permissions and special access ---
 pm grant com.neo.plus.iosluancher android.permission.CAMERA
 pm grant com.neo.plus.iosluancher android.permission.READ_CONTACTS
 pm grant com.neo.plus.iosluancher android.permission.CALL_PHONE
+pm grant com.neo.plus.iosluancher android.permission.SEND_SMS
+pm grant com.neo.plus.iosluancher android.permission.READ_SMS
+pm grant com.neo.plus.iosluancher android.permission.READ_CALL_LOG
 pm grant com.neo.plus.iosluancher android.permission.READ_PHONE_STATE
-pm grant com.neo.plus.iosluancher android.permission.READ_CALENDAR
-pm grant com.neo.plus.iosluancher android.permission.RECORD_AUDIO
-pm grant com.neo.plus.iosluancher android.permission.ACCESS_FINE_LOCATION
-pm grant com.neo.plus.iosluancher android.permission.ACCESS_COARSE_LOCATION
-pm grant com.neo.plus.iosluancher android.permission.POST_NOTIFICATIONS
 pm grant com.neo.plus.iosluancher android.permission.ANSWER_PHONE_CALLS
 pm grant com.neo.plus.iosluancher android.permission.RECEIVE_SMS
+pm grant com.neo.plus.iosluancher android.permission.READ_CALENDAR
+pm grant com.neo.plus.iosluancher android.permission.RECORD_AUDIO
+pm grant com.neo.plus.iosluancher android.permission.ACCESS_COARSE_LOCATION
+pm grant com.neo.plus.iosluancher android.permission.ACCESS_FINE_LOCATION
+pm grant com.neo.plus.iosluancher android.permission.POST_NOTIFICATIONS
+pm grant com.neo.plus.iosluancher android.permission.READ_MEDIA_AUDIO
+pm grant com.neo.plus.iosluancher android.permission.READ_MEDIA_IMAGES
+pm grant com.neo.plus.iosluancher android.permission.READ_MEDIA_VIDEO
+pm grant com.neo.plus.iosluancher android.permission.READ_EXTERNAL_STORAGE
+pm grant com.neo.plus.iosluancher android.permission.WRITE_EXTERNAL_STORAGE
+pm grant com.neo.plus.iosluancher android.permission.BLUETOOTH_CONNECT
+pm grant com.neo.plus.iosluancher android.permission.ACTIVITY_RECOGNITION
+pm grant com.neo.plus.iosluancher android.permission.WRITE_SECURE_SETTINGS
+appops set com.neo.plus.iosluancher MANAGE_EXTERNAL_STORAGE allow
+appops set com.neo.plus.iosluancher WRITE_SETTINGS allow
+appops set com.neo.plus.iosluancher SYSTEM_ALERT_WINDOW allow
+appops set com.neo.plus.iosluancher ACCESS_RESTRICTED_SETTINGS allow
 appops set com.neo.plus.iosluancher SCHEDULE_EXACT_ALARM allow
 appops set com.neo.plus.iosluancher AUTO_REVOKE_PERMISSIONS_IF_UNUSED ignore
 cmd deviceidle whitelist +com.neo.plus.iosluancher
-appops set com.neo.plus.iosluancher MANAGE_EXTERNAL_STORAGE allow
-appops set com.neo.plus.iosluancher WRITE_SETTINGS allow
 cmd notification allow_listener com.neo.plus.iosluancher/com.neo.plus.iosluancher.NeoNotificationService
 cmd notification allow_dnd com.neo.plus.iosluancher
 dpm set-active-admin com.neo.plus.iosluancher/com.neo.plus.iosluancher.NeoDeviceAdminReceiver
 cmd role add-role-holder android.app.role.HOME com.neo.plus.iosluancher
 
-   (Some lines may say a permission is unknown on your Android version - ignore those.)
+--- switch on the accessibility service ("NEO PLUS iOS Controls"), keeping any you already use (one line) ---
+C=$(settings get secure enabled_accessibility_services); case "$C" in *com.neo.plus.iosluancher.IosControlService*) ;; null|"") settings put secure enabled_accessibility_services com.neo.plus.iosluancher/com.neo.plus.iosluancher.IosControlService ;; *) settings put secure enabled_accessibility_services "$C:com.neo.plus.iosluancher/com.neo.plus.iosluancher.IosControlService" ;; esac
+settings put secure accessibility_enabled 1
 
-5. Full-phone mode (optional, hides Android's bars in every app):
-   a. Settings > Accounts: remove every account (Google, Samsung ...). Re-add them afterwards.
-   b. In LADB, run these two lines:
-
+--- gesture navigation (thinnest system bar; needed for full-phone mode) ---
 cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.gestural
-dpm set-device-owner com.neo.plus.iosluancher/com.neo.plus.iosluancher.NeoDeviceAdminReceiver
 
+4. Full-phone mode (optional, hides Android's bars in every app):
+   a. Settings > Accounts: remove every account (Google, Samsung ...). Re-add them afterwards.
+   b. In LADB run:
+dpm set-device-owner com.neo.plus.iosluancher/com.neo.plus.iosluancher.NeoDeviceAdminReceiver
    It prints "Success" when it worked. If it refuses, an account is still signed in.
-6. Turn on "NEO PLUS iOS Controls" in Settings > Accessibility if the launcher has not already asked.
-7. To leave: tell Neo Plus Assistant "remove device owner".
+   To leave: tell the assistant "remove device owner".
+
+5. Open Neo Plus once. Android 13+/14+: if a switch (accessibility, notification access) is greyed out
+   ("restricted setting"), the ACCESS_RESTRICTED_SETTINGS line above unlocks it; if it is still grey, open
+   Settings > Apps > Neo Plus > (three dots) > Allow restricted settings.
+
+What still needs a root or ADB-shell session at the moment you use it (cannot be granted once):
+   - Mobile data and Airplane mode switches on Android 10+ (the app opens the matching Settings page instead)
+   - Powering the phone off by itself (the app opens Android's power menu: tap Power off)

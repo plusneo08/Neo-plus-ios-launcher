@@ -99,14 +99,14 @@ object TaskLog {
 }
 
 @Composable
-fun TaskPanel(onStop: () -> Unit, modifier: Modifier = Modifier, maxListHeight: androidx.compose.ui.unit.Dp = 190.dp) {
+fun TaskPanel(onStop: () -> Unit) {
     if (TaskLog.lines.isEmpty() || TaskLog.dismissed) return
     val state = rememberLazyListState()
     var expanded by androidx.compose.runtime.remember { mutableStateOf(true) }
     LaunchedEffect(TaskLog.lines.size) { if (TaskLog.lines.isNotEmpty()) state.scrollToItem(TaskLog.lines.size - 1) }
 
     Column(
-        modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
             .clip(RoundedCornerShape(20.dp)).background(Color.Black.copy(alpha = 0.55f)).padding(12.dp)
     ) {
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
@@ -134,7 +134,7 @@ fun TaskPanel(onStop: () -> Unit, modifier: Modifier = Modifier, maxListHeight: 
         }
         if (expanded) {
             Spacer(Modifier.height(8.dp))
-            LazyColumn(state = state, modifier = Modifier.fillMaxWidth().heightIn(max = maxListHeight), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            LazyColumn(state = state, modifier = Modifier.fillMaxWidth().heightIn(max = 190.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 items(TaskLog.lines.toList(), key = { it.id }) { l ->
                     val c = when (l.kind) {
                         TaskLine.Kind.OK -> Color(0xFF30D158)

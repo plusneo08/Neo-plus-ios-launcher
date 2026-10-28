@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -98,6 +99,11 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
@@ -267,7 +273,8 @@ private val AvatarColors = listOf(
 )
 
 @Composable
-private fun Avatar(name: String, size: androidx.compose.ui.unit.Dp) {
+private fun Avatar(name: String, size: androidx.compose.ui.unit.Dp, number: String = "") {
+    val photo = rememberContactPhoto(number)
     val (a, b) = AvatarColors[(name.hashCode() and 0x7fffffff) % AvatarColors.size]
     Box(
         Modifier.size(size).clip(CircleShape).background(
@@ -276,7 +283,8 @@ private fun Avatar(name: String, size: androidx.compose.ui.unit.Dp) {
         contentAlignment = Alignment.Center
     ) {
         val initial = name.trim().firstOrNull { it.isLetter() }
-        if (initial != null) Text(initial.uppercase(), color = Color.White, fontSize = (size.value * 0.40f).sp, fontWeight = FontWeight.SemiBold)
+        if (photo != null) Image(photo, null, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+        else if (initial != null) Text(initial.uppercase(), color = Color.White, fontSize = (size.value * 0.40f).sp, fontWeight = FontWeight.SemiBold)
         else Icon(Icons.Filled.Person, null, tint = Dim, modifier = Modifier.size(size * 0.55f))
     }
 }
@@ -371,6 +379,20 @@ fun DialerScreen(initial: String, onClose: () -> Unit) {
         hasLog = has(ctx, Manifest.permission.READ_CALL_LOG)
         hasContacts = has(ctx, Manifest.permission.READ_CONTACTS)
     }
+    var reload by remember { mutableStateOf(0) }
+    var editTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
+    editTarget?.let { t -> ContactEditDialog(t.first, t.second) { editTarget = null; contacts = emptyList(); reload++ } }
+    // "Edit all": the chosen contacts are opened one after another
+    var editQueue by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var editIdx by remember { mutableStateOf(0) }
+    if (editQueue.isNotEmpty() && editIdx < editQueue.size) {
+        androidx.compose.runtime.key(editIdx) {
+            val q = editQueue[editIdx]
+            ContactEditDialog(q.first, q.second, "Contact ${editIdx + 1} of ${editQueue.size}", { editQueue = emptyList(); editIdx = 0; contacts = emptyList(); reload++ }) {
+                if (editIdx + 1 >= editQueue.size) { editQueue = emptyList(); editIdx = 0; contacts = emptyList(); reload++ } else editIdx++
+            }
+        }
+    }
     var pending by remember { mutableStateOf("") }
     val callPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (ok && pending.isNotBlank() && NeoDialer.place(ctx, pending)) onClose()
@@ -382,7 +404,7 @@ fun DialerScreen(initial: String, onClose: () -> Unit) {
         if (NeoDialer.place(ctx, n)) onClose()
     }
 
-    LaunchedEffect(hasLog, hasContacts, tab) {
+    LaunchedEffect(hasLog, hasContacts, tab, reload) {
         withContext(Dispatchers.IO) {
             if (hasLog) log = loadLog(ctx)
             if (hasContacts && (contacts.isEmpty() || tab == DialTab.Contacts)) contacts = loadContacts(ctx)
@@ -444,9 +466,9 @@ fun DialerScreen(initial: String, onClose: () -> Unit) {
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (tab) {
                     DialTab.Keypad -> KeypadTab(number, contacts, { number += it }, { if (number.isNotEmpty()) number = number.dropLast(1) }, { number = "" }, { number = it }, { dial(number) })
-                    DialTab.Recents -> LogTab(log, false, hasLog, { readPerms.launch(arrayOf(Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS)) }) { dial(it) }
-                    DialTab.Missed -> LogTab(log.filter { it.type == CallLog.Calls.MISSED_TYPE }, true, hasLog, { readPerms.launch(arrayOf(Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS)) }) { dial(it) }
-                    DialTab.Contacts -> ContactsTab(contacts, hasContacts, { readPerms.launch(arrayOf(Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS)) }) { dial(it) }
+                    DialTab.Recents -> LogTab(log, false, hasLog, { readPerms.launch(arrayOf(Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS)) }, { n, nm -> editTarget = n to nm }) { dial(it) }
+                    DialTab.Missed -> LogTab(log.filter { it.type == CallLog.Calls.MISSED_TYPE }, true, hasLog, { readPerms.launch(arrayOf(Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS)) }, { n, nm -> editTarget = n to nm }) { dial(it) }
+                    DialTab.Contacts -> ContactsTab(contacts, hasContacts, { readPerms.launch(arrayOf(Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS)) }, { n, nm -> editTarget = n to nm }, { list -> editIdx = 0; editQueue = list }) { dial(it) }
                 }
             }
 
@@ -529,7 +551,7 @@ private fun KeypadTab(
         if (q.length < 2) emptyList() else contacts.filter { digits(it.number).contains(q) }.distinctBy { it.name }.take(3)
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val key = ((maxHeight - 250.dp) / 4).coerceIn(52.dp, 74.dp)
+        val key = ((maxHeight - 280.dp) / 4).coerceIn(50.dp, 74.dp)
         Column(Modifier.fillMaxSize().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(Modifier.weight(0.4f))
             Box(Modifier.fillMaxWidth().height(60.dp), contentAlignment = Alignment.Center) {
@@ -562,8 +584,37 @@ private fun KeypadTab(
                 }
             }
             Spacer(Modifier.height(16.dp))
+            // two SIM cards: choose which one makes the call (tap to switch)
+            val sctx = LocalContext.current
+            var simTick by remember { mutableStateOf(0) }
+            val phonePerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { simTick++ }
+            LaunchedEffect(Unit) { if (!has(sctx, Manifest.permission.READ_PHONE_STATE)) phonePerm.launch(Manifest.permission.READ_PHONE_STATE) }
+            var simSlot by remember(simTick) { mutableStateOf(SimChoice.current(sctx, true)) }
+            val twoSims = remember(simTick) { SimChoice.activeSlots(sctx).size >= 2 }
+            var keep by remember(simTick) { mutableStateOf(SimChoice.remember(sctx, true)) }
+            if (twoSims) {
+                Row(
+                    Modifier.clip(RoundedCornerShape(16.dp)).clickable { keep = !keep; SimChoice.setRemember(sctx, keep, true) }.padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(if (keep) Icons.Filled.CheckBox else Icons.Filled.CheckBoxOutlineBlank, "Remember my SIM choice", tint = if (keep) DialLook.cyan else Dim, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Remember my SIM choice", color = Dim, fontSize = 12.sp)
+                }
+                Spacer(Modifier.height(4.dp))
+            }
             Row(Modifier.width(key * 3 + 44.dp), verticalAlignment = Alignment.CenterVertically) {
-                Spacer(Modifier.size(key))
+                if (twoSims) {
+                    Column(
+                        Modifier.size(key).clip(CircleShape).background(Color.White.copy(alpha = 0.10f))
+                            .border(1.dp, DialLook.cyan.copy(alpha = 0.5f), CircleShape)
+                            .clickable { simSlot = SimChoice.toggle(sctx, true) }.semantics { contentDescription = "Switch SIM for calls" },
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
+                    ) {
+                        Text("SIM $simSlot", color = DialLook.cyan, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text(SimChoice.label(sctx, simSlot), color = Dim, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = key - 12.dp))
+                    }
+                } else Spacer(Modifier.size(key))
                 Box(Modifier.width(22.dp))
                 Box(
                     Modifier.size(key).clip(CircleShape)
@@ -613,7 +664,7 @@ private fun EmptyState(icon: ImageVector, text: String) {
 }
 
 @Composable
-private fun LogTab(entries: List<LogEntry>, missedOnly: Boolean, allowed: Boolean, onAllow: () -> Unit, onCall: (String) -> Unit) {
+private fun LogTab(entries: List<LogEntry>, missedOnly: Boolean, allowed: Boolean, onAllow: () -> Unit, onEdit: (String, String) -> Unit, onCall: (String) -> Unit) {
     if (!allowed) { NeedAccess("See your calls", "Allow Neo Plus to read your call history and contacts so recent and missed calls show here.", onAllow); return }
     if (entries.isEmpty()) {
         EmptyState(if (missedOnly) Icons.Filled.PhoneMissed else Icons.Filled.History, if (missedOnly) "No missed calls" else "No recent calls")
@@ -633,7 +684,7 @@ private fun LogTab(entries: List<LogEntry>, missedOnly: Boolean, allowed: Boolea
                     .clickable { onCall(e.number) }.padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Avatar(e.name, 46.dp)
+                Avatar(e.name, 46.dp, e.number)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(shown, color = if (missed) MissedRed else Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -645,7 +696,11 @@ private fun LogTab(entries: List<LogEntry>, missedOnly: Boolean, allowed: Boolea
                     }
                 }
                 Text(whenText(e.date), color = Dim, fontSize = 12.sp)
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(6.dp))
+                if (e.number.isNotBlank()) {
+                    Icon(Icons.Filled.Edit, "Edit contact", tint = Dim, modifier = Modifier.size(32.dp).clip(CircleShape).clickable { onEdit(e.number, e.name) }.padding(7.dp))
+                }
+                Spacer(Modifier.width(4.dp))
                 Box(Modifier.size(36.dp).clip(CircleShape).background(NeoCallColors.Green.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
                     Icon(Icons.Filled.Call, null, tint = NeoCallColors.Green, modifier = Modifier.size(18.dp))
                 }
@@ -656,13 +711,36 @@ private fun LogTab(entries: List<LogEntry>, missedOnly: Boolean, allowed: Boolea
 }
 
 @Composable
-private fun ContactsTab(contacts: List<ContactEntry>, allowed: Boolean, onAllow: () -> Unit, onCall: (String) -> Unit) {
+private fun ContactsTab(contacts: List<ContactEntry>, allowed: Boolean, onAllow: () -> Unit, onEdit: (String, String) -> Unit, onEditAll: (List<Pair<String, String>>) -> Unit, onCall: (String) -> Unit) {
     if (!allowed) { NeedAccess("See your contacts", "Allow Neo Plus to read your contacts so you can call them in one tap.", onAllow); return }
     var query by remember { mutableStateOf("") }
     val shown = remember(query, contacts) {
         if (query.isBlank()) contacts else contacts.filter { it.name.contains(query, true) || digits(it.number).contains(digits(query).ifEmpty { "\u0000" }) }
     }
+    var selecting by remember { mutableStateOf(false) }
+    val picked = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateListOf<String>() }
+    androidx.activity.compose.BackHandler(enabled = selecting) { selecting = false; picked.clear() }
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+        // edit one at a time (pencil on each row) or pick several / all and go through them one after another
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (!selecting) {
+                Text("Tap ✎ to edit one contact", color = Dim, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Text("Edit all", color = DialLook.cyan, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clip(RoundedCornerShape(14.dp)).clickable { selecting = true; picked.clear() }.padding(horizontal = 12.dp, vertical = 6.dp))
+            } else {
+                val allOn = shown.isNotEmpty() && picked.size == shown.size
+                Text(if (picked.isEmpty()) "Choose contacts" else "${picked.size} chosen", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text(if (allOn) "Clear" else "Select all", color = DialLook.cyan, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { picked.clear(); if (!allOn) picked.addAll(shown.map { it.number }) }.padding(horizontal = 8.dp, vertical = 6.dp))
+                Text("Edit", color = if (picked.isEmpty()) Dim else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(if (picked.isEmpty()) Color.White.copy(alpha = 0.08f) else Color(0xFF0A84FF))
+                        .clickable(enabled = picked.isNotEmpty()) {
+                            val list = shown.filter { it.number in picked }.map { it.number to it.name }
+                            selecting = false; picked.clear(); onEditAll(list)
+                        }.padding(horizontal = 14.dp, vertical = 6.dp))
+                Text("Cancel", color = Dim, fontSize = 13.sp, modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { selecting = false; picked.clear() }.padding(horizontal = 8.dp, vertical = 6.dp))
+            }
+        }
         Row(
             Modifier.fillMaxWidth().padding(vertical = 6.dp).clip(RoundedCornerShape(22.dp)).background(Color.White.copy(alpha = 0.08f))
                 .border(1.dp, Hairline, RoundedCornerShape(22.dp)).padding(horizontal = 14.dp, vertical = 11.dp),
@@ -687,16 +765,25 @@ private fun ContactsTab(contacts: List<ContactEntry>, allowed: Boolean, onAllow:
             items(grouped) { (c, l, head) ->
                 if (head) Text(l.toString(), color = DialLook.cyan, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, top = 12.dp, bottom = 4.dp))
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onCall(c.number) }.padding(horizontal = 6.dp, vertical = 8.dp),
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { if (selecting) { if (c.number in picked) picked.remove(c.number) else picked.add(c.number) } else onCall(c.number) }.padding(horizontal = 6.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Avatar(c.name, 44.dp)
+                    if (selecting) {
+                        val on = c.number in picked
+                        Icon(if (on) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked, null, tint = if (on) DialLook.cyan else Dim, modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.width(10.dp))
+                    }
+                    Avatar(c.name, 44.dp, c.number)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(c.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(c.number, color = Dim, fontSize = 13.sp, maxLines = 1)
                     }
-                    Icon(Icons.Filled.Call, null, tint = NeoCallColors.Green, modifier = Modifier.size(20.dp))
+                    if (!selecting) {
+                        Icon(Icons.Filled.Edit, "Edit contact", tint = Dim, modifier = Modifier.size(34.dp).clip(CircleShape).clickable { onEdit(c.number, c.name) }.padding(8.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.Filled.Call, null, tint = NeoCallColors.Green, modifier = Modifier.size(20.dp))
+                    }
                 }
             }
             item { Spacer(Modifier.height(8.dp)) }

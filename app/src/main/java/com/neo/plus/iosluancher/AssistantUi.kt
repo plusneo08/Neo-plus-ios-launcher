@@ -673,6 +673,7 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                     var risky by remember { mutableStateOf(WebTaskPrefs.risky(ctx)) }
                     var confirmMoney by remember { mutableStateOf(WebTaskPrefs.confirmMoney(ctx)) }
                     var deepRead by remember { mutableStateOf(WebTaskPrefs.deepRead(ctx)) }
+                    var backendOn by remember { mutableStateOf(WebTaskPrefs.backendCalls(ctx)) }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         WebChip("My sites only", domainMode == "strict", Modifier.weight(1f)) { domainMode = "strict"; WebTaskPrefs.setDomainMode(ctx, "strict") }
                         WebChip("Also these", domainMode == "list", Modifier.weight(1f)) { domainMode = "list"; WebTaskPrefs.setDomainMode(ctx, "list") }
@@ -688,6 +689,7 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                     WebSwitch("Purchases, deleting and messaging", "Allowed when your request clearly asks for it. Off: it never does these.", risky) { risky = !risky; WebTaskPrefs.setRisky(ctx, risky) }
                     if (risky) WebSwitch("Confirm before paying", "Off by default. On: the phone stops and asks you to tap Continue before a pay / order button is pressed.", confirmMoney) { confirmMoney = !confirmMoney; WebTaskPrefs.setConfirmMoney(ctx, confirmMoney) }
                     WebSwitch("Read the code behind the page", "HTML, frames and the page’s own server calls, to understand pages that are hard to read. Passwords and tokens are always hidden.", deepRead) { deepRead = !deepRead; WebTaskPrefs.setDeepRead(ctx, deepRead) }
+                    WebSwitch("Use the website’s backend when I ask", "On: when you say “use the backend / API”, the assistant sends requests straight to the site’s own server instead of clicking, without asking again. Only the authorised site; paying, deleting and messaging still follow the two switches above.", backendOn) { backendOn = !backendOn; WebTaskPrefs.setBackendCalls(ctx, backendOn) }
                     Text("A CAPTCHA always stops the task for you to solve; that can’t be switched off.", color = note, fontSize = 12.sp, lineHeight = 16.sp)
                     Text("Daily limit for website tasks", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     GlassField(limitText, { limitText = it.filter { c -> c.isDigit() }.take(6) }, "Requests per day (0 = no limit)")

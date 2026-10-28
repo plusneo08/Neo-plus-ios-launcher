@@ -40,7 +40,7 @@ object Scheduler {
     /** Never run later: they move money, change who owns the phone, or would schedule themselves. */
     private val BLOCKED = setOf(
         "schedule", "schedules", "send_money", "money_setup", "release_device_owner", "power_off", "kiosk",
-        "unlock", "forget", "time_lock", "sleep_mode", "mode", "queue", "approvals"
+        "unlock", "forget", "time_lock", "sleep_mode", "queue", "approvals"
     )
 
     class Job(val id: String, val action: String, val args: JSONObject, val summary: String, val at: Long, val repeat: String)

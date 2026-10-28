@@ -34,6 +34,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -68,7 +71,8 @@ data class NotifItem(
     val time: Long,
     val icon: ImageBitmap?,
     val intent: PendingIntent?,
-    val clearable: Boolean
+    val clearable: Boolean,
+    val reply: Notification.Action? = null
 )
 
 /** Receives every notification so the iOS-style panel can show them (needs Notification access). */
@@ -127,7 +131,8 @@ class NeoNotificationService : NotificationListenerService() {
                 time = sbn.postTime,
                 icon = iconFor(sbn.packageName),
                 intent = sbn.notification.contentIntent,
-                clearable = sbn.isClearable
+                clearable = sbn.isClearable,
+                reply = sbn.notification.actions?.firstOrNull { a -> a.remoteInputs?.isNotEmpty() == true && a.actionIntent != null }
             )
         }
         items.clear()
@@ -201,8 +206,12 @@ fun NotificationPanel(onClose: () -> Unit) {
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(NeoNotificationService.items.toList(), key = { it.key }) { n ->
+                        var replying by remember(n.key) { mutableStateOf(false) }
+                        var draft by remember(n.key) { mutableStateOf("") }
+                        var sentOk by remember(n.key) { mutableStateOf(false) }
+                        Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp), 0.16f)) {
                         Row(
-                            Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp), 0.16f)
+                            Modifier.fillMaxWidth()
                                 .clickable {
                                     try { n.intent?.send() } catch (e: Exception) { }
                                     onClose()
@@ -230,6 +239,27 @@ fun NotificationPanel(onClose: () -> Unit) {
                                     modifier = Modifier.padding(start = 8.dp).size(18.dp)
                                         .clickable { NeoNotificationService.instance?.cancelNotification(n.key) })
                             }
+                        }
+                        if (n.reply != null) {
+                            if (!replying) {
+                                Text(if (sentOk) "Sent" else "Reply", color = Color(0xFF7DD3FC), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(start = 62.dp, bottom = 10.dp, end = 12.dp).clickable { replying = true; sentOk = false })
+                            } else {
+                                Row(Modifier.fillMaxWidth().padding(start = 62.dp, end = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.weight(1f).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.16f)).padding(horizontal = 14.dp, vertical = 9.dp)) {
+                                        if (draft.isEmpty()) Text("Reply to " + n.title.ifBlank { n.app }, color = Color.White.copy(alpha = 0.5f), fontSize = 14.sp, maxLines = 1)
+                                        BasicTextField(draft, { draft = it }, textStyle = TextStyle(color = Color.White, fontSize = 14.sp),
+                                            cursorBrush = SolidColor(Color.White), modifier = Modifier.fillMaxWidth())
+                                    }
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Send", color = Color(0xFF7DD3FC), fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.clickable {
+                                            val t = draft.trim()
+                                            if (t.isNotEmpty() && NotifStore.sendAction(ctx, n.reply, t)) { draft = ""; replying = false; sentOk = true }
+                                        })
+                                }
+                            }
+                        }
                         }
                     }
                 }

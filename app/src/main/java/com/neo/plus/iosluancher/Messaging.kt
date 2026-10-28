@@ -140,7 +140,7 @@ object NotifStore {
     /** Sends [text] through the notification's own Reply action, i.e. into the same chat. */
     fun send(ctx: Context, m: Msg, text: String): Boolean = sendAction(ctx, m.reply, text)
 
-    private fun sendAction(ctx: Context, a: Notification.Action?, text: String): Boolean {
+    fun sendAction(ctx: Context, a: Notification.Action?, text: String): Boolean {
         a ?: return false
         val inputs = a.remoteInputs ?: return false
         return try {

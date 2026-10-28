@@ -28,7 +28,6 @@ import org.json.JSONObject
  *  decline_text  hangs up and sends the caller a short text (once per number every 6 hours)
  *  speaker       answers and switches to the loudspeaker, so the owner can talk hands-free
  *  greeting      answers on the loudspeaker, plays a spoken greeting that says it is the assistant, then hangs up
- *  conversation  answers on the loudspeaker and talks with the caller in their language (see CallConversation.kt)
  *
  * Rules are per contact name / number, "unknown" (numbers not in Contacts) or "everyone".
  * Android does not let an app listen to a normal phone call or speak into it: the greeting is played on the loudspeaker
@@ -94,7 +93,7 @@ object CallAssist {
 
     fun onRinging(ctx: Context) {
         val app = ctx.applicationContext
-        if (!enabled(app) || ringHandled || CallConversation.active) return
+        if (!enabled(app) || ringHandled) return
         ringHandled = true
         ringing = true
         // The system sends the ringing broadcast twice; the number is only in one of them, so wait a moment for it.
@@ -109,15 +108,11 @@ object CallAssist {
         // A rule for this exact person wins; otherwise a call on the assistant's own SIM follows the line rule
         val specific = rules(app).any { r -> r.first.isNotBlank() && r.first != "unknown" && r.first != "everyone" &&
             ((name.isNotBlank() && name.contains(r.first, ignoreCase = true)) || sameNumber(r.first, number)) }
-        var chosen = if (onLine && !specific) AssistantLine.lineAction(app) else picked
-        // While a mode (sleep, work, journey, chill, meeting) is on, callers without a rule of their own are talked to by the assistant.
-        // A rule for a person (for example "Mum: announce") still wins, so important people can ring through.
-        if (chosen.first == "announce" && !specific && Modes.current(app) != null) chosen = "conversation" to ""
-        val (action, text) = chosen
+        val (action, text) = if (onLine && !specific) AssistantLine.lineAction(app) else picked
         val via = if (onLine) " on your assistant line (${AssistantLine.label(app, slot)})" else ""
         SleepHooks.note(app, "NOTE", "Phone call" + (if (onLine) " (assistant line)" else ""), who, "Incoming call",
             when (action) { "decline" -> "I declined it"; "decline_text" -> "I declined it and texted them"; "speaker" -> "I answered on speaker"
-                "greeting" -> "I answered and played the greeting"; "conversation" -> "I answered and talked to them"; else -> "I announced it, it was not answered by me" })
+                "greeting" -> "I answered and played the greeting"; else -> "I announced it, it was not answered by me" })
         when (action) {
             "decline" -> { endCall(app); notify(app, "Declined a call", "Declined the call from $who", false) }
             "decline_text" -> {
@@ -131,17 +126,6 @@ object CallAssist {
             "greeting" -> {
                 val r = answerWithGreeting(app, text)
                 notify(app, "Answered with a greeting", "$who: $r", false)
-            }
-            "conversation" -> {
-                val why = CallConversation.cannotRun(app)
-                if (why != null) {
-                    // missing key / permission / recogniser: fall back to the one-way greeting rather than letting it ring out
-                    val r = answerWithGreeting(app, "")
-                    notify(app, "Conversation mode could not start", "$who: $why. $r", false)
-                } else {
-                    val r = CallConversation.start(app, number, who, text)
-                    notify(app, "Answering as your assistant", "$who: $r", false)
-                }
             }
             else -> {
                 Announcer.say(app, "Call from $who$via. Say answer, decline, or decline and text.")
@@ -162,18 +146,18 @@ object CallAssist {
 
     private fun telecom(ctx: Context) = ctx.applicationContext.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
 
-    internal fun endCall(ctx: Context): Boolean {
+    private fun endCall(ctx: Context): Boolean {
         if (!granted(ctx, Manifest.permission.ANSWER_PHONE_CALLS)) return false
         return try { Build.VERSION.SDK_INT >= 28 && telecom(ctx).endCall() } catch (e: Exception) { false }
     }
 
-    internal fun accept(ctx: Context): Boolean {
+    private fun accept(ctx: Context): Boolean {
         if (!granted(ctx, Manifest.permission.ANSWER_PHONE_CALLS)) return false
         return try { telecom(ctx).acceptRingingCall(); true } catch (e: Exception) { false }
     }
 
     @Suppress("DEPRECATION")
-    internal fun speakerOn(ctx: Context) {
+    private fun speakerOn(ctx: Context) {
         try {
             val am = ctx.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             am.isSpeakerphoneOn = true
@@ -227,14 +211,14 @@ object CallAssist {
 
     /* ---------------- notification with buttons ---------------- */
 
-    internal fun notify(ctx: Context, title: String, text: String, buttons: Boolean) {
+    private fun notify(ctx: Context, title: String, text: String, buttons: Boolean) {
         try {
             val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
             if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CH) == null) {
                 nm.createNotificationChannel(NotificationChannel(CH, "Calls", NotificationManager.IMPORTANCE_HIGH))
             }
             val b = NotificationCompat.Builder(ctx, CH).setSmallIcon(android.R.drawable.sym_action_call)
-                .setContentTitle(title).setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text)).setAutoCancel(true).setOnlyAlertOnce(true)
+                .setContentTitle(title).setContentText(text).setAutoCancel(true).setOnlyAlertOnce(true)
             fun act(code: Int, what: String, label: String) {
                 val i = Intent(ctx, CallActionReceiver::class.java).setAction("neo.call.$what").putExtra("what", what)
                 b.addAction(0, label, PendingIntent.getBroadcast(ctx, code, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
@@ -255,8 +239,6 @@ object CallAssist {
             "decline_text" -> if (!ringing) "No call is ringing" else declineWithText(app, ringingNumber, ringingName, a.optString("text"))
             "owner" -> { prefs(app).edit().putString("owner", a.optString("name").trim().take(40)).apply(); "The greeting will say it is ${a.optString("name").trim()}’s assistant" }
             "line" -> AssistantLine.configure(app, a)
-            "conversation_setup" -> CallConversation.configure(app, a)
-            "conversation_log" -> CallConversation.recent(app)
             "line_log" -> AssistantLine.recent(app)
             "on" -> { prefs(app).edit().putBoolean("on", true).apply(); "Call assistant is on" }
             "off" -> { prefs(app).edit().putBoolean("on", false).apply(); "Call assistant is off: calls ring as normal" }
@@ -265,8 +247,8 @@ object CallAssist {
                 val action = a.optString("action").trim().lowercase()
                 val rs = rules(app).filter { !it.first.equals(who, true) }
                 if (action == "remove" || action == "announce") { saveRules(app, rs); return "Calls from $who: just announced" }
-                if (action !in listOf("decline", "decline_text", "speaker", "greeting", "conversation")) return "Choose: announce, decline, decline_text, speaker, greeting or conversation"
-                if ((action == "decline" || action == "decline_text" || action == "greeting" || action == "speaker" || action == "conversation") && !granted(app, Manifest.permission.ANSWER_PHONE_CALLS)) return NEED_PERM
+                if (action !in listOf("decline", "decline_text", "speaker", "greeting")) return "Choose: announce, decline, decline_text, speaker or greeting"
+                if ((action == "decline" || action == "decline_text" || action == "greeting" || action == "speaker") && !granted(app, Manifest.permission.ANSWER_PHONE_CALLS)) return NEED_PERM
                 saveRules(app, rs + Triple(who, action, a.optString("text").trim()))
                 "Calls from $who: $action"
             }
@@ -295,7 +277,7 @@ class CallStateReceiver : BroadcastReceiver() {
                     try { pending.finish() } catch (e: Exception) { }
                 }.start()
             }
-            TelephonyManager.EXTRA_STATE_IDLE -> { CallAssist.onCallEnded(app); CallConversation.onIdle(app) }
+            TelephonyManager.EXTRA_STATE_IDLE -> CallAssist.onCallEnded(app)
             else -> CallAssist.onCallEnded(app) // answered: the buttons are no longer needed
         }
     }

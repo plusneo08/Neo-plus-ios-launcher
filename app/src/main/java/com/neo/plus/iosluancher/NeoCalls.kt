@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -231,7 +232,10 @@ object NeoDialer {
         if (number.isBlank()) return false
         if (ctx.checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) return false
         return try {
-            ctx.getSystemService(TelecomManager::class.java).placeCall(Uri.fromParts("tel", number, null), Bundle())
+            val extras = Bundle()
+            SimChoice.callAccount(ctx)?.let { extras.putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, it) }
+            ctx.getSystemService(TelecomManager::class.java).placeCall(Uri.fromParts("tel", number, null), extras)
+            SimChoice.afterUse(ctx, true)
             true
         } catch (e: Exception) { false }
     }
@@ -283,6 +287,7 @@ private fun NeoRealCallScreen(onFinish: () -> Unit) {
 
     val number = if (call != null) NeoCalls.number(call) else NeoCalls.declinedNumber
     val name = remember(call, number, declined) { if (call != null) NeoCalls.name(ctx, call) else declined.orEmpty() }
+    val photo = remember(number) { ContactPhotos.get(ctx, number)?.asImageBitmap() }
     val phase = when (st) {
         Call.STATE_RINGING -> 0
         Call.STATE_ACTIVE, Call.STATE_HOLDING -> 2
@@ -308,7 +313,7 @@ private fun NeoRealCallScreen(onFinish: () -> Unit) {
                 if (!NeoDialer.place(ctx, n)) onFinish()
             },
             onClose = { NeoCalls.declinedName = null; onFinish() },
-            callerName = name, callerSub = "is calling you…", callerNumber = number,
+            callerName = name, callerSub = "is calling you…", callerNumber = number, callerPhoto = photo,
             showTranscript = false, header = if (phase == 1) "•  CALLING  •" else null, realCall = true,
             onDtmf = { NeoCalls.dtmf(call, it) },
             onMessage = {

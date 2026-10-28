@@ -183,7 +183,7 @@ private class CallSession(activity: WakeCallActivity) {
             val r = SleepPrep.ready(ctx)   // already written (and its voice made) 5 minutes earlier, if nothing new came in
             main.post {
                 if (!alive) return@post
-                hist += true to Modes.callHint(ctx)
+                hist += true to "[A phone call just started. I woke up. Tell me what happened overnight.]"
                 hist += false to r
                 say(r)
             }
