@@ -374,3 +374,9 @@ Say: “Find the best pic on my phone and post it on my Instagram story with a g
 - Needs the microphone and Phone calls permissions and a Gemini key; if one is missing callers get the short greeting. Save how it should speak with `{"do":"conversation_setup","style":"...","brief":"...","info":"...","languages":"en-US,sw-TZ"}`.
 - Android can't give an app the caller's voice, so the caller is heard through the loudspeaker and microphone. If a call summary says "heard nothing", your phone blocks the microphone during calls.
 - Code: Modes.kt (modes and voice commands), CallConversation.kt (the call), CallAssist.kt (rules), SleepMode.kt / SleepReport.kt (the mode engine and summary).
+
+## Call screens redesign (new)
+- One calm design for every call: graphite background, large photo or initials, name, number, timer, a 2x3 grid of tools (white when on) and one wide red End call button. Green accepts, red ends, indigo means "the assistant", amber warns.
+- Assistant calls (wake-up call, approval call) use the same layout with a soft indigo glow, the assistant's mark, an "AI assistant" label, a live conversation and a wave that shows who is talking.
+- New: **AI is answering for you** screen (AiCallScreen.kt). When the assistant answers a call (conversation mode, or any mode that is on), this screen shows the caller's words on the left and the assistant's replies on the right as they happen, who is talking, the language it detected and the mode. **Take over** stops the assistant and turns the loudspeaker off so you can talk; **End call** hangs up.
+- Code: NeoCallUi.kt (all call screens, same `NeoCallModel`, nothing else had to change), AiCallScreen.kt (new), CallConversation.kt (live state, takeOver, hangUpNow), AndroidManifest.xml (AiCallActivity).

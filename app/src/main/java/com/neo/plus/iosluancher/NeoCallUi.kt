@@ -5,12 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.AlarmClock
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -28,7 +22,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,11 +37,9 @@ import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.Dialpad
-import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Icon
@@ -61,9 +53,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -84,18 +78,37 @@ import kotlin.math.abs
 import kotlin.math.sin
 
 /**
- * The NEO PLUS call screens (incoming, connected, declined) for normal phone calls AND assistant (AI) calls.
- * One clean, consistent style: dark glass, one blue accent, big readable name and timer, a tidy 3 x 2 button grid.
- * Used by real calls (NeoCalls.kt), the wake-up / assistant call (WakeCallActivity.kt) and the approval call.
+ * The call screens: incoming, in a call, declined. One design for every kind of call.
+ *
+ *  - Real phone calls (Neo Plus as the Phone app): the person is the subject. Graphite background, a large photo or
+ *    initials, name, number, a timer, a 2x3 grid of tools and one wide End call button.
+ *  - Assistant calls (wake-up call, approval call): the same layout with a soft indigo glow, the assistant's mark, an
+ *    "AI assistant" label and a live conversation with a wave that shows who is talking.
+ *  - AiCallScreen.kt adds the screen shown while the assistant answers a call for you.
+ *
+ * Colour is used for meaning only: green accepts, red ends, indigo means "the assistant", amber warns.
  */
 object NeoCallColors {
+    // kept for the dialer and other screens that still use these names
     val Blue = Color(0xFF0A84FF)
     val Cyan = Color(0xFF38BDF8)
     val Red = Color(0xFFE5322D)
     val Green = Color(0xFF22C55E)
     val Panel = Color(0xFF05101F)
-    val Amber = Color(0xFFFFB020)
-    val Grey = Color(0xFF8E98A8)
+
+    // call screen palette
+    val Ink = Color(0xFF0B0E14)
+    val Ink2 = Color(0xFF131824)
+    val Surface = Color(0xFF1A2030)
+    val SurfaceHi = Color(0xFF242C40)
+    val Line = Color(0xFF2B3449)
+    val Text = Color(0xFFF2F5FA)
+    val Muted = Color(0xFF9AA5BA)
+    val Accept = Color(0xFF2DBE72)
+    val Decline = Color(0xFFE5484D)
+    val Ai = Color(0xFF8E9CFF)
+    val AiDeep = Color(0xFF3F4FD0)
+    val Warn = Color(0xFFF5B544)
 }
 
 /** Everything the screen needs from a call session. phase: 0 ringing, 1 connecting, 2 speaking, 3 listening, 4 thinking. */
@@ -125,6 +138,7 @@ class NeoCallModel(
     val callerName: String = "NEO PLUS",
     val callerSub: String = "is calling you…",
     val callerNumber: String = "",
+    val callerPhoto: ImageBitmap? = null,
     val showTranscript: Boolean = true,
     val header: String? = null,
     val realCall: Boolean = false,
@@ -137,20 +151,13 @@ class NeoCallModel(
 @Composable
 fun NeoCallScreen(m: NeoCallModel, extra: @Composable () -> Unit = {}) {
     val ctx = LocalContext.current
-    Box(
-        Modifier.fillMaxSize().background(
-            Brush.verticalGradient(listOf(Color(0xFF0C1C36), Color(0xFF060C18), Color(0xFF000000)))
-        )
-    ) {
-        // soft blue glow behind the avatar
-        Box(
-            Modifier.align(Alignment.TopCenter).fillMaxWidth().height(420.dp)
-                .background(Brush.radialGradient(listOf(NeoCallColors.Blue.copy(alpha = 0.20f), Color.Transparent)))
-        )
+    val ai = !m.realCall
+    NcBackground(ai) {
         when {
-            m.declined -> DeclinedScreen(m, ctx)
-            m.phase == 0 -> IncomingScreen(m)
-            else -> ConnectedScreen(m, ctx, extra)
+            m.declined -> NcDeclined(m, ctx)
+            m.phase == 0 -> NcIncoming(m)
+            m.showTranscript -> NcAssistantCall(m, extra)
+            else -> NcPersonCall(m, ctx)
         }
     }
 }
@@ -160,131 +167,153 @@ fun NeoCallScreen(m: NeoCallModel, extra: @Composable () -> Unit = {}) {
 /* ------------------------------------------------------------------ */
 
 @Composable
-private fun IncomingScreen(m: NeoCallModel) {
-    val label = when {
-        m.urgent -> "URGENT CALL"
-        m.realCall -> "INCOMING CALL"
-        else -> "AI ASSISTANT"
+private fun NcIncoming(m: NeoCallModel) {
+    val ai = !m.realCall
+    val title = if (ai && m.callerName.equals("NEO PLUS", true)) "Neo Plus Assistant" else m.callerName
+    val secondary = when {
+        ai -> if (m.urgent) "Needs your attention" else "Calling you…"
+        m.callerNumber.isNotBlank() && m.callerNumber != m.callerName -> m.callerNumber
+        else -> "Calling you…"
     }
-    val accent = if (m.urgent) NeoCallColors.Amber else NeoCallColors.Blue
     Column(
-        Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp),
+        Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(Modifier.height(28.dp))
-        StatusChip(label, accent)
-        Spacer(Modifier.weight(1f))
-        Avatar(m, 132.dp, accent, true)
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(36.dp))
         Text(
-            m.callerName, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Light,
+            if (m.urgent) "Urgent call" else if (ai) "Assistant call" else "Incoming call",
+            color = if (m.urgent) NeoCallColors.Warn else NeoCallColors.Muted, fontSize = 15.sp, fontWeight = FontWeight.Medium
+        )
+        Spacer(Modifier.height(44.dp))
+        NcAvatar(title, m.callerPhoto, 176.dp, ai, true)
+        Spacer(Modifier.height(28.dp))
+        Text(
+            title, color = NeoCallColors.Text, fontSize = 34.sp, fontWeight = FontWeight.Normal,
             maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center
         )
-        Spacer(Modifier.height(4.dp))
-        Text(m.callerSub, color = Color.White.copy(alpha = 0.65f), fontSize = 17.sp, textAlign = TextAlign.Center)
-        if (m.callerNumber.isNotBlank() && m.callerNumber != m.callerName) {
-            Spacer(Modifier.height(2.dp))
-            Text(m.callerNumber, color = Color.White.copy(alpha = 0.5f), fontSize = 15.sp)
+        Spacer(Modifier.height(6.dp))
+        Text(secondary, color = NeoCallColors.Muted, fontSize = 17.sp, style = NcNumbers)
+        if (ai) {
+            Spacer(Modifier.height(18.dp))
+            NcChip("AI assistant", NeoCallColors.Ai)
+            Spacer(Modifier.height(14.dp))
+            NcWave(Modifier.fillMaxWidth(0.45f).height(24.dp), NeoCallColors.Ai, true)
         }
         Spacer(Modifier.weight(1f))
-        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            CallButton(NeoCallColors.Red, Icons.Filled.CallEnd, "Decline") { m.onDecline() }
-            CallButton(NeoCallColors.Green, Icons.Filled.Call, "Accept") { m.onAnswer() }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            NcRound(NeoCallColors.Decline, Icons.Filled.CallEnd, "Decline", 76.dp) { m.onDecline() }
+            NcRound(NeoCallColors.Accept, Icons.Filled.Call, "Accept", 76.dp) { m.onAnswer() }
         }
-        Spacer(Modifier.height(44.dp))
+        Spacer(Modifier.height(48.dp))
     }
 }
 
 /* ------------------------------------------------------------------ */
-/*  Connected                                                           */
+/*  In a real call: the person is the subject                           */
 /* ------------------------------------------------------------------ */
 
 @Composable
-private fun ConnectedScreen(m: NeoCallModel, ctx: Context, extra: @Composable () -> Unit) {
-    val ai = m.showTranscript
-    val scroll = rememberScrollState()
-    var typing by remember { mutableStateOf(false) }
-    LaunchedEffect(m.lines.size, m.lines.lastOrNull()?.second?.length, m.heard) { scroll.animateScrollTo(scroll.maxValue) }
-
-    val state: Pair<String, Color> = when {
-        m.held -> "On hold" to NeoCallColors.Grey
-        m.muted && (m.phase >= 3 || !ai) -> "Muted" to NeoCallColors.Grey
-        m.phase == 1 -> (if (ai) "Connecting…" else "Calling…") to NeoCallColors.Amber
-        !ai -> "Connected" to NeoCallColors.Green
-        m.phase == 2 -> "Speaking" to NeoCallColors.Blue
-        m.phase == 3 -> "Listening" to NeoCallColors.Green
-        else -> "Thinking…" to NeoCallColors.Amber
+private fun NcPersonCall(m: NeoCallModel, ctx: Context) {
+    var keypad by remember { mutableStateOf(false) }
+    val state = when {
+        m.held -> "On hold"
+        m.muted -> "Muted"
+        m.phase == 1 -> "Calling…"
+        else -> ""
     }
-    val level: Float = when {
-        m.held || (m.muted && m.phase >= 3) -> 0f
-        m.phase == 2 -> 1f
-        m.phase == 3 -> if (m.heard.isNotBlank()) 0.8f else 0.35f
-        m.phase == 4 -> 0.25f
-        else -> 0.1f
-    }
-
     Column(
         Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(Modifier.height(14.dp))
-        Avatar(m, if (ai) 84.dp else 112.dp, state.second, !m.held && !m.muted && m.phase >= 1)
+        Spacer(Modifier.height(30.dp))
+        Text(m.header?.let { it.replace("•", "").trim().lowercase().replaceFirstChar { c -> c.uppercase() } } ?: "In call",
+            color = NeoCallColors.Muted, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.height(22.dp))
+        NcAvatar(m.callerName, m.callerPhoto, 120.dp, false, false)
+        Spacer(Modifier.height(18.dp))
+        Text(m.callerName, color = NeoCallColors.Text, fontSize = 30.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        if (m.callerNumber.isNotBlank() && m.callerNumber != m.callerName) {
+            Text(m.callerNumber, color = NeoCallColors.Muted, fontSize = 16.sp, style = NcNumbers)
+        }
         Spacer(Modifier.height(10.dp))
-        Text(
-            m.callerName, color = Color.White, fontSize = if (ai) 24.sp else 30.sp, fontWeight = FontWeight.Medium,
-            maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center
-        )
-        if (!ai && m.callerNumber.isNotBlank() && m.callerNumber != m.callerName) {
-            Text(m.callerNumber, color = Color.White.copy(alpha = 0.55f), fontSize = 15.sp)
+        Text(if (m.phase == 1) "" else NcTime(m.secs), color = NeoCallColors.Text, fontSize = 20.sp, style = NcNumbers)
+        Text(state, color = NeoCallColors.Warn, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.weight(1f))
+
+        if (keypad) { NcDtmf(m.onDtmf); Spacer(Modifier.height(14.dp)) }
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            NcTile(Icons.Filled.MicOff, "Mute", m.muted, Modifier.weight(1f)) { m.onMute() }
+            NcTile(Icons.Filled.Dialpad, "Keypad", keypad, Modifier.weight(1f)) { keypad = !keypad }
+            NcTile(Icons.Filled.VolumeUp, "Speaker", m.loud, Modifier.weight(1f)) { m.onSpeaker() }
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            NcTile(Icons.Filled.Add, "Add call", false, Modifier.weight(1f)) {
+                try { ctx.startActivity(Intent(ctx, NeoDialerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
+            }
+            NcTile(if (m.held) Icons.Filled.PlayArrow else Icons.Filled.Pause, if (m.held) "Resume" else "Hold", m.held, Modifier.weight(1f)) { m.onHold() }
+            NcTile(Icons.Filled.Contacts, "Contacts", false, Modifier.weight(1f)) {
+                try {
+                    ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("content://contacts/people/")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                } catch (e: Exception) { }
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        NcEnd("End call") { m.onEnd() }
+        Spacer(Modifier.height(22.dp))
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/*  In an assistant call: a conversation                                */
+/* ------------------------------------------------------------------ */
+
+@Composable
+private fun NcAssistantCall(m: NeoCallModel, extra: @Composable () -> Unit) {
+    val ctx = LocalContext.current
+    val scroll = rememberScrollState()
+    var typing by remember { mutableStateOf(false) }
+    LaunchedEffect(m.lines.size, m.lines.lastOrNull()?.second?.length, m.heard) { scroll.animateScrollTo(scroll.maxValue) }
+
+    val title = if (m.callerName.equals("NEO PLUS", true)) "Neo Plus Assistant" else m.callerName
+    val state = when {
+        m.held -> "On hold"
+        m.muted && m.phase >= 3 -> "Muted"
+        m.phase == 1 -> "Connecting…"
+        m.phase == 2 -> "Speaking"
+        m.phase == 3 -> "Listening"
+        else -> "Thinking…"
+    }
+    val live = !m.held && !(m.muted && m.phase >= 3) && m.phase >= 2
+
+    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 18.dp)) {
+        Spacer(Modifier.height(14.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(clockText(m.secs), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Medium)
-            Text("   •   ", color = Color.White.copy(alpha = 0.35f), fontSize = 15.sp)
-            Box(Modifier.size(8.dp).clip(CircleShape).background(state.second))
-            Spacer(Modifier.size(7.dp))
-            Text(state.first, color = state.second, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-        }
-        if (ai) {
-            Spacer(Modifier.height(10.dp))
-            VoiceBars(level, state.second, Modifier.fillMaxWidth(0.5f).height(30.dp))
+            NcAvatar(title, null, 52.dp, true, false)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, color = NeoCallColors.Text, fontSize = 19.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(m.header?.replace("•", "")?.trim() ?: "AI assistant", color = NeoCallColors.Muted, fontSize = 13.sp)
+            }
+            Text(NcTime(m.secs), color = NeoCallColors.Text, fontSize = 18.sp, style = NcNumbers)
         }
         if (m.waitingText.isNotBlank()) {
             Spacer(Modifier.height(8.dp))
-            StatusChip(m.waitingText, NeoCallColors.Amber)
+            Text(m.waitingText, color = NeoCallColors.Warn, fontSize = 13.sp)
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(14.dp))
 
-        if (!ai) {
-            Spacer(Modifier.weight(1f))
-        } else Column(
-            Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(24.dp))
-                .background(Color.White.copy(alpha = 0.05f))
-                .border(1.dp, Color.White.copy(alpha = 0.09f), RoundedCornerShape(24.dp))
+        Column(
+            Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(NeoCallColors.Surface.copy(alpha = 0.85f))
                 .verticalScroll(scroll).padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             extra()
-            if (m.lines.isEmpty() && m.heard.isBlank()) {
-                Text("Live conversation appears here", color = Color.White.copy(alpha = 0.4f), fontSize = 14.sp)
-            }
-            for ((me, line) in m.lines) {
-                Row(Modifier.fillMaxWidth(), if (me) Arrangement.End else Arrangement.Start) {
-                    Text(
-                        line, color = Color.White, fontSize = 16.sp, lineHeight = 22.sp,
-                        modifier = Modifier.widthIn(max = 290.dp)
-                            .clip(
-                                if (me) RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomEnd = 4.dp, bottomStart = 18.dp)
-                                else RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomEnd = 18.dp, bottomStart = 4.dp)
-                            )
-                            .background(if (me) Color(0xFF2563EB) else Color.White.copy(alpha = 0.11f))
-                            .padding(horizontal = 14.dp, vertical = 9.dp)
-                    )
-                }
-            }
+            for ((me, line) in m.lines) NcBubble(line, me)
             if (m.phase == 3 && m.heard.isNotBlank() && !m.muted) {
                 Row(Modifier.fillMaxWidth(), Arrangement.End) {
-                    Text(m.heard, color = Color.White.copy(alpha = 0.6f), fontSize = 16.sp, fontStyle = FontStyle.Italic)
+                    Text(m.heard, color = NeoCallColors.Muted, fontSize = 16.sp, fontStyle = FontStyle.Italic, modifier = Modifier.padding(end = 4.dp))
                 }
             }
             if (m.micDenied) {
@@ -293,79 +322,33 @@ private fun ConnectedScreen(m: NeoCallModel, ctx: Context, extra: @Composable ()
                 ) { ok -> if (ok) m.onMicGranted() }
                 Text(
                     "Tap here and allow the microphone so I can hear you.",
-                    color = NeoCallColors.Amber, fontSize = 15.sp,
+                    color = NeoCallColors.Warn, fontSize = 15.sp,
                     modifier = Modifier.clickable { permission.launch(Manifest.permission.RECORD_AUDIO) }
                 )
             }
         }
 
-        if (typing) {
-            if (m.realCall) DtmfPad(m.onDtmf)
-            else TypeBox(onSend = { typing = false; if (it.isNotBlank()) m.onType(it.trim()) }, onCancel = { typing = false })
-        }
-
-        Spacer(Modifier.height(14.dp))
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
-            RoundTool(Icons.Filled.MicOff, "Mute", m.muted) { m.onMute() }
-            RoundTool(if (m.realCall) Icons.Filled.Dialpad else Icons.Filled.Keyboard, if (m.realCall) "Keypad" else "Type", typing) { typing = !typing }
-            RoundTool(Icons.Filled.VolumeUp, "Speaker", m.loud) { m.onSpeaker() }
-        }
         Spacer(Modifier.height(12.dp))
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            NcWave(Modifier.width(70.dp).height(20.dp), if (m.phase == 3) NeoCallColors.Accept else NeoCallColors.Ai, live)
+            Spacer(Modifier.width(10.dp))
+            Text(state, color = NeoCallColors.Muted, fontSize = 14.sp)
+        }
+
+        if (typing) NcTypeBox(onSend = { typing = false; if (it.isNotBlank()) m.onType(it.trim()) }, onCancel = { typing = false })
+
+        Spacer(Modifier.height(12.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            NcTile(Icons.Filled.MicOff, "Mute", m.muted, Modifier.weight(1f), compact = true) { m.onMute() }
+            NcTile(Icons.Filled.Dialpad, "Type", typing, Modifier.weight(1f), compact = true) { typing = !typing }
+            NcTile(Icons.Filled.VolumeUp, "Speaker", m.loud, Modifier.weight(1f), compact = true) { m.onSpeaker() }
             val cam = m.onCamera
-            if (cam != null) RoundTool(Icons.Filled.CameraAlt, "Show me", false) { cam() }
-            else RoundTool(Icons.Filled.Add, "Add call", false) {
-                try { ctx.startActivity(Intent(ctx, NeoDialerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
-            }
-            RoundTool(if (m.held) Icons.Filled.PlayArrow else Icons.Filled.Pause, if (m.held) "Resume" else "Hold", m.held) { m.onHold() }
-            RoundTool(Icons.Filled.Contacts, "Contacts", false) {
-                try {
-                    ctx.startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse("content://contacts/people/")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    )
-                } catch (e: Exception) { }
-            }
+            if (cam != null) NcTile(Icons.Filled.CameraAlt, "Show me", false, Modifier.weight(1f), compact = true) { cam() }
+            else NcTile(if (m.held) Icons.Filled.PlayArrow else Icons.Filled.Pause, if (m.held) "Resume" else "Hold", m.held, Modifier.weight(1f), compact = true) { m.onHold() }
         }
+        Spacer(Modifier.height(14.dp))
+        NcEnd("End call") { m.onEnd() }
         Spacer(Modifier.height(18.dp))
-        Box(
-            Modifier.size(72.dp).clip(CircleShape).background(NeoCallColors.Red).clickable { m.onEnd() },
-            contentAlignment = Alignment.Center
-        ) { Icon(Icons.Filled.CallEnd, "End call", tint = Color.White, modifier = Modifier.size(34.dp)) }
-        Spacer(Modifier.height(20.dp))
-    }
-}
-
-/** Number keys sent as tones into the live call (for menus like "press 1 for ..."). */
-@Composable
-private fun DtmfPad(onKey: (Char) -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        for (row in listOf("123", "456", "789", "*0#")) {
-            Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) { row.forEach { c -> PadKey(c, 48.dp, true, onKey) } }
-        }
-    }
-}
-
-@Composable
-private fun TypeBox(onSend: (String) -> Unit, onCancel: () -> Unit) {
-    var text by remember { mutableStateOf("") }
-    Row(
-        Modifier.fillMaxWidth().padding(top = 10.dp).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.10f))
-            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(50))
-            .padding(horizontal = 18.dp, vertical = 11.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(Modifier.weight(1f)) {
-            if (text.isEmpty()) Text("Type to the assistant…", color = Color.White.copy(alpha = 0.45f), fontSize = 16.sp)
-            BasicTextField(
-                value = text, onValueChange = { text = it }, singleLine = true,
-                textStyle = TextStyle(color = Color.White, fontSize = 16.sp),
-                cursorBrush = SolidColor(Color.White), modifier = Modifier.fillMaxWidth()
-            )
-        }
-        Text("Send", color = NeoCallColors.Cyan, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.clickable { onSend(text) }.padding(start = 12.dp))
-        Icon(Icons.Filled.Close, "Close", tint = Color.White.copy(alpha = 0.7f),
-            modifier = Modifier.padding(start = 12.dp).size(20.dp).clickable { onCancel() })
     }
 }
 
@@ -374,40 +357,38 @@ private fun TypeBox(onSend: (String) -> Unit, onCancel: () -> Unit) {
 /* ------------------------------------------------------------------ */
 
 @Composable
-private fun DeclinedScreen(m: NeoCallModel, ctx: Context) {
+private fun NcDeclined(m: NeoCallModel, ctx: Context) {
     // Closes by itself after a few seconds unless a button is used (the session turns "declined" off for Call back)
     LaunchedEffect(Unit) { delay(9000); m.onClose() }
+    val title = if (!m.realCall && m.callerName.equals("NEO PLUS", true)) "Neo Plus Assistant" else m.callerName
     Column(
-        Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp),
+        Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 22.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.weight(0.8f))
         Box(
-            Modifier.size(92.dp).clip(CircleShape).background(NeoCallColors.Red.copy(alpha = 0.14f))
-                .border(1.5.dp, NeoCallColors.Red.copy(alpha = 0.6f), CircleShape),
+            Modifier.size(72.dp).clip(CircleShape).background(NeoCallColors.Decline.copy(alpha = 0.16f)),
             contentAlignment = Alignment.Center
-        ) { Icon(Icons.Filled.CallEnd, null, tint = NeoCallColors.Red, modifier = Modifier.size(42.dp)) }
+        ) { Icon(Icons.Filled.CallEnd, null, tint = NeoCallColors.Decline, modifier = Modifier.size(32.dp)) }
         Spacer(Modifier.height(20.dp))
-        Text("Call declined", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Light)
+        Text("Call declined", color = NeoCallColors.Text, fontSize = 28.sp)
         Spacer(Modifier.height(6.dp))
-        Text(
-            m.callerName, color = Color.White.copy(alpha = 0.8f), fontSize = 19.sp,
-            maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center
-        )
+        Text(title, color = NeoCallColors.Muted, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (m.realCall && m.callerNumber.isNotBlank() && m.callerNumber != m.callerName) {
+            Text(m.callerNumber, color = NeoCallColors.Muted, fontSize = 14.sp, style = NcNumbers)
+        }
         Spacer(Modifier.weight(1f))
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
-            ActionTile(Icons.Filled.Call, "Call back", NeoCallColors.Green) { m.onCallBack() }
-            ActionTile(Icons.Filled.ChatBubble, "Message", NeoCallColors.Blue) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            NcTile(Icons.Filled.Call, "Call back", false, Modifier.weight(1f)) { m.onCallBack() }
+            NcTile(Icons.Filled.ChatBubble, "Message", false, Modifier.weight(1f)) {
                 val custom = m.onMessage
-                if (custom != null) { custom(); return@ActionTile }
+                if (custom != null) { custom(); return@NcTile }
                 try {
-                    ctx.startActivity(
-                        (ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: Intent()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    )
+                    ctx.startActivity((ctx.packageManager.getLaunchIntentForPackage(ctx.packageName) ?: Intent()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 } catch (e: Exception) { }
                 m.onClose()
             }
-            ActionTile(Icons.Filled.Schedule, "Remind me", NeoCallColors.Amber) {
+            NcTile(Icons.Filled.Schedule, "Remind me", false, Modifier.weight(1f)) {
                 // 10 minute timer in the phone's clock app (no screen), so it rings and reminds you to come back
                 try {
                     ctx.startActivity(
@@ -419,146 +400,187 @@ private fun DeclinedScreen(m: NeoCallModel, ctx: Context) {
                 m.onClose()
             }
         }
-        Spacer(Modifier.height(20.dp))
-        Text("Close", color = Color.White.copy(alpha = 0.55f), fontSize = 15.sp,
-            modifier = Modifier.clickable { m.onClose() }.padding(12.dp))
+        Spacer(Modifier.height(8.dp))
+        Text("Close", color = NeoCallColors.Muted, fontSize = 15.sp, modifier = Modifier.clickable { m.onClose() }.padding(16.dp))
         Spacer(Modifier.height(20.dp))
     }
 }
 
 /* ------------------------------------------------------------------ */
-/*  Parts                                                               */
+/*  Parts (internal: AiCallScreen.kt uses them too)                     */
 /* ------------------------------------------------------------------ */
 
-private fun clockText(s: Int): String =
-    if (s >= 3600) "%d:%02d:%02d".format(s / 3600, (s / 60) % 60, s % 60) else "%02d:%02d".format(s / 60, s % 60)
+/** Digits keep their width so a running timer does not jiggle. */
+internal val NcNumbers = TextStyle(fontFeatureSettings = "tnum")
 
-private fun initialsOf(name: String): String {
-    val words = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() && it[0].isLetter() }
-    return words.take(2).joinToString("") { it.substring(0, 1).uppercase() }
-}
+internal fun NcTime(secs: Int): String =
+    if (secs >= 3600) "%d:%02d:%02d".format(secs / 3600, (secs / 60) % 60, secs % 60) else "%02d:%02d".format(secs / 60, secs % 60)
 
-/** Round picture of the caller: the NEO PLUS logo for assistant calls, the caller's initials for real calls, with soft pulse rings. */
+/** Graphite background; assistant calls get a soft indigo glow from the top so they read as different at a glance. */
 @Composable
-private fun Avatar(m: NeoCallModel, diameter: Dp, ring: Color, pulse: Boolean) {
-    val transition = rememberInfiniteTransition(label = "avatarPulse")
-    val p by transition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing), RepeatMode.Restart),
-        label = "p"
-    )
-    Box(Modifier.size(diameter * 1.8f), contentAlignment = Alignment.Center) {
-        if (pulse) Canvas(Modifier.fillMaxSize()) {
-            for (k in 0..1) {
-                val q = (p + k * 0.5f) % 1f
-                drawCircle(
-                    ring.copy(alpha = 0.40f * (1f - q)),
-                    radius = diameter.toPx() / 2f * (1f + 0.75f * q),
-                    style = Stroke(width = 2.dp.toPx())
+internal fun NcBackground(ai: Boolean, content: @Composable () -> Unit) {
+    Box(
+        Modifier.fillMaxSize()
+            .background(Brush.verticalGradient(listOf(NeoCallColors.Ink, NeoCallColors.Ink2)))
+            .drawBehind {
+                if (ai) drawRect(
+                    Brush.radialGradient(
+                        colors = listOf(NeoCallColors.Ai.copy(alpha = 0.20f), Color.Transparent),
+                        center = Offset(size.width / 2f, 0f), radius = size.width * 0.95f
+                    )
                 )
             }
+    ) { content() }
+}
+
+/** Photo, the assistant's mark, or initials. [ring] adds the slow pulse used while a call is ringing. */
+@Composable
+internal fun NcAvatar(name: String, photo: ImageBitmap?, size: Dp, ai: Boolean, ring: Boolean) {
+    val t = rememberFrameSeconds()
+    Box(Modifier.size(size), contentAlignment = Alignment.Center) {
+        if (ring) Canvas(Modifier.size(size)) {
+            val tint = if (ai) NeoCallColors.Ai else Color.White
+            for (k in 0..1) {
+                val q = (t.value * 0.45f + k * 0.5f) % 1f
+                drawCircle(tint.copy(alpha = 0.30f * (1f - q)), this.size.minDimension / 2f * (0.80f + 0.20f * q), center, style = Stroke(width = 2.dp.toPx()))
+            }
         }
-        if (!m.realCall) {
-            Image(
+        val inner = size * 0.80f
+        when {
+            photo != null -> Image(photo, null, Modifier.size(inner).clip(CircleShape), contentScale = ContentScale.Crop)
+            ai -> Image(
                 painterResource(R.drawable.neo_icon), null,
-                Modifier.size(diameter).clip(CircleShape).border(2.dp, ring.copy(alpha = 0.9f), CircleShape),
-                contentScale = ContentScale.Crop
+                Modifier.size(inner).clip(CircleShape).border(1.dp, NeoCallColors.Line, CircleShape), contentScale = ContentScale.Crop
             )
-        } else {
-            val ini = initialsOf(m.callerName)
-            Box(
-                Modifier.size(diameter).clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(Color(0xFF3B82F6), Color(0xFF1E40AF))))
-                    .border(2.dp, ring.copy(alpha = 0.9f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                if (ini.isNotEmpty()) Text(ini, color = Color.White, fontSize = (diameter.value * 0.38f).sp, fontWeight = FontWeight.Medium)
-                else Icon(Icons.Filled.Person, null, tint = Color.White, modifier = Modifier.size(diameter * 0.55f))
+            else -> {
+                val letters = name.split(' ').filter { it.isNotBlank() }.take(2).joinToString("") { it.first().uppercase() }
+                Box(Modifier.size(inner).clip(CircleShape).background(NeoCallColors.SurfaceHi), contentAlignment = Alignment.Center) {
+                    if (name.firstOrNull()?.isLetter() == true && letters.isNotEmpty())
+                        Text(letters, color = NeoCallColors.Text, fontSize = (inner.value * 0.36f).sp, fontWeight = FontWeight.Normal)
+                    else Icon(Icons.Filled.Call, null, tint = NeoCallColors.Muted, modifier = Modifier.size(inner * 0.38f))
+                }
             }
         }
     }
 }
 
-/** Live bars: tall while the assistant speaks, medium while it listens, low while it thinks, flat on hold / muted. */
 @Composable
-private fun VoiceBars(level: Float, color: Color, modifier: Modifier) {
-    var t by remember { mutableStateOf(0f) }
-    LaunchedEffect(Unit) { while (true) { t += 0.3f; delay(50) } }
+internal fun NcChip(text: String, color: Color) {
+    Text(
+        text, color = color, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+        modifier = Modifier.clip(RoundedCornerShape(50)).background(color.copy(alpha = 0.16f)).padding(horizontal = 12.dp, vertical = 5.dp)
+    )
+}
+
+/** A quiet wave. [active] makes it move; otherwise it rests as a flat line. */
+@Composable
+internal fun NcWave(modifier: Modifier, color: Color, active: Boolean) {
+    val t = rememberFrameSeconds()
     Canvas(modifier) {
-        val n = 21
+        val n = 28
         val step = size.width / n
         for (i in 0 until n) {
-            val env = 1f - abs(i - (n - 1) / 2f) / (n / 2f) * 0.65f
-            val h = (0.10f + level * 0.90f * abs(sin(i * 0.6f + t))) * env * size.height
+            val env = 1f - abs(i - n / 2f) / (n / 2f) * 0.65f
+            val amp = if (active) 0.2f + 0.8f * abs(sin(i * 0.65f + t.value * 7f)) else 0.12f
+            val h = amp * env * size.height
             val x = step * i + step / 2
-            drawLine(
-                color, Offset(x, size.height / 2 - h / 2), Offset(x, size.height / 2 + h / 2),
-                strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round
-            )
+            drawLine(color, Offset(x, size.height / 2 - h / 2), Offset(x, size.height / 2 + h / 2), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
         }
     }
 }
 
 @Composable
-private fun StatusChip(text: String, color: Color) {
-    Row(
-        Modifier.clip(RoundedCornerShape(50)).background(color.copy(alpha = 0.14f))
-            .border(1.dp, color.copy(alpha = 0.45f), RoundedCornerShape(50))
-            .padding(horizontal = 14.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(Modifier.size(7.dp).clip(CircleShape).background(color))
-        Spacer(Modifier.size(8.dp))
-        Text(text, color = color, fontSize = 12.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.5.sp)
-    }
-}
-
-@Composable
-private fun CallButton(color: Color, icon: ImageVector, label: String, onClick: () -> Unit) {
+internal fun NcRound(color: Color, icon: ImageVector, label: String, size: Dp, onClick: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
-            Modifier.size(78.dp).clip(CircleShape).background(color).clickable { onClick() },
+            Modifier.size(size).clip(CircleShape).background(color).clickable { onClick() },
             contentAlignment = Alignment.Center
-        ) { Icon(icon, label, tint = Color.White, modifier = Modifier.size(36.dp)) }
+        ) { Icon(icon, label, tint = Color.White, modifier = Modifier.size(size * 0.46f)) }
         Spacer(Modifier.height(10.dp))
-        Text(label, color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp)
+        Text(label, color = NeoCallColors.Muted, fontSize = 14.sp)
     }
 }
 
-/** Control button: glass when off, solid white with a dark icon when on (like a phone's in-call screen). */
+/** A tool: rounded square, filled white when on. */
 @Composable
-private fun RoundTool(icon: ImageVector, label: String, on: Boolean, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.widthIn(min = 76.dp)) {
-        Box(
-            Modifier.size(62.dp).clip(CircleShape)
-                .background(if (on) Color.White else Color.White.copy(alpha = 0.09f))
-                .border(1.dp, Color.White.copy(alpha = if (on) 0f else 0.14f), CircleShape)
-                .clickable { onClick() },
-            contentAlignment = Alignment.Center
-        ) { Icon(icon, label, tint = if (on) Color(0xFF0B1628) else Color.White, modifier = Modifier.size(27.dp)) }
-        Spacer(Modifier.height(6.dp))
-        Text(label, color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp)
+internal fun NcTile(icon: ImageVector, label: String, on: Boolean, modifier: Modifier = Modifier, compact: Boolean = false, onClick: () -> Unit) {
+    Column(
+        modifier.clip(RoundedCornerShape(20.dp))
+            .background(if (on) NeoCallColors.Text else NeoCallColors.Surface)
+            .clickable { onClick() }
+            .padding(vertical = if (compact) 11.dp else 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(icon, label, tint = if (on) NeoCallColors.Ink else NeoCallColors.Text, modifier = Modifier.size(if (compact) 22.dp else 26.dp))
+        Spacer(Modifier.height(if (compact) 4.dp else 7.dp))
+        Text(label, color = if (on) NeoCallColors.Ink else NeoCallColors.Muted, fontSize = 12.sp, maxLines = 1)
     }
 }
 
 @Composable
-private fun ActionTile(icon: ImageVector, label: String, tint: Color, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { onClick() }.padding(6.dp)) {
-        Box(
-            Modifier.size(64.dp).clip(CircleShape).background(tint.copy(alpha = 0.14f))
-                .border(1.dp, tint.copy(alpha = 0.5f), CircleShape),
-            contentAlignment = Alignment.Center
-        ) { Icon(icon, label, tint = tint, modifier = Modifier.size(28.dp)) }
-        Spacer(Modifier.height(8.dp))
-        Text(label, color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
+internal fun NcEnd(label: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().height(60.dp).clip(RoundedCornerShape(30.dp)).background(NeoCallColors.Decline).clickable { onClick() },
+        horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(Icons.Filled.CallEnd, null, tint = Color.White, modifier = Modifier.size(26.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(label, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
+/** One line of a conversation. [mine] = right side, indigo; the other side is a quiet surface. */
+@Composable
+internal fun NcBubble(text: String, mine: Boolean) {
+    Row(Modifier.fillMaxWidth(), if (mine) Arrangement.End else Arrangement.Start) {
+        val shape = if (mine) RoundedCornerShape(18.dp, 18.dp, 5.dp, 18.dp) else RoundedCornerShape(18.dp, 18.dp, 18.dp, 5.dp)
+        Text(
+            text, color = NeoCallColors.Text, fontSize = 16.sp, lineHeight = 22.sp,
+            modifier = Modifier.clip(shape).background(if (mine) NeoCallColors.AiDeep else NeoCallColors.SurfaceHi)
+                .padding(horizontal = 14.dp, vertical = 9.dp)
+        )
+    }
+}
+
+/** Number keys sent as tones into the live call (for menus like "press 1 for ..."). */
+@Composable
+private fun NcDtmf(onKey: (Char) -> Unit) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (row in listOf("123", "456", "789", "*0#")) {
+            Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) { row.forEach { c -> PadKey(c, 52.dp, true, onKey) } }
+        }
+    }
+}
+
+@Composable
+private fun NcTypeBox(onSend: (String) -> Unit, onCancel: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    Row(
+        Modifier.fillMaxWidth().padding(top = 10.dp).clip(RoundedCornerShape(26.dp)).background(NeoCallColors.Surface)
+            .padding(horizontal = 18.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.weight(1f)) {
+            if (text.isEmpty()) Text("Type to the assistant…", color = NeoCallColors.Muted, fontSize = 16.sp)
+            BasicTextField(
+                value = text, onValueChange = { text = it }, singleLine = true,
+                textStyle = TextStyle(color = NeoCallColors.Text, fontSize = 16.sp),
+                cursorBrush = SolidColor(NeoCallColors.Ai), modifier = Modifier.fillMaxWidth()
+            )
+        }
+        Text("Send", color = NeoCallColors.Ai, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.clickable { onSend(text) }.padding(start = 12.dp))
+        Icon(Icons.Filled.Close, "Close", tint = NeoCallColors.Muted,
+            modifier = Modifier.padding(start = 12.dp).size(20.dp).clickable { onCancel() })
+    }
+}
+
+/** Small action button used by the approval call (Send / Skip). */
 @Composable
 fun NeoCallPill(label: String, color: Color, onClick: () -> Unit) {
     Text(
-        label, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium,
-        modifier = Modifier.clip(RoundedCornerShape(50)).background(color).clickable { onClick() }.padding(horizontal = 20.dp, vertical = 8.dp)
+        label, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.clip(RoundedCornerShape(50)).background(color).clickable { onClick() }.padding(horizontal = 22.dp, vertical = 9.dp)
     )
 }
 

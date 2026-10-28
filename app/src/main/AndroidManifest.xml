@@ -67,6 +67,9 @@
     <!-- Assistant: set alarms and timers without opening the clock app -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <!-- footsteps counter (the phone's step counter chip) -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-feature android:name="android.hardware.sensor.stepcounter" android:required="false" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -274,6 +277,16 @@
 
         <activity
             android:name=".NeoCallActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/Theme.Neo" />
+
+        <!-- Shown while the assistant answers a call for you (live conversation, Take over, End call) -->
+        <activity
+            android:name=".AiCallActivity"
             android:exported="false"
             android:launchMode="singleTask"
             android:excludeFromRecents="true"

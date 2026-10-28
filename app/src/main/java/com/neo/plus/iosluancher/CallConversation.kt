@@ -11,6 +11,11 @@ import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.media.AudioManager
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -59,6 +64,16 @@ object CallConversation {
 
     private class Reply(val lang: String, val end: Boolean, val text: String)
 
+    /** What the "AI is answering" screen (AiCallScreen.kt) shows, live. Written on the main thread only. */
+    class AiLine(val fromCaller: Boolean, val text: String)
+    val ui = mutableStateListOf<AiLine>()
+    var uiStatus by mutableStateOf(0)      // 0 connecting, 1 assistant speaking, 2 listening, 3 thinking, 4 ended
+    var uiHeard by mutableStateOf("")      // what the caller is saying right now (partial)
+    var uiLang by mutableStateOf("")       // the language the caller speaks, when known
+    var uiWho by mutableStateOf("")
+    var uiNumber by mutableStateOf("")
+    var uiStart by mutableStateOf(0L)
+
     private fun prefs(ctx: Context) = ctx.applicationContext.getSharedPreferences(PREF, Context.MODE_PRIVATE)
     private fun valid(id: Long) = active && token == id
 
@@ -83,6 +98,7 @@ object CallConversation {
         val id = System.nanoTime()
         active = true
         token = id
+        try { a.startActivity(Intent(a, AiCallActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)) } catch (e: Exception) { }
         main.post {
             appCtx = a
             who = name.ifBlank { number.ifBlank { "an unknown caller" } }
@@ -90,6 +106,7 @@ object CallConversation {
             startedAt = System.currentTimeMillis()
             turns = 0; silent = 0; heardAny = false; langTag = ""; heard = ""
             hist.clear(); transcript.clear()
+            ui.clear(); uiStatus = 0; uiHeard = ""; uiLang = ""; uiWho = who; uiNumber = number; uiStart = startedAt
             main.postDelayed({
                 if (valid(id)) {
                     CallAssist.speakerOn(a)
@@ -124,6 +141,7 @@ object CallConversation {
         if (!valid(id)) return
         val a = appCtx ?: return
         transcript.add("Assistant: $text")
+        ui.add(AiLine(false, text)); uiStatus = 1
         var fired = false
         fun next() {
             if (fired) return
@@ -147,6 +165,7 @@ object CallConversation {
         if (!valid(id)) return
         val a = appCtx ?: return
         heard = ""
+        uiStatus = 2; uiHeard = ""
         val r = recognizer ?: try {
             SpeechRecognizer.createSpeechRecognizer(a).also { it.setRecognitionListener(listener); recognizer = it }
         } catch (e: Exception) {
@@ -178,6 +197,7 @@ object CallConversation {
         override fun onPartialResults(partialResults: Bundle?) {
             val t = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: return
             heard = t
+            uiHeard = t
         }
         override fun onResults(results: Bundle?) {
             if (!active) return
@@ -219,6 +239,7 @@ object CallConversation {
         heardAny = true; silent = 0; turns++
         val said = text.take(400)
         transcript.add("Caller: $said")
+        ui.add(AiLine(true, said)); uiStatus = 3; uiHeard = ""
         hist.add(true to said)
         val snapshot = ArrayList(hist)
         io.execute {
@@ -237,6 +258,7 @@ object CallConversation {
         while (hist.size > 20) { hist.removeAt(0); hist.removeAt(0) }
         // Android's recogniser has no Chichewa: leave the language open for it
         if (r.lang.isNotBlank() && !r.lang.startsWith("ny", true)) langTag = r.lang
+        if (r.lang.isNotBlank()) uiLang = r.lang
         if (r.end || turns >= MAX_TURNS) closing(r.text, id) else say(r.text, id) { listen(id) }
     }
 
@@ -284,12 +306,31 @@ REPLY: <what you say out loud>"""
         return if (clean.isBlank()) null else Reply(lang, end, clean)
     }
 
+    /* ---------------- buttons on the screen ---------------- */
+
+    /** "Take over": the assistant stops and the loudspeaker goes off so the person can talk. The call stays connected. */
+    fun takeOver(ctx: Context) {
+        val a = ctx.applicationContext
+        main.post {
+            if (!active) return@post
+            finish(token, false)
+            try {
+                @Suppress("DEPRECATION")
+                (a.getSystemService(Context.AUDIO_SERVICE) as AudioManager).isSpeakerphoneOn = false
+            } catch (e: Exception) { }
+        }
+    }
+
+    /** "End call" on the screen. */
+    fun hangUpNow() { main.post { if (active) finish(token, true) } }
+
     /* ---------------- the end of the call ---------------- */
 
     private fun finish(id: Long, hangUp: Boolean) {
         if (!valid(id)) return
         active = false
         token = 0L
+        uiStatus = 4; uiHeard = ""
         main.removeCallbacksAndMessages(null)
         val a = appCtx ?: return
         try { recognizer?.cancel() } catch (e: Exception) { }
