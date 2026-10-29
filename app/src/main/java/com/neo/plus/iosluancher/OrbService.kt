@@ -684,7 +684,7 @@ class OrbService : Service() {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, SpeechOpts.offline(this))
             .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
         // Commands are short: treat ~0.7 s of silence as "finished" instead of the recogniser's default 1.5-2 s. Not while the user is
         // dictating the text of a reply (replyStep 2), where a longer pause between sentences is normal.
@@ -794,6 +794,7 @@ class OrbService : Service() {
                     scheduleRestart(1000)
                 }
                 else -> {
+                    SpeechOpts.report(this@OrbService, error)
                     errorStreak++
                     setState(St.IDLE)
                     scheduleRestart(backoff())

@@ -249,7 +249,7 @@ class LockActivity : ComponentActivity() {
             r.startListening(
                 Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                     .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+                    .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, SpeechOpts.offline(this))
                     .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
             )
         } catch (e: Exception) { listening = false; BeepMute.restore(applicationContext); fail("The microphone is busy") }

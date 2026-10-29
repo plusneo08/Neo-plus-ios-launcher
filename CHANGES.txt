@@ -29,3 +29,11 @@ CHANGED  HomePanel.kt   the top clock card is now clock (left) + calendar tile (
 BUILD FIX
 EnableAssistant.kt  (unchanged, copied from your own upload) - your GitHub copy is older and lacks isDefaultHome() / requestDefaultHome(),
                     which MainActivity.kt already calls. Copy this file over the one in the repo.
+
+ASSISTANT HEARS NOTHING (mic says "listening" but nothing is recorded)
+NEW      SpeechOpts.kt        offline speech is preferred only when the phone has no internet; real mic/speech errors are shown as a short message
+CHANGED  OrbService.kt, AssistantUi.kt, LockActivity.kt, ApprovalCall.kt, WakeCallActivity.kt
+         every EXTRA_PREFER_OFFLINE = true  ->  SpeechOpts.offline(...)   (was always true: if the offline language model is not installed the
+         recogniser opens the mic and returns nothing)
+         onError now calls SpeechOpts.report(...), so the real reason appears ("Neo Plus mic: ...") instead of silent retries
+CallConversation.kt (caller talks to the assistant) never forced offline, so it is unchanged.

@@ -289,7 +289,7 @@ private class CallSession(activity: WakeCallActivity) {
                 Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                     .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                     .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, SpeechOpts.offline(ctx))
                     .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
                     .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
             )
@@ -322,6 +322,7 @@ private class CallSession(activity: WakeCallActivity) {
         override fun onError(error: Int) {
             BeepMute.restore(ctx)
             val partial = heard.trim()
+            SpeechOpts.report(ctx, error)
             when (error) {
                 SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> { micDenied = true }
                 SpeechRecognizer.ERROR_CLIENT -> Unit

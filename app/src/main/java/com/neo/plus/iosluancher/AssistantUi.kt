@@ -965,7 +965,7 @@ fun AssistantOverlay(a: AssistantViewModel, apps: List<AppEntry>, onClose: () ->
                         Toast.makeText(ctx, "Allow the microphone for Neo Plus to talk to me.", Toast.LENGTH_LONG).show()
                     }
                     SpeechRecognizer.ERROR_CLIENT -> Unit
-                    else -> if (!keepListening) Toast.makeText(ctx, "I couldn’t hear that, try again.", Toast.LENGTH_SHORT).show()
+                    else -> { SpeechOpts.report(ctx, error); if (!keepListening) Toast.makeText(ctx, "I couldn’t hear that, try again.", Toast.LENGTH_SHORT).show() }
                 }
             }
         })
@@ -986,7 +986,7 @@ fun AssistantOverlay(a: AssistantViewModel, apps: List<AppEntry>, onClose: () ->
                 Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                     .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                     .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, SpeechOpts.offline(ctx))
                     .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
                     .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
             )
