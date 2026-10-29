@@ -69,3 +69,7 @@ Fix: app/neo-debug.keystore is one fixed key used for every build (signingConfig
 Copy both files into the repo (keep the repo private: whoever has the key can sign updates of this app).
 ONE last time: uninstall the current Neo Plus, install the new APK, run the grant steps again and set it as the default home.
 From then on every new APK installs over the old one and keeps permissions, grants and the default launcher.
+
+BUILD FIX 2 (rikka / Shizuku errors in Shell.kt)
+Shell.kt  (unchanged, copied from your upload) - the Shell.kt in your GitHub repo is an OLD version that imports Shizuku; the no-root project
+          replaced it with an empty stub that never runs commands. Copy this stub over the repo's Shell.kt. No Shizuku dependency is needed.
