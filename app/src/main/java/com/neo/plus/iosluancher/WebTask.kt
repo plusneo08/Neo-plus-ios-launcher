@@ -2,7 +2,10 @@ package com.neo.plus.iosluancher
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -25,6 +28,7 @@ import android.widget.TextView
 import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -90,39 +94,63 @@ return 'none';}catch(e){return 'none';}})()"""
 
     private val ID_KINDS = setOf("click", "type", "select", "upload", "save_image")
 
-    @Volatile private var cancelled = false
-    @Volatile var running = false
-        private set
-    @Volatile var progress = ""
-        private set
+    /** Every website task that is running now (up to [MAX_TASKS] at once, each with its own page, feed, picture and Gemini conversation). */
+    private val sessions = java.util.concurrent.CopyOnWriteArrayList<Session>()
+    const val MAX_TASKS = 9
+    val running: Boolean get() = sessions.isNotEmpty()
+    val activeCount: Int get() = sessions.size
 
-    fun cancel() { cancelled = true }
+    /** True while at least one task is paused and waiting for the user to do a CAPTCHA / code step on its page. */
+    val waitingForUser: Boolean get() = sessions.any { it.waitingForUser }
 
-    /** True while the task is paused and waiting for the user to do a CAPTCHA / code step on the page. */
-    @Volatile var waitingForUser = false
-        private set
-    @Volatile private var userSignal = 0 // 1 = the user pressed Continue
+    /** Stops task [n] (its number in the split screen), or every task when [n] is null. */
+    fun cancel(n: Int? = null) { sessions.forEach { if (n == null || it.feed.id == n) it.cancelled = true } }
 
-    /** The user finished the step: carry on from the same page. Returns false when nothing was waiting. */
-    fun resume(): Boolean { if (!waitingForUser) return false; userSignal = 1; return true }
+    /** The user finished the step: carry on from the same page. [n] = which task; null = every task that is waiting. False when nothing was waiting. */
+    fun resume(n: Int? = null): Boolean {
+        var any = false
+        sessions.forEach { if (it.waitingForUser && (n == null || it.feed.id == n)) { it.userSignal = 1; any = true } }
+        return any
+    }
 
     /**
      * Typed or spoken "continue" / "cancel" while the task is waiting for the user (the chat is busy during a task, so this is
      * checked before anything else). Returns the reply to show, or null when the words are not meant for the waiting task.
      */
     fun handleSpoken(text: String): String? {
-        if (!waitingForUser) return null
-        val t = text.lowercase().replace('\u2019', '\'').replace(Regex("[^a-z' ]"), " ").replace(Regex("\\s+"), " ").trim().removePrefix("ok ").removePrefix("okay ").trim()
-        return when {
-            Regex("^(continue|carry on|go on|go ahead|proceed|resume|done|finished|solved|solved it|it is done|it's done|i am done|i'm done|i have done it|i have solved it|i solved it|i have finished|pitiriza|pitirizani)$").matches(t) ->
-                if (resume()) "Okay, continuing." else null
-            Regex("^(cancel|cancel it|cancel the task|cancel the website task|stop|stop it|stop the task|stop the website task|abort)$").matches(t) -> { cancel(); "Okay, I cancelled the website task." }
-            else -> null
+        if (sessions.isEmpty()) return null
+        var t = text.lowercase().replace('\u2019', '\'').replace(Regex("[^a-z0-9' ]"), " ").replace(Regex("\\s+"), " ").trim().removePrefix("ok ").removePrefix("okay ").trim()
+        // "task 3", "number three" or a lone digit picks the task; without one it applies to the task that is waiting
+        val words = mapOf("one" to 1, "two" to 2, "three" to 3, "four" to 4, "five" to 5, "six" to 6, "seven" to 7, "eight" to 8, "nine" to 9)
+        var num: Int? = null
+        Regex("\\b(?:task|number|no|nr)\\s+(\\d|one|two|three|four|five|six|seven|eight|nine)\\b").find(t)?.let { m ->
+            val g = m.groupValues[1]; num = g.toIntOrNull() ?: words[g]; t = (t.removeRange(m.range)).replace(Regex("\\s+"), " ").trim()
         }
+        val go = Regex("^(continue|carry on|go on|go ahead|proceed|resume|done|finished|solved|solved it|it is done|it's done|i am done|i'm done|i have done it|i have solved it|i solved it|i have finished|pitiriza|pitirizani)$").matches(t)
+        val stop = Regex("^(cancel|cancel it|cancel the task|cancel the website task|stop|stop it|stop the task|stop the website task|abort)$").matches(t)
+        if (!go && !stop) return null
+        val waiting = sessions.filter { it.waitingForUser }
+        val target: Session = if (num != null) {
+            sessions.firstOrNull { it.feed.id == num } ?: return "There is no task $num."
+        } else when {
+            waiting.size == 1 -> waiting[0]
+            waiting.size > 1 -> return "Which task? " + waiting.joinToString(" and ") { "${it.feed.id}" } + " are waiting for you. Say “continue task ${waiting[0].feed.id}”."
+            else -> return null
+        }
+        return if (go) {
+            if (target.waitingForUser) { target.userSignal = 1; "Okay, continuing task ${target.feed.id}." } else "Task ${target.feed.id} is not waiting for you."
+        } else { target.cancelled = true; "Okay, I stopped task ${target.feed.id}." }
     }
 
     private class Session(val ctx: Context, val entry: SiteEntry) {
         lateinit var wv: WebView
+        /** This task's own feed / tile. Nothing from another task is ever written to it or read from it. */
+        lateinit var feed: TaskFeed
+        @Volatile var cancelled = false
+        @Volatile var waitingForUser = false
+        @Volatile var userSignal = 0 // 1 = the user pressed Continue
+        @Volatile var progress = ""
+        @Volatile var lastShot = 0L
         var overlayAdded = false
         @Volatile var loading = false
         @Volatile var blocked = ""
@@ -164,8 +192,8 @@ return 'none';}catch(e){return 'none';}})()"""
     private class Replay(val ok: Boolean, val done: Int, val why: String, val stopped: Boolean = false)
 
     // ------------------------------------------------------------------ main entry
-    fun run(ctx: Context, a: JSONObject): String {
-        if (running) return "Couldn’t start: a website task is already running. Say “stop the website task” first."
+    fun run(ctx: Context, a: JSONObject, h: Handoff? = null): String {
+        if (sessions.size >= MAX_TASKS) return "Couldn’t start: $MAX_TASKS tasks are already running. Stop one or wait for one to finish."
         val goal = a.optString("goal").trim()
         val siteArg = a.optString("site").ifBlank { a.optString("url") }
         if (goal.isBlank()) return "Couldn’t start: no goal was given for the website task."
@@ -185,9 +213,8 @@ return 'none';}catch(e){return 'none';}})()"""
 
         WebUsage.load(ctx)
         if (!WebUsage.allowed(ctx)) return "Website tasks are paused: today’s limit of ${WebUsage.limit} Gemini requests is used up (${WebUsage.used} used). Raise or switch off the limit in the assistant settings, or try again tomorrow."
-        running = true; cancelled = false; progress = "Starting"
         TaskReports.attach(ctx)
-        TaskLog.start("Website task on ${entry.domain}: " + goal.take(90))
+        begin(s, "Website task on ${entry.domain}: " + goal.take(90), 0, h) ?: return "Couldn’t start: $MAX_TASKS tasks are already on screen."
         try {
             onMain { setup(s) }
             val saveAs0 = a.optString("save_as")
@@ -196,7 +223,7 @@ return 'none';}catch(e){return 'none';}})()"""
             val saved = if (canRecipe) loadRecipe(ctx, rkey) else null
             val out: String
             if (saved != null) {
-                TaskLog.add(TaskLine.Kind.INFO, "Replaying the saved steps for this task on the phone (no AI request per step)")
+                s.feed.add(TaskLine.Kind.INFO, "Replaying the saved steps for this task on the phone (no AI request per step)")
                 val rp = try { replayRow(s, saved, emptyList(), emptyList(), startUrl, allowedUploads) } catch (e: Exception) { Replay(false, 0, "replay error: " + e.javaClass.simpleName) }
                 WebUsage.saveReplay(ctx, rp.done)
                 val hint = if (rp.ok) "All ${rp.done} saved step(s) of this task were just done by the phone. Look at the page: if the goal is done, reply with finish and the result; if something is still left, do it."
@@ -208,18 +235,18 @@ return 'none';}catch(e){return 'none';}})()"""
                 val rc = s.recording
                 if (canRecipe && s.lastKind == "finish" && s.recValid && rc != null && rc.isNotEmpty()) {
                     saveRecipe(ctx, rkey, Template(rc.toList(), synchronized(s.downloaded) { s.downloaded.size }))
-                    TaskLog.add(TaskLine.Kind.FIX, "Saved ${rc.size} step(s): the next time you ask for this same task it runs on the phone, much faster")
+                    s.feed.add(TaskLine.Kind.FIX, "Saved ${rc.size} step(s): the next time you ask for this same task it runs on the phone, much faster")
                 }
                 s.recording = null
             }
-            TaskLog.finish(out.lineSequence().firstOrNull().orEmpty().take(200), s.lastKind == "finish")
+            s.feed.finish(out.lineSequence().firstOrNull().orEmpty().take(200), s.lastKind == "finish")
             return if (s.lastKind == "finish") out else out + diagnosisFor(s)
         } catch (e: Exception) {
             val m = "Couldn’t finish the website task (${e.javaClass.simpleName}: ${e.message?.take(100)})."
-            TaskLog.finish(m, false)
+            s.feed.finish(m, false)
             return m
         } finally {
-            running = false; progress = ""
+            sessions.remove(s)
             runCatching { onMain { teardown(s) } }
             s.dlPool.shutdown()
         }
@@ -248,11 +275,11 @@ return 'none';}catch(e){return 'none';}})()"""
         var argon = s.forceArgon
 
         steps@ for (n in 1..maxSteps) {
-            if (cancelled) return stopWith(s, "stopped", "stopped by the user", "Stopped the website task after ${n - 1} step(s), as you asked.")
+            if (s.cancelled) return stopWith(s, "stopped", "stopped by the user", "Stopped the website task after ${n - 1} step(s), as you asked.")
             if (System.currentTimeMillis() - started > maxMillis)
                 return stopWith(s, "timeout", "took too long", "Couldn’t finish the website task in time (${maxMillis / 60_000} minutes). Last page: ${currentUrl(s)}.")
-            progress = "Step $n on ${s.entry.domain}"
-            TaskLog.setState("Step $n on ${s.entry.domain}")
+            s.progress = "Step $n on ${s.entry.domain}"
+            s.feed.setState("Step $n on ${s.entry.domain}")
             applyVisibility(s)
             // Typing the saved login into a login form needs no AI at all.
             if (s.loginTries < 2 && s.entry.username.isNotBlank() && s.entry.password.isNotBlank()) {
@@ -261,7 +288,7 @@ return 'none';}catch(e){return 'none';}})()"""
                     s.loginTries++
                     WebUsage.saveReplay(s.ctx, 1)
                     s.recording?.add(Rec(JSONObject().put("action", "offline_login"), null, "", true))
-                    TaskLog.add(TaskLine.Kind.OK, if (lg == "submitted") "Logged in with the saved login (done on the phone, no AI request)" else "Typed the saved login (done on the phone, no AI request)")
+                    s.feed.add(TaskLine.Kind.OK, if (lg == "submitted") "Logged in with the saved login (done on the phone, no AI request)" else "Typed the saved login (done on the phone, no AI request)")
                     steps += "$n. typed the saved login" + (if (lg == "submitted") " and pressed the login button" else "")
                     lastResult = if (lg == "submitted") "Typed the saved username and password and pressed the login button (done by the phone). Check the page: if it still shows the login form or an error, deal with it."
                     else "Typed the saved username and password into the login form (done by the phone) but could not find the login button: press it."
@@ -272,14 +299,15 @@ return 'none';}catch(e){return 'none';}})()"""
             val hist = ArrayList<Pair<Boolean, String>>()
             turns.takeLast(HISTORY_TURNS).forEach { hist += true to it.first; hist += false to it.second }
             hist += true to obs
-            TaskLog.setState("Step $n: the assistant is looking at the page")
-            if (!argon && fails >= ESCALATE_AFTER_FAILS) { argon = true; TaskLog.add(TaskLine.Kind.INFO, "Two steps in a row failed: the stronger model takes over") }
+            s.feed.setState("Step $n: the assistant is looking at the page")
+            if (!argon && fails >= ESCALATE_AFTER_FAILS) { argon = true; s.feed.add(TaskLine.Kind.INFO, "Two steps in a row failed: the stronger model takes over") }
             if (!WebUsage.allowed(s.ctx)) {
-                TaskLog.add(TaskLine.Kind.ERROR, "Daily limit reached (${WebUsage.summary()})")
+                s.feed.add(TaskLine.Kind.ERROR, "Daily limit reached (${WebUsage.summary()})")
                 return stopWith(s, "limit", "daily request limit reached", "Stopped: today’s limit of ${WebUsage.limit} Gemini requests for website tasks is used up. Raise or switch off the limit in the assistant settings, or carry on tomorrow.")
             }
             WebUsage.spend(s.ctx)
-            val reply = try { Llm.chat(Provider.GEMINI, key, if (argon) GeminiModels.ARGON else GeminiModels.FLASH, system, hist, null, search = false) }
+            val shot = framePicture(s) // this task's own page picture: it goes only with this task's request
+            val reply = try { Llm.chat(Provider.GEMINI, key, if (argon) GeminiModels.ARGON else GeminiModels.FLASH, system, hist, shot, search = false) }
             catch (e: Llm.LlmException) { return stopWith(s, "model", e.message.orEmpty().take(140), "Couldn’t finish the website task: ${e.message?.take(140)}") }
             turns += (shrink(obs) to reply)
 
@@ -287,7 +315,7 @@ return 'none';}catch(e){return 'none';}})()"""
             if (act0 == null) {
                 fails++
                 if (++badJson > 3) return stopWith(s, "model", "the AI did not give a usable step", "Couldn’t finish the website task: the AI did not give a usable step.")
-                TaskLog.add(TaskLine.Kind.WARN, "Step $n: the AI reply was not usable, asking again")
+                s.feed.add(TaskLine.Kind.WARN, "Step $n: the AI reply was not usable, asking again")
                 lastResult = "Your last reply was not a single JSON object. Reply with ONE JSON object only."
                 continue
             }
@@ -301,13 +329,13 @@ return 'none';}catch(e){return 'none';}})()"""
                     val rows = act.optJSONArray("rows")
                     if (rows != null && rows.length() > 0) { saveRows(s, rows, act.optString("save_as").ifBlank { saveAs }); s.recValid = false }
                     val res = scrub(s, act.optString("result").ifBlank { "Done." })
-                    TaskLog.add(TaskLine.Kind.OK, "Done after $n step(s): " + res.take(160))
+                    s.feed.add(TaskLine.Kind.OK, "Done after $n step(s): " + res.take(160))
                     s.lastKind = "finish"; s.lastReason = res
                     return summary(s, n, res)
                 }
                 "need_user" -> {
                     val why = scrub(s, act.optString("reason")).ifBlank { "a step only you can do" }
-                    TaskLog.add(TaskLine.Kind.WARN, "Needs you: $why")
+                    s.feed.add(TaskLine.Kind.WARN, "Needs you: $why")
                     // Pause with the page left open, let the user do the step themselves, then carry on from the same page.
                     val waitStart = System.currentTimeMillis()
                     val capNow = unquote(js(s, CAPTCHA_STATE_JS, 2_000)) != "none"
@@ -316,9 +344,9 @@ return 'none';}catch(e){return 'none';}})()"""
                     when (outcome) {
                         "continue" -> {
                             runCatching { SessionKeeper.save(s.ctx, s.entry.domain, s.entry.username) } // the site now trusts this device: keep that at once
-                            TaskLog.add(TaskLine.Kind.INFO, "Saved trust cookies after your step: " + SessionKeeper.snapshot(s.entry.domain))
+                            s.feed.add(TaskLine.Kind.INFO, "Saved trust cookies after your step: " + SessionKeeper.snapshot(s.entry.domain))
                             if (s.recording != null && s.recValid) s.recording!!.add(Rec(JSONObject().put("action", "need_user").put("reason", why).put("captcha", capNow), null, "", false))
-                            TaskLog.add(TaskLine.Kind.OK, "You finished the step, carrying on")
+                            s.feed.add(TaskLine.Kind.OK, "You finished the step, carrying on")
                             steps += "$n. (paused for you: $why)"
                             if (gated != null) {
                                 s.moneyOk = s.moneyKey
@@ -329,7 +357,7 @@ return 'none';}catch(e){return 'none';}})()"""
                             }
                             // Press Sign in immediately (no AI request, no waiting): the CAPTCHA answer expires within about two minutes.
                             if (unquote(js(s, FAST_SUBMIT_JS, 1_500)) == "submitted") {
-                                TaskLog.add(TaskLine.Kind.OK, "Pressed the sign in button straight away (done on the phone, no AI request)")
+                                s.feed.add(TaskLine.Kind.OK, "Pressed the sign in button straight away (done on the phone, no AI request)")
                                 steps += "$n+. pressed the sign in button right after the CAPTCHA"
                                 lastResult = "The user solved the CAPTCHA ($why) and the phone pressed the sign in button immediately. Check the page: if it shows the account / next page you are logged in; if it still shows the login form or an error, deal with it. If a new human step is showing, ask again with need_user."
                                 settle(s)
@@ -341,7 +369,7 @@ return 'none';}catch(e){return 'none';}})()"""
                         }
                         "cancel" -> return stopWith(s, "stopped", "stopped by the user", "Stopped the website task, as you asked.")
                         "timeout" -> {
-                            TaskLog.add(TaskLine.Kind.ERROR, "No answer after ${HANDOFF_MILLIS / 60_000} minutes, task stopped")
+                            s.feed.add(TaskLine.Kind.ERROR, "No answer after ${HANDOFF_MILLIS / 60_000} minutes, task stopped")
                             return stopWith(s, "user_timeout", why, "I waited ${HANDOFF_MILLIS / 60_000} minutes for you to finish this step ($why) and then stopped. The last page was ${currentUrl(s)}.")
                         }
                         else -> return stopWith(s, "need_user", why, "I need you for this part: $why (I stopped on ${currentUrl(s)} after $n step(s)). I can only wait for you with the page on screen, so allow “Display over other apps” for NEO PLUS, then run the task again.")
@@ -350,11 +378,11 @@ return 'none';}catch(e){return 'none';}})()"""
                 "fail" -> {
                     val why = scrub(s, act.optString("reason"))
                     s.lastFix = act.optJSONObject("fixed_values")
-                    TaskLog.add(TaskLine.Kind.ERROR, "Problem: $why")
+                    s.feed.add(TaskLine.Kind.ERROR, "Problem: $why")
                     return stopWith(s, "fail", why, "Couldn’t finish the website task: $why")
                 }
             }
-            TaskLog.add(TaskLine.Kind.STEP, "Step $n: " + describe(act) + (if (note.isNotBlank()) " — $note" else ""))
+            s.feed.add(TaskLine.Kind.STEP, "Step $n: " + describe(act) + (if (note.isNotBlank()) " — $note" else ""))
             // While recording (batch row 1), remember how to find the element so later rows can replay this step offline.
             var recDesc: JSONObject? = null
             var recPath = ""
@@ -370,7 +398,7 @@ return 'none';}catch(e){return 'none';}})()"""
             if (then != null && isGood(lastResult) && kind in setOf("type", "select")) {
                 val done = ArrayList<String>()
                 for (i in 0 until minOf(then.length(), 8)) {
-                    if (cancelled) break
+                    if (s.cancelled) break
                     val nx = then.optJSONObject(i) ?: break
                     val nk = nx.optString("action").lowercase()
                     if (nk !in setOf("type", "select", "click")) break
@@ -384,7 +412,7 @@ return 'none';}catch(e){return 'none';}})()"""
                     }
                     val r2 = try { execute(s, nx, uploads) } catch (e: Exception) { "Action failed: ${e.javaClass.simpleName}" }
                     if (isGood(r2) && s.recording != null && s.recValid) recordStep(s, nx, d2, p2)
-                    TaskLog.add(TaskLine.Kind.STEP, "Step $n+${i + 1}: " + describe(nx))
+                    s.feed.add(TaskLine.Kind.STEP, "Step $n+${i + 1}: " + describe(nx))
                     done += describe(nx)
                     lastResult = r2
                     if (!isGood(r2)) break
@@ -393,7 +421,7 @@ return 'none';}catch(e){return 'none';}})()"""
             }
             val good = isGood(lastResult)
             if (good) fails = 0 else fails++
-            TaskLog.add(if (good) TaskLine.Kind.INFO else TaskLine.Kind.WARN, "      " + lastResult.take(160))
+            s.feed.add(if (good) TaskLine.Kind.INFO else TaskLine.Kind.WARN, "      " + lastResult.take(160))
             steps += "$n. " + describe(act) + (if (note.isNotBlank()) " ($note)" else "")
             val dl = s.downloaded.filter { it.absolutePath !in uploads }
             dl.forEach { uploads += it.absolutePath } // a downloaded file may be uploaded again later in the same task
@@ -465,7 +493,7 @@ return 'nosubmit';})()"""
                 "In at most 4 short plain sentences: what is the most likely cause, and exactly what should the user change or do so it works? Never mention passwords."
             val r = cheapChat(s, key, "You are a careful troubleshooting helper. Be concrete and brief.", q).trim()
             if (r.isBlank()) "" else {
-                TaskLog.add(TaskLine.Kind.FIX, "How to fix: " + r.take(200))
+                s.feed.add(TaskLine.Kind.FIX, "How to fix: " + r.take(200))
                 "\nLikely cause and fix: $r"
             }
         } catch (e: Exception) { "" }
@@ -590,18 +618,18 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
         navigate(s, startUrl)
         val total = tpl.steps.size
         for ((i, st) in tpl.steps.withIndex()) {
-            if (cancelled) return Replay(false, i, "stopped by the user", true)
-            progress = "Replaying step ${i + 1} of $total"
+            if (s.cancelled) return Replay(false, i, "stopped by the user", true)
+            s.progress = "Replaying step ${i + 1} of $total"
             val a = JSONObject(st.action.toString())
             for (k in listOf("text", "value", "name", "url", "file")) if (a.has(k)) a.put(k, fillTpl(a.optString(k), headers, values))
             val kind = a.optString("action").lowercase()
             when (kind) {
-                "offline_login" -> { if (offlineLogin(s).isNotEmpty()) TaskLog.add(TaskLine.Kind.INFO, "      replay ${i + 1}/$total: typed the saved login"); continue }
+                "offline_login" -> { if (offlineLogin(s).isNotEmpty()) s.feed.add(TaskLine.Kind.INFO, "      replay ${i + 1}/$total: typed the saved login"); continue }
                 "goto" -> {
                     val u = a.optString("url")
                     if (SiteVault.authorizedFor(s.ctx, u) == null) return Replay(false, i, "the address is not an authorised site")
                     navigate(s, if (u.startsWith("http")) u else "https://$u")
-                    TaskLog.add(TaskLine.Kind.INFO, "      replay ${i + 1}/$total: " + stepLabel(a, null))
+                    s.feed.add(TaskLine.Kind.INFO, "      replay ${i + 1}/$total: " + stepLabel(a, null))
                     continue
                 }
                 "scroll", "wait" -> { execute(s, a, uploads); continue }
@@ -609,12 +637,12 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
                     // A CAPTCHA step recorded earlier: give the page a moment to show it, hand over to the user, then press Sign in at once.
                     var st = unquote(js(s, CAPTCHA_STATE_JS, 2_000))
                     if (a.optBoolean("captcha")) { var tries = 0; while (st == "none" && tries++ < 15) { Thread.sleep(200); st = unquote(js(s, CAPTCHA_STATE_JS, 2_000)) } }
-                    if (a.optBoolean("captcha") && st != "pending") { TaskLog.add(TaskLine.Kind.INFO, "      replay ${i + 1}/$total: no CAPTCHA this time"); continue }
+                    if (a.optBoolean("captcha") && st != "pending") { s.feed.add(TaskLine.Kind.INFO, "      replay ${i + 1}/$total: no CAPTCHA this time"); continue }
                     when (awaitUser(s, a.optString("reason").ifBlank { "a step only you can do" })) {
                         "continue" -> {
                             runCatching { SessionKeeper.save(s.ctx, s.entry.domain, s.entry.username) } // the site now trusts this device: keep that at once
-                            TaskLog.add(TaskLine.Kind.INFO, "Saved trust cookies after your step: " + SessionKeeper.snapshot(s.entry.domain))
-                            if (unquote(js(s, FAST_SUBMIT_JS, 1_500)) == "submitted") TaskLog.add(TaskLine.Kind.OK, "      replay ${i + 1}/$total: pressed sign in right after your step")
+                            s.feed.add(TaskLine.Kind.INFO, "Saved trust cookies after your step: " + SessionKeeper.snapshot(s.entry.domain))
+                            if (unquote(js(s, FAST_SUBMIT_JS, 1_500)) == "submitted") s.feed.add(TaskLine.Kind.OK, "      replay ${i + 1}/$total: pressed sign in right after your step")
                             settle(s)
                             continue
                         }
@@ -634,12 +662,12 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
             }
             val loc = unquote(js(s, LOCATE_JS + "(" + JSONObject.quote(d.toString()) + ")"))
             if (loc != "ok") {
-                if (st.optional) { TaskLog.add(TaskLine.Kind.INFO, "      replay ${i + 1}/$total: skipped (not needed now)"); continue }
+                if (st.optional) { s.feed.add(TaskLine.Kind.INFO, "      replay ${i + 1}/$total: skipped (not needed now)"); continue }
                 return Replay(false, i, "could not find " + stepLabel(a, d).substringAfter(' ') + " ($loc)")
             }
             a.put("id", LOCATE_ID)
             val res = try { execute(s, a, uploads) } catch (e: Exception) { "Action failed: ${e.javaClass.simpleName}" }
-            TaskLog.add(if (isGood(res)) TaskLine.Kind.INFO else TaskLine.Kind.WARN, "      replay ${i + 1}/$total: " + stepLabel(a, d) + " — " + res.take(80))
+            s.feed.add(if (isGood(res)) TaskLine.Kind.INFO else TaskLine.Kind.WARN, "      replay ${i + 1}/$total: " + stepLabel(a, d) + " — " + res.take(80))
             if (!isGood(res)) return Replay(false, i, stepLabel(a, d) + " did not work: " + res.take(80))
         }
         val got = synchronized(s.downloaded) { s.downloaded.size - filesBefore }
@@ -667,8 +695,8 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
      * for each code in the sheet), until the sheet is finished. Each row is retried once; obvious data damage is fixed
      * and logged; rows that still fail get a plain explanation and a way to correct them in a results workbook.
      */
-    fun runBatch(ctx: Context, a: JSONObject): String {
-        if (running) return "Couldn’t start: a website task is already running. Say “stop the website task” first."
+    fun runBatch(ctx: Context, a: JSONObject, h: Handoff? = null): String {
+        if (sessions.size >= MAX_TASKS) return "Couldn’t start: $MAX_TASKS tasks are already running. Stop one or wait for one to finish."
         val template = a.optString("goal").trim()
         val siteArg = a.optString("site").ifBlank { a.optString("url") }
         if (template.isBlank()) return "Couldn’t start: no goal was given for the batch."
@@ -700,10 +728,9 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
 
         WebUsage.load(ctx)
         if (!WebUsage.allowed(ctx)) return "Website tasks are paused: today’s limit of ${WebUsage.limit} Gemini requests is used up (${WebUsage.used} used). Raise or switch off the limit in the assistant settings, or try again tomorrow."
-        running = true; cancelled = false; progress = "Starting batch"
         TaskReports.attach(ctx)
-        TaskLog.start("${rowNums.size} row(s) from ${src.name} on ${entry.domain}", rowNums.size)
-        TaskLog.add(TaskLine.Kind.INFO, "Goal per row: " + template.take(120))
+        begin(s, "${rowNums.size} row(s) from ${src.name} on ${entry.domain}", rowNums.size, h) ?: return "Couldn’t start: $MAX_TASKS tasks are already on screen."
+        s.feed.add(TaskLine.Kind.INFO, "Goal per row: " + template.take(120))
         val overallStart = System.currentTimeMillis()
         var failStreak = 0
         var stoppedEarly = ""
@@ -712,7 +739,7 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
         try {
             onMain { setup(s) }
             for ((idx, r) in rowNums.withIndex()) {
-                if (cancelled) { stoppedEarly = "stopped by you"; break }
+                if (s.cancelled) { stoppedEarly = "stopped by you"; break }
                 if (System.currentTimeMillis() - overallStart > 3 * 60 * 60_000L) { stoppedEarly = "3 hour limit reached"; break }
                 val original = (1..cols).map { c -> sheet.get(r, c)?.text.orEmpty() }
                 val cleaned = ArrayList<String>()
@@ -722,9 +749,9 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
                     cleaned += v
                     if (n != null) notes += "${headers[c]}: “${original[c]}” → “$v” ($n)"
                 }
-                TaskLog.setState("Row ${idx + 1} of ${rowNums.size} (Excel row $r)")
-                TaskLog.add(TaskLine.Kind.INFO, "── Excel row $r: " + headers.indices.joinToString(", ") { headers[it] + "=" + cleaned[it].take(30) })
-                notes.forEach { TaskLog.add(TaskLine.Kind.FIX, "Auto-fixed $it") }
+                s.feed.setState("Row ${idx + 1} of ${rowNums.size} (Excel row $r)")
+                s.feed.add(TaskLine.Kind.INFO, "── Excel row $r: " + headers.indices.joinToString(", ") { headers[it] + "=" + cleaned[it].take(30) })
+                notes.forEach { s.feed.add(TaskLine.Kind.FIX, "Auto-fixed $it") }
 
                 var values: List<String> = cleaned
                 var hint = ""
@@ -739,7 +766,7 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
                 var prefix: List<Rec> = emptyList()
                 val tpl = replayTpl
                 if (tpl != null) {
-                    TaskLog.add(TaskLine.Kind.INFO, "Replaying the recorded steps for this row (no AI request)")
+                    s.feed.add(TaskLine.Kind.INFO, "Replaying the recorded steps for this row (no AI request)")
                     val rp = try { replayRow(s, tpl, headers, values, startUrl, uploads) } catch (e: Exception) { Replay(false, 0, "replay error: " + e.javaClass.simpleName) }
                     WebUsage.saveReplay(ctx, rp.done)
                     val newNow = synchronized(s.downloaded) { s.downloaded.drop(filesBefore).joinToString { it.name } }
@@ -751,7 +778,7 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
                             if (values != original) res.what += " (cell values were auto-corrected: " + notes.joinToString("; ").ifBlank { "see the fixes in the log" } + ")"
                         }
                         else -> {
-                            TaskLog.add(TaskLine.Kind.WARN, "Replay stopped at step ${rp.done + 1}: ${rp.why}. The AI continues from this page.")
+                            s.feed.add(TaskLine.Kind.WARN, "Replay stopped at step ${rp.done + 1}: ${rp.why}. The AI continues from this page.")
                             prefix = tpl.steps.take(rp.done)
                             val doneList = prefix.joinToString("; ") { stepLabel(it.action, it.desc) }.ifBlank { "none" }
                             replayHint = "The first ${rp.done} step(s) of this row were already done on the phone (" + doneList.take(300) + "). The next recorded step did not match this page: " + rp.why.take(160) + ". You are on the page where it stopped: do only what is still missing for this row, then finish."
@@ -775,7 +802,7 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
                             val rc = s.recording
                             if (rc != null && s.recValid && rc.isNotEmpty()) {
                                 replayTpl = Template(rc.toList(), synchronized(s.downloaded) { s.downloaded.size - filesBefore })
-                                TaskLog.add(TaskLine.Kind.FIX, "Recorded ${rc.size} step(s): the next rows will replay them without the AI")
+                                s.feed.add(TaskLine.Kind.FIX, "Recorded ${rc.size} step(s): the next rows will replay them without the AI")
                             } else if (replayTpl != null && !s.recValid) replayTpl = null
                         }
                         "limit" -> { stoppedEarly = "daily Gemini request limit reached"; res = RowResult(r, values, "Not done", s.lastReason, "Today’s limit of Gemini requests for website tasks was reached.", "Raise or switch off the limit in the assistant settings, or run the rest tomorrow starting at Excel row $r (from_row $r).") }
@@ -787,10 +814,10 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
                             if (attempt == 1 && fix != null && fix.length() > 0) {
                                 val nv = values.toMutableList()
                                 var changed = false
-                                for (c in 0 until cols) if (fix.has(headers[c])) { val v = fix.optString(headers[c]); if (v.isNotBlank() && v != nv[c]) { TaskLog.add(TaskLine.Kind.FIX, "Fix tried: ${headers[c]} “${nv[c]}” → “$v”"); nv[c] = v; changed = true } }
+                                for (c in 0 until cols) if (fix.has(headers[c])) { val v = fix.optString(headers[c]); if (v.isNotBlank() && v != nv[c]) { s.feed.add(TaskLine.Kind.FIX, "Fix tried: ${headers[c]} “${nv[c]}” → “$v”"); nv[c] = v; changed = true } }
                                 if (changed) { values = nv; hint = "The previous attempt failed (${s.lastReason}). The value was corrected, try again." ; continue }
                             }
-                            if (attempt == 1) { hint = "The previous attempt failed: ${s.lastReason}. Try a different way (another button, reload the page, check the exact error text)."; TaskLog.add(TaskLine.Kind.WARN, "Retrying this row once…"); continue }
+                            if (attempt == 1) { hint = "The previous attempt failed: ${s.lastReason}. Try a different way (another button, reload the page, check the exact error text)."; s.feed.add(TaskLine.Kind.WARN, "Retrying this row once…"); continue }
                             res = RowResult(r, values, "Problem", s.lastReason, files = newFiles)
                         }
                     }
@@ -798,28 +825,28 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
                 }
                 val rr = res ?: RowResult(r, values, "Problem", "No result.")
                 results += rr
-                if (rr.status == "Done") { TaskLog.done++; failStreak = 0; TaskLog.add(TaskLine.Kind.OK, "Row $r done" + (if (rr.files.isNotBlank()) " · ${rr.files}" else "")) }
-                else if (rr.status == "Problem") { TaskLog.failed++; failStreak++; TaskLog.add(TaskLine.Kind.ERROR, "Row $r failed: " + rr.what.take(120)) }
+                if (rr.status == "Done") { s.feed.done++; failStreak = 0; s.feed.add(TaskLine.Kind.OK, "Row $r done" + (if (rr.files.isNotBlank()) " · ${rr.files}" else "")) }
+                else if (rr.status == "Problem") { s.feed.failed++; failStreak++; s.feed.add(TaskLine.Kind.ERROR, "Row $r failed: " + rr.what.take(120)) }
                 if (stoppedEarly.isNotEmpty()) break
                 if (failStreak >= 3) { stoppedEarly = "3 rows in a row failed, so the cause is probably the same for all of them"; break }
             }
 
             s.recording = null
-            if (replayedRows > 0 || WebUsage.used > 0) TaskLog.add(TaskLine.Kind.INFO, "Rows done by offline replay: $replayedRows · ${WebUsage.summary()}")
+            if (replayedRows > 0 || WebUsage.used > 0) s.feed.add(TaskLine.Kind.INFO, "Rows done by offline replay: $replayedRows · ${WebUsage.summary()}")
 
             // Explain every problem in plain words, once, in a single model call.
             val bad = results.filter { it.status == "Problem" || it.status == "Needs you" }.filter { it.problem.isBlank() }
             if (bad.isNotEmpty()) explainProblems(s, key, headers, bad)
 
             val out = writeResults(ctx, src, headers, results, rowNums.size, stoppedEarly)
-            TaskLog.finish("${TaskLog.done} done, ${TaskLog.failed} problem(s)" + (if (stoppedEarly.isNotEmpty()) " · stopped: $stoppedEarly" else ""), TaskLog.failed == 0 && stoppedEarly.isEmpty())
+            s.feed.finish("${s.feed.done} done, ${s.feed.failed} problem(s)" + (if (stoppedEarly.isNotEmpty()) " · stopped: $stoppedEarly" else ""), s.feed.failed == 0 && stoppedEarly.isEmpty())
             return out
         } catch (e: Exception) {
             val m = "Couldn’t finish the batch (${e.javaClass.simpleName}: ${e.message?.take(100)}). ${results.count { it.status == "Done" }} row(s) were done before that."
-            TaskLog.finish(m, false)
+            s.feed.finish(m, false)
             return m
         } finally {
-            running = false; progress = ""
+            sessions.remove(s)
             runCatching { onMain { teardown(s) } }
             s.dlPool.shutdown()
         }
@@ -850,7 +877,7 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
                 val o = arr.optJSONObject(i) ?: continue
                 val rr = bad.firstOrNull { it.row == o.optInt("row") } ?: continue
                 rr.problem = o.optString("problem"); rr.fix = o.optString("fix")
-                TaskLog.add(TaskLine.Kind.FIX, "Row ${rr.row}: ${rr.problem.take(90)} → ${rr.fix.take(110)}")
+                s.feed.add(TaskLine.Kind.FIX, "Row ${rr.row}: ${rr.problem.take(90)} → ${rr.fix.take(110)}")
             }
         } catch (e: Exception) { /* falls back to the raw reason in the results file */ }
         bad.forEach { if (it.problem.isBlank()) { it.problem = it.what; it.fix = "Check this row’s values and the site’s own error message, then run the row again." } }
@@ -958,6 +985,7 @@ $apiLines
 {"action":"need_user","reason":"..."}   (CAPTCHA / "I'm not a robot", a code sent by SMS/email/app, or anything only a human can do. The task pauses, the user does it on the page themselves and presses Continue, then you carry on from the same page)
 {"action":"fail","reason":"...","fixed_values":{"ColumnName":"corrected value"}}   (fixed_values ONLY when the page rejected an input and you are sure how to correct it, e.g. remove spaces or letters, add a missing digit)
 Add a short "thought" (under 10 words) to any action.
+A picture of the page as it looks right now may be attached to the current turn: use it to see the layout, pop-ups and images, but you still act only on the numbered elements.
 To save time, when several fields of the SAME form can be filled without the page changing, put the later ones in a "then" array on the first action, e.g. {"action":"type","id":5,"text":"a","then":[{"action":"type","id":6,"text":"b"},{"action":"select","id":7,"value":"x"},{"action":"click","id":8}]}. Only type / select / click go in "then", use ids from the current page, and a click (which may change the page) must be the last item. Do NOT use "then" for need_user, finish or fail.
 
 Rules:
@@ -1019,7 +1047,7 @@ return JSON.stringify({url:location.href,title:document.title,elements:out,text:
         if (o == null) return sb.append("The page could not be read yet.").toString()
         s.lastPage = o.optString("text")
         val u = o.optString("url")
-        if (u != s.lastUrl) { s.lastUrl = u; TaskLog.add(TaskLine.Kind.INFO, "Page: " + o.optString("title").take(60).ifBlank { u.take(60) }) }
+        if (u != s.lastUrl) { s.lastUrl = u; s.feed.add(TaskLine.Kind.INFO, "Page: " + o.optString("title").take(60).ifBlank { u.take(60) }) }
         sb.append("URL: ").append(o.optString("url")).append("\nTitle: ").append(o.optString("title")).append("\nElements:\n")
         val els = o.optJSONArray("elements") ?: JSONArray()
         for (i in 0 until els.length()) sb.append(els.optString(i)).append('\n')
@@ -1318,22 +1346,102 @@ return 'started';})"""
         return (svc.getSystemService(Context.WINDOW_SERVICE) as WindowManager) to WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
     }
 
-    /** The task that is running now (for [StepOverlay], which shows / hides the page as soon as "Watch page" is toggled). */
-    @Volatile private var current: Session? = null
-
-    /** Applies "Watch page" on / off right away (called every half second by [StepOverlay]); never while the page is handed to the user. */
+    /** Applies "Watch page" on / off right away for every running task (called every half second by [StepOverlay]); never while a page is handed to the user. */
     fun syncVisibility() {
-        val s = current ?: return
-        if (waitingForUser) return
-        applyVisibility(s)
+        for (s in sessions) {
+            if (s.waitingForUser) continue
+            runCatching { applyVisibility(s) }
+        }
     }
+
+    // ------------------------------------------------------------------ several tasks at once
+    /** Lets [runAsync] know that a task really started (or, when it did not, why). */
+    class Handoff {
+        val latch = CountDownLatch(1)
+        @Volatile var started = false
+        @Volatile var id = 0
+        @Volatile var domain = ""
+        @Volatile var feed: TaskFeed? = null
+        @Volatile var early = ""
+    }
+
+    /** Opens the task's own feed (its tile in the split screen) and registers it. Null when 9 tasks are already on screen. */
+    private fun begin(s: Session, title: String, total: Int, h: Handoff?): TaskFeed? {
+        val f = TaskLog.begin(title, total) ?: return null
+        s.feed = f
+        s.progress = "Starting"
+        f.onStop = { s.cancelled = true }
+        f.onResume = { if (s.waitingForUser) s.userSignal = 1 }
+        sessions += s
+        startTicker()
+        if (h != null) { h.id = f.id; h.domain = s.entry.domain; h.feed = f; h.started = true; h.latch.countDown() }
+        return f
+    }
+
+    /**
+     * Starts a website task (or a batch) in the background and returns at once, so the chat and the orb stay free and several tasks
+     * can run side by side (up to 9), each in its own tile. The result is announced out loud when the task ends.
+     */
+    fun runAsync(ctx: Context, a: JSONObject, batch: Boolean): String {
+        val app = ctx.applicationContext
+        val h = Handoff()
+        Thread({
+            TaskService.begin(app, "Website task")
+            val res = try { if (batch) runBatch(app, a, h) else run(app, a, h) } catch (e: Exception) { "Couldn’t run the task (${e.javaClass.simpleName})." }
+            TaskService.end(app)
+            if (!h.started) { h.early = res; h.latch.countDown() }
+            else {
+                val ok = h.feed?.status == "Finished"
+                Announcer.say(app, "Task ${h.id} on ${h.domain} " + (if (ok) "is finished: " else "stopped: ") + res.lineSequence().firstOrNull().orEmpty().take(160))
+            }
+        }, "neo-web-task").start()
+        h.latch.await(20, TimeUnit.SECONDS)
+        return if (h.started) "Started task ${h.id} on ${h.domain}. It runs in the background in its own tile of the split screen, and I will say when it finishes."
+        else h.early.ifBlank { "Couldn’t start the website task." }
+    }
+
+    private var ticking = false
+    private val shotTick = object : Runnable {
+        override fun run() {
+            if (sessions.isEmpty()) { ticking = false; return }
+            val now = System.currentTimeMillis()
+            for (t in sessions) {
+                if (now - t.lastShot < 2_000) continue
+                t.lastShot = now
+                runCatching { drawPage(t, 360)?.let { b -> t.feed.thumb = b.asImageBitmap() } }
+            }
+            main.postDelayed(this, 1_000)
+        }
+    }
+    private fun startTicker() { main.post { if (!ticking) { ticking = true; main.post(shotTick) } } }
+
+    /** Draws THIS task's own page (never another task's) into a bitmap [width] px wide. Main thread only. */
+    private fun drawPage(s: Session, width: Int): Bitmap? {
+        val v = s.wv
+        val w = v.width; val h = v.height
+        if (w <= 0 || h <= 0) return null
+        val sc = width.toFloat() / w
+        val bmp = Bitmap.createBitmap(width, maxOf(1, (h * sc).toInt()), Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp); c.scale(sc, sc); v.draw(c)
+        return bmp
+    }
+
+    /** A JPEG of this task's own page for this task's own Gemini request (also refreshes its tile). Null when the page cannot be drawn yet. */
+    private fun framePicture(s: Session): ByteArray? = try {
+        onMain {
+            drawPage(s, 720)?.let { b ->
+                val o = ByteArrayOutputStream(); b.compress(Bitmap.CompressFormat.JPEG, 70, o)
+                s.feed.thumb = b.asImageBitmap(); o.toByteArray()
+            }
+        }
+    } catch (e: Exception) { null }
 
     /** Draws the page full screen when the user taps "Watch page" (the steps are drawn over it by [StepOverlay]); otherwise it stays invisible. */
     private fun applyVisibility(s: Session) {
-        val want = TaskLog.showBrowser
+        val want = s.feed.showBrowser
         if (want == s.shown) return
         if (!s.overlayAdded) {
-            if (want && !s.warnedNoOverlay) { s.warnedNoOverlay = true; TaskLog.add(TaskLine.Kind.WARN, "To watch the page, allow “Display over other apps” for NEO PLUS (on Vivo also allow “Display pop-ups while running in the background” in the app’s permissions), or switch on the NEO PLUS controls in Accessibility.") }
+            if (want && !s.warnedNoOverlay) { s.warnedNoOverlay = true; s.feed.add(TaskLine.Kind.WARN, "To watch the page, allow “Display over other apps” for NEO PLUS (on Vivo also allow “Display pop-ups while running in the background” in the app’s permissions), or switch on the NEO PLUS controls in Accessibility.") }
             return
         }
         try {
@@ -1362,14 +1470,15 @@ return 'started';})"""
      */
     private fun awaitUser(s: Session, reason: String): String {
         if (!s.overlayAdded) return "unavailable"
-        userSignal = 0
+        s.userSignal = 0
         try { onMain { openHandoff(s, reason) } } catch (e: Exception) { runCatching { onMain { closeHandoff(s) } }; return "unavailable" }
-        waitingForUser = true
-        TaskLog.waiting = true
-        TaskLog.setState("Waiting for you")
+        s.waitingForUser = true
+        s.feed.question = reason.take(120)
+        s.feed.waiting = true
+        s.feed.setState("Waiting for you")
         // Bring the CAPTCHA to the middle of the visible page so the box and any picture challenge are easy to reach.
         Thread { runCatching { Thread.sleep(600); js(s, SCROLL_CAPTCHA_JS, 3_000) } }.start() // off the main thread: js() waits for it
-        Announcer.say(s.ctx, "I need you for a moment: $reason. Do it on the page, then tap Continue or say continue.")
+        Announcer.say(s.ctx, "Task ${s.feed.id} needs you: $reason. Do it on the page, then tap Continue or say continue task ${s.feed.id}.")
         val deadline = System.currentTimeMillis() + HANDOFF_MILLIS
         var lastAlert = System.currentTimeMillis()
         HandoffAlert.show(s.ctx, reason, (HANDOFF_MILLIS / 60_000).toInt(), false)
@@ -1379,15 +1488,15 @@ return 'started';})"""
         var lastSecs = -1
         try {
             while (true) {
-                if (cancelled) { result = "cancel"; break }
-                if (userSignal == 1) { result = "continue"; break }
+                if (s.cancelled) { result = "cancel"; break }
+                if (s.userSignal == 1) { result = "continue"; break }
                 // Only watches (never clicks): once the page itself reports the CAPTCHA as solved by you, carry on without Continue.
                 if (System.currentTimeMillis() - lastPoll >= 200) {
                     lastPoll = System.currentTimeMillis()
                     val st = unquote(js(s, CAPTCHA_STATE_JS, 1_000))
                     if (st == "pending") sawPending = true
                     else if (st == "solved" && sawPending) {
-                        TaskLog.add(TaskLine.Kind.OK, "CAPTCHA solved, continuing automatically")
+                        s.feed.add(TaskLine.Kind.OK, "CAPTCHA solved, continuing automatically")
                         result = "continue"; break // no extra wait: the answer expires quickly, so press Sign in at once
                     }
                 }
@@ -1399,8 +1508,9 @@ return 'started';})"""
                 Thread.sleep(100)
             }
         } finally {
-            waitingForUser = false
-            TaskLog.waiting = false
+            s.waitingForUser = false
+            s.feed.question = ""
+            s.feed.waiting = false
             HandoffAlert.clear(s.ctx)
             runCatching { onMain { closeHandoff(s) } }
         }
@@ -1479,7 +1589,7 @@ return 'started';})"""
         s.banner = null; s.bannerTime = null
         if (!s.overlayAdded) return
         val lp = s.wv.layoutParams as? WindowManager.LayoutParams ?: return
-        val watch = TaskLog.showBrowser
+        val watch = s.feed.showBrowser
         lp.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
         lp.y = 0; lp.gravity = Gravity.TOP
         if (watch) { lp.height = WindowManager.LayoutParams.MATCH_PARENT; lp.alpha = 1f }
@@ -1552,7 +1662,7 @@ return 'started';})"""
         CookieManager.getInstance().setAcceptThirdPartyCookies(wv, true)
         val before = SessionKeeper.snapshot(s.entry.domain)
         SessionKeeper.restore(s.ctx, s.entry.domain, s.entry.username)
-        TaskLog.add(TaskLine.Kind.INFO, "Cookies before restore: $before. After restore: " + SessionKeeper.snapshot(s.entry.domain))
+        s.feed.add(TaskLine.Kind.INFO, "Cookies before restore: $before. After restore: " + SessionKeeper.snapshot(s.entry.domain))
         wv.addJavascriptInterface(object {
             @JavascriptInterface fun saveBlob(name: String, mime: String, b64: String) {
                 try {
@@ -1603,7 +1713,6 @@ return 'started';})"""
         }
         if (!s.overlayAdded) { wv.measure(View_MEASURE_EXACT(1080), View_MEASURE_EXACT(1920)); wv.layout(0, 0, 1080, 1920) }
         wv.onResume()
-        current = s
         if (s.overlayAdded) StepOverlay.start(s.ctx)
     }
 
@@ -1611,8 +1720,7 @@ return 'started';})"""
     private fun View_MEASURE_EXACT(px: Int) = android.view.View.MeasureSpec.makeMeasureSpec(px, android.view.View.MeasureSpec.EXACTLY)
 
     private fun teardown(s: Session) {
-        if (current === s) current = null
-        StepOverlay.stop()
+        if (sessions.isEmpty()) StepOverlay.stop()
         runCatching { SessionKeeper.save(s.ctx, s.entry.domain, s.entry.username) }
         try {
             val wm = s.ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager

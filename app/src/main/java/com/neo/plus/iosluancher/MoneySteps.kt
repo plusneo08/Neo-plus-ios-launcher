@@ -180,7 +180,7 @@ object UssdFlow {
     private var appCtx: Context? = null
     private var simText = ""
 
-    private fun log(kind: TaskLine.Kind, text: String) { if (TaskLog.owner == "money") TaskLog.add(kind, text) }
+    private fun log(kind: TaskLine.Kind, text: String) { TaskLog.addOwned("money", kind, text) }
 
     /** The Stop button of the task feed. */
     fun stop() {
@@ -194,7 +194,7 @@ object UssdFlow {
         appCtx = app
         simText = sim
         if (!fromDialer) { stepNo = 0; logStep("dialled ${p.ussd} for ${MoneySteps.label(p.network)} on $sim") }
-        if (TaskLog.owner == "money") TaskLog.setState("Waiting for the network menu")
+        TaskLog.owned("money")?.setState("Waiting for the network menu")
         main.post {
             val now = System.currentTimeMillis()
             cur = p; list = rules(p, MoneySteps.networkForNumber(app, p.number) == "airtel"); used.clear()
@@ -214,7 +214,7 @@ object UssdFlow {
         stepNo++
         val said = "Step $stepNo: $text"
         log(TaskLine.Kind.STEP, said)
-        if (TaskLog.owner == "money") TaskLog.setState(said)
+        TaskLog.owned("money")?.setState(said)
     }
 
     /**

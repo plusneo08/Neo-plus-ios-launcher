@@ -181,7 +181,8 @@ fun LauncherRoot(
                 val rowH = iconSize + 36.dp
                 val rows = ((maxHeight - 72.dp) / rowH).toInt().coerceIn(3, 7)
                 val perPage = rows * 4
-                val firstCap = ((maxHeight - 72.dp - 120.dp - 366.dp) / rowH).toInt().coerceIn(1, 3) * 4
+                val taskRoom = TaskLog.homeRoom()   // room for the task tiles under the weather card
+                val firstCap = ((maxHeight - 72.dp - 120.dp - 366.dp - taskRoom) / rowH).toInt().coerceIn(1, 3) * 4
                 val homeList = vm.homeApps
                 val homePages = remember(homeList, perPage, firstCap) {
                     listOf(homeList.take(firstCap)) + homeList.drop(firstCap).chunked(perPage)
@@ -197,6 +198,7 @@ fun LauncherRoot(
                 }
                 BackHandler(enabled = true) {
                     when {
+                        TaskLog.splitOpen -> TaskLog.splitOpen = false
                         showGlass -> showGlass = false
                         menuOpen -> menuOpen = false
                         editing -> editing = false
@@ -349,6 +351,9 @@ fun LauncherRoot(
             }
         }
 
+        // Full-screen split of every task; the orb's microphone stays on while it is open
+        AnimatedVisibility(TaskLog.splitOpen, enter = fadeIn(), exit = fadeOut()) { TaskSplitScreen() }
+
         // iOS status bar: time, SIM signal + data type, Wi-Fi, battery %
         IosStatusBar(Modifier.align(Alignment.TopCenter))
     }
@@ -419,6 +424,8 @@ fun HomeGrid(apps: List<AppEntry>, vm: LauncherViewModel, iconSize: Dp, rowH: Dp
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp)) {
         if (withWidgets) {
             HomePanel(Modifier.fillMaxWidth().height(302.dp).padding(horizontal = 4.dp, vertical = 4.dp))
+            // One tile per running task (1 to 9), directly below the weather card; empty when no task is running
+            TaskTiles()
             Spacer(Modifier.weight(1f))   // the wallpaper's logo shows here
         }
         apps.chunked(4).forEach { row ->

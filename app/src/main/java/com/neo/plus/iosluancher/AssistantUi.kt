@@ -861,7 +861,7 @@ private fun TaskScreen() {
             }
             if (TaskLog.waiting) {
                 Box(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(50)).background(Color(0xFF30D158)).clickable { WebTask.resume() }.padding(vertical = 14.dp),
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(50)).background(Color(0xFF30D158)).clickable { TaskLog.focus?.resume() }.padding(vertical = 14.dp),
                     contentAlignment = Alignment.Center
                 ) { Text("Continue — I did the CAPTCHA / code", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold) }
             }
@@ -898,13 +898,13 @@ fun AssistantOverlay(a: AssistantViewModel, apps: List<AppEntry>, onClose: () ->
     val pending = remember { mutableStateListOf<Pending>() }
 
     /** Sends the typed or spoken instruction together with every file waiting in the box. */
-    fun sendWithFiles(text: String, voice: Boolean = false) {
+    fun sendWithFiles(text: String) {
         val files = pending.mapNotNull { it.file?.name }
         val body = text.trim().ifBlank { if (files.isNotEmpty()) "Here is a file for you." else "" }
         if (body.isBlank()) return
         val full = if (files.isEmpty()) body else body + "\n" + files.joinToString("\n") { "[Attached file: $it]" }
         pending.clear()
-        a.send(full, apps, voice)
+        a.send(full, apps)
     }
 
     // Close itself after an action took the user to another app / screen
@@ -932,7 +932,7 @@ fun AssistantOverlay(a: AssistantViewModel, apps: List<AppEntry>, onClose: () ->
         BeepMute.restore(ctx)
         voiceAt[0] = System.currentTimeMillis()
         listening = false; heard = ""; alts = emptyList()
-        if (!text.isNullOrBlank()) sendWithFiles(text.trim(), voice = true)
+        if (!text.isNullOrBlank()) sendWithFiles(text.trim())
     }
 
     DisposableEffect(recognizer) {
@@ -959,7 +959,7 @@ fun AssistantOverlay(a: AssistantViewModel, apps: List<AppEntry>, onClose: () ->
                 listening = false; heard = ""; alts = emptyList()
                 when (error) {
                     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
-                        if (partial.isNotBlank()) sendWithFiles(partial.trim(), voice = true)
+                        if (partial.isNotBlank()) sendWithFiles(partial.trim())
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
                         keepListening = false
                         Toast.makeText(ctx, "Allow the microphone for Neo Plus to talk to me.", Toast.LENGTH_LONG).show()

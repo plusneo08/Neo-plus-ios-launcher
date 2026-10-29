@@ -248,7 +248,10 @@ class OrbService : Service() {
         scheduleRestart(500)
     }
 
+    private val closeSplitPhrases = setOf("close tasks", "close the tasks", "close split", "close the split", "hide tasks", "hide the tasks", "close task view")
+
     override fun onDestroy() {
+        TaskLog.micOn = false
         alive = false
         instance = null
         main.removeCallbacksAndMessages(null)
@@ -522,8 +525,23 @@ class OrbService : Service() {
     private var peekUntil = 0L      // the wake phrase was just heard in a half-finished sentence
     private var dragging = false    // the orb is being moved to the ✕
 
-    private fun awake() = st == St.THINKING || st == St.SPEAKING || engaged() || dragging ||
+    private fun awake() = st == St.THINKING || st == St.SPEAKING || engaged() || dragging || TaskLog.splitOpen ||
         System.currentTimeMillis() < armedUntil || System.currentTimeMillis() < peekUntil || sub?.visibility == View.VISIBLE
+
+    /**
+     * Woken while tasks are running: shows the split screen of every task (the launcher comes to the front) and keeps the
+     * microphone on, with no wake phrase needed, until the split screen is closed ("close tasks" or the Close button).
+     */
+    private fun openSplit() {
+        if (TaskLog.activeCount() == 0 && !TaskLog.splitOpen) return
+        TaskLog.splitOpen = true
+        TaskLog.micOn = true
+        try {
+            packageManager.getLaunchIntentForPackage(packageName)?.let {
+                startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+            }
+        } catch (e: Exception) { }
+    }
 
     private fun updateVisibility() {
         val root = orbRoot ?: return
@@ -605,6 +623,7 @@ class OrbService : Service() {
                 }
             }
             else -> { // wake mode: tapping means "talk now", no wake phrase needed
+                openSplit()
                 armedUntil = now + 9000
                 cancelListening()
                 subtitle("Listening…", true)
@@ -677,6 +696,7 @@ class OrbService : Service() {
             beepGuard()
             r.startListening(intent)
             setState(St.LISTENING)
+            TaskLog.micOn = TaskLog.splitOpen
         } catch (e: Exception) {
             errorStreak++
             scheduleRestart(backoff())
@@ -732,7 +752,7 @@ class OrbService : Service() {
 
         override fun onPartialResults(partialResults: Bundle?) {
             if (!alive || st != St.LISTENING) return
-            if (mode == "wake" && !engaged() && System.currentTimeMillis() >= armedUntil) {
+            if (mode == "wake" && !engaged() && !TaskLog.splitOpen && System.currentTimeMillis() >= armedUntil) {
                 // standby: as soon as the wake phrase shows up the orb appears and shows that it is listening
                 val heard = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
                 if (!heard.isNullOrBlank() && (wakeRegex.containsMatchIn(heard) || WakeCode.re.containsMatchIn(heard)) && System.currentTimeMillis() >= peekUntil) {
@@ -791,7 +811,7 @@ class OrbService : Service() {
     private fun handle(raw: String) {
         val text = raw.trim()
         val t = text.lowercase(Locale.ROOT).trim().trimEnd('.', '!', '?', ',')
-        if (mode == "manual" || engaged() || System.currentTimeMillis() < armedUntil || wakeRegex.containsMatchIn(text)) {
+        if (mode == "manual" || engaged() || TaskLog.splitOpen || System.currentTimeMillis() < armedUntil || wakeRegex.containsMatchIn(text)) {
             subtitle(text, true)
         }
 
@@ -823,6 +843,7 @@ class OrbService : Service() {
             val now = System.currentTimeMillis()
             val code = WakeCode.re.find(text)
             val m = if (code == null) wakeRegex.find(text) else null
+            if (code != null || m != null) openSplit()
             if (code != null) {
                 // the code “147”, alone or followed by the request
                 cmd = code.groupValues[1].trim().trimStart(',', '.', ' ')
@@ -841,7 +862,7 @@ class OrbService : Service() {
                     speakReply("Yes?")
                     return
                 }
-            } else if (now >= armedUntil) {
+            } else if (now >= armedUntil && !TaskLog.splitOpen) {
                 setState(St.IDLE) // not for me: ignore it and keep waiting
                 scheduleRestart(100)
                 return
@@ -854,9 +875,16 @@ class OrbService : Service() {
             speakReply(if (LangGuess.isChichewa(tc)) "Tsalani bwino." else "Okay, goodbye.") { stopSelf() }
             return
         }
+        if (TaskLog.splitOpen && tc in closeSplitPhrases) {
+            TaskLog.splitOpen = false; TaskLog.micOn = false
+            speakReply("Okay, I closed the tasks.")
+            return
+        }
+        if (TaskLog.visible().isNotEmpty() && Regex("\\b(status|what is happening|what's happening|how are the tasks|what are the tasks doing|task status)\\b").containsMatchIn(tc)) {
+            speakReply(TaskLog.summary()); return
+        }
         WebTask.handleSpoken(cmd)?.let { speakReply(it); return }
         // Split-screen tasks: a task spoken now opens its own pane (or a pane is closed / split mode is switched).
-        SplitTasks.onVoice(applicationContext, cmd, OrbBridge.apps())?.let { speakReply(it); return }
         process(cmd)
     }
 

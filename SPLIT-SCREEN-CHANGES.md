@@ -1,11 +1,12 @@
-# Split-screen tasks (new)
-NEW      SplitTasks.kt   one pane per task, grid re-divides on every new task (1 full, 2 stacked, 3 rows, 4 = 2x2, 7-9 = 3x3, 10+ keeps going)
-CHANGED  OrbService.kt   voice hook before process(); raiseToFront() keeps the orb above the panes
-CHANGED  Assistant.kt    typed commands ignored while split is on; app_task / web_task / web_batch take turns on the one real screen
-CHANGED  AssistantUi.kt  mic paths marked voice = true, typed path stays false
-
-Say (after "Hey Neo" / 147): "new task <request>", "also <request>", "close task 2", "close all tasks", "close finished tasks", "split screen on/off".
-Orb starts by itself in hidden standby the first time a pane opens. NOT compiled here: send me the first build error.
+# Parallel tasks with split-screen tiles (replaces the old SplitTasks.kt panes)
+REMOVED  SplitTasks.kt   (its "take turns on one screen" panes and voice commands are gone)
+CHANGED  TaskLog.kt      one TaskFeed per task (up to 9) + tile grid: TaskTiles (home, under the weather card) and TaskSplitScreen (full screen)
+CHANGED  WebTask.kt      every task has its own session, feed, cancel / continue flags and page picture; runAsync() starts tasks in the background;
+                         each task sends only ITS OWN page picture to Gemini. Your backend / API mode is kept.
+CHANGED  Assistant.kt    web_task / web_batch start in the background ("wait":true = old blocking behaviour); stop/continue take "task":N
+CHANGED  OrbService.kt   waking the orb (Hey Neo / 147 / tap) while tasks run opens the split screen and keeps the mic on until "close tasks"
+CHANGED  Home.kt, Money.kt, MoneySteps.kt, AssistantUi.kt   tiles under the weather card; transfers keep their own tile
+Say: "task 2 continue", "stop task 3", "status", "close tasks".   NOT compiled here: send me the first build error.
 
 # Contacts, home widgets, chat notifications (new)
 NEW      ContactEditor.kt   in-app contact editor: name, number, email, save to Phone / SIM 1 / SIM 2 / each email account

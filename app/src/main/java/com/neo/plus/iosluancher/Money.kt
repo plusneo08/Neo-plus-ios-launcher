@@ -81,14 +81,14 @@ object MoneySender {
             ussd, chosen.slot ?: 0, System.currentTimeMillis(), net.orEmpty(), withFee, if (net != null) netBy else "")
         pending = p
         MoneyCmd.clear()
-        if (!TaskLog.active || TaskLog.owner == "money") {   // never replaces the feed of a running website task
-            TaskLog.start("Send ${p.currency} ${p.amount} to ${p.name}")
-            TaskLog.owner = "money"; TaskLog.overlay = false
-            TaskLog.onStop = { cancel(p.id) }
-            TaskLog.add(TaskLine.Kind.INFO, "Recipient ${p.name} (…${p.number.takeLast(3)})" +
-                (if (p.network.isNotEmpty()) ", " + MoneySteps.label(p.network) + ", " + (if (p.withFee) "with" else "without") + " cashout fee" else ""))
-            TaskLog.add(TaskLine.Kind.WARN, "Waiting for you: tap Authorise on the screen. Nothing is sent before that.")
-            TaskLog.setState("Waiting for you to authorise")
+        if (TaskLog.owned("money") == null) {   // a transfer has its own tile; it never touches a website task's feed
+            TaskLog.begin("Send ${p.currency} ${p.amount} to ${p.name}", 0, "money")?.let { f ->
+                f.onStop = { cancel(p.id) }
+                f.add(TaskLine.Kind.INFO, "Recipient ${p.name} (…${p.number.takeLast(3)})" +
+                    (if (p.network.isNotEmpty()) ", " + MoneySteps.label(p.network) + ", " + (if (p.withFee) "with" else "without") + " cashout fee" else ""))
+                f.add(TaskLine.Kind.WARN, "Waiting for you: tap Authorise on the screen. Nothing is sent before that.")
+                f.setState("Waiting for you to authorise")
+            }
         }
         val ok = app.safeStart(Intent(app, MoneyAuthActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("id", p.id))
         if (!ok) {
@@ -135,10 +135,10 @@ object MoneySender {
         // With the accessibility service on, it does the steps a person would: opens the dialer, types the code, presses Call.
         if (p.network.isNotEmpty() && IosControlService.instance != null) {
             audit(app, p)
-            if (TaskLog.owner == "money") {
-                TaskLog.add(TaskLine.Kind.OK, "You authorised the transfer")
-                TaskLog.overlay = true
-                TaskLog.onStop = { UssdFlow.stop() }
+            TaskLog.owned("money")?.let { f ->
+                f.add(TaskLine.Kind.OK, "You authorised the transfer")
+                f.overlay = true
+                f.onStop = { UssdFlow.stop() }
                 StepOverlay.start(app)
             }
             UssdFlow.dial(app, p, chosen, chosen.slot?.let { "SIM $it" } ?: "the phone’s default SIM", intent)
@@ -149,10 +149,10 @@ object MoneySender {
         if (!started) TaskLog.endOwned("money", "Couldn’t start the code. Nothing was sent.", false)
         if (started && p.network.isEmpty()) TaskLog.endOwned("money", "Dialling now. Type your PIN in the network’s box to finish.", true)
         if (started && p.network.isNotEmpty()) {
-            if (TaskLog.owner == "money") {
-                TaskLog.add(TaskLine.Kind.OK, "You authorised the transfer")
-                TaskLog.overlay = true
-                TaskLog.onStop = { UssdFlow.stop() }
+            TaskLog.owned("money")?.let { f ->
+                f.add(TaskLine.Kind.OK, "You authorised the transfer")
+                f.overlay = true
+                f.onStop = { UssdFlow.stop() }
                 StepOverlay.start(app)
             }
             UssdFlow.begin(app, p, chosen.slot?.let { "SIM $it" } ?: "the phone’s default SIM")
