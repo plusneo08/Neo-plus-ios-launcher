@@ -89,6 +89,10 @@ class ChatThread(val key: String, val pkg: String, val app: String, val title: S
     @Volatile var open: PendingIntent? = null
     @Volatile var sbnKey: String = ""
     @Volatile var updated = 0L
+    /** The app's own "Mark as read" button, when its notification has one. */
+    @Volatile var markRead: Notification.Action? = null
+    /** The sender's picture from the notification, when the app gives one. */
+    @Volatile var avatar: android.graphics.drawable.Drawable? = null
 }
 
 object NotifChats {
@@ -105,7 +109,8 @@ object NotifChats {
     @Synchronized
     fun record(ctx: Context, sbn: StatusBarNotification): Pair<ChatThread, Boolean>? {
         val n = sbn.notification ?: return null
-        if (sbn.packageName == ctx.packageName) return null
+        // Neo's own texts (it is the default Messages app) go through the same card; every other notification of ours is ignored
+        if (sbn.packageName == ctx.packageName && n.channelId != "neo_msgs_in" && n.channelId != "neo_msgs_card") return null
         val skip = Notification.FLAG_ONGOING_EVENT or Notification.FLAG_GROUP_SUMMARY or Notification.FLAG_FOREGROUND_SERVICE
         if (n.flags and skip != 0) return null
         val ex = n.extras ?: return null
@@ -118,6 +123,12 @@ object NotifChats {
         val key = keyOf(sbn.packageName, title)
         val t = threads.getOrPut(key) { ChatThread(key, sbn.packageName, app, title) }
         if (reply != null) t.reply = reply
+        val mr = n.actions?.firstOrNull { a ->
+            val label = a.title?.toString().orEmpty()
+            a.actionIntent != null && a.remoteInputs.isNullOrEmpty() && label.contains("read", true) && !label.contains("unread", true)
+        }
+        if (mr != null) t.markRead = mr
+        try { n.getLargeIcon()?.loadDrawable(ctx)?.let { t.avatar = it } } catch (e: Throwable) { }
         t.open = n.contentIntent
         t.sbnKey = sbn.key
 
@@ -244,58 +255,132 @@ object ReplyCard {
         dismiss()
         try {
             val w = c.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            val green = AColor.rgb(37, 211, 102)
+            val sub = AColor.rgb(134, 150, 160)
+            val outer = LinearLayout(c).apply { setPadding(dp(c, 10), 0, dp(c, 10), 0) }
             val box = LinearLayout(c).apply {
                 orientation = LinearLayout.VERTICAL
-                background = GradientDrawable().apply { setColor(AColor.argb(240, 22, 28, 44)); cornerRadius = dp(c, 22).toFloat(); setStroke(dp(c, 1), AColor.argb(120, 56, 189, 248)) }
-                setPadding(dp(c, 14), dp(c, 12), dp(c, 14), dp(c, 12))
-                elevation = dp(c, 10).toFloat()
+                background = GradientDrawable().apply { setColor(AColor.argb(246, 31, 44, 52)); cornerRadius = dp(c, 18).toFloat() }
+                setPadding(dp(c, 14), dp(c, 12), dp(c, 14), dp(c, 6))
+                elevation = dp(c, 12).toFloat()
             }
-            val head = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-            val name = TextView(c).apply {
-                this.text = "${t.title}  ·  ${t.app}"; setTextColor(AColor.WHITE); textSize = 15f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+            outer.addView(box, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+
+            fun openChat() {
+                dismiss()
+                var ok = false
+                val pi = t.open
+                if (pi != null) ok = try { pi.send(); true } catch (e: Exception) { false }
+                if (!ok) try { c.startActivity(Intent(c, NotifChatActivity::class.java).putExtra("thread", t.key).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
+            }
+
+            // ---- top: picture, "App • now", name, message (tap = open the chat, swipe = dismiss) ----
+            val head = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.TOP }
+            val avatar = android.widget.ImageView(c).apply {
+                scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(AColor.rgb(42, 57, 66)) }
+                outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
+                clipToOutline = true
+                val d = t.avatar ?: try { c.packageManager.getApplicationIcon(t.pkg) } catch (e: Exception) { null }
+                if (d != null) setImageDrawable(d)
+            }
+            val col = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
+            col.addView(TextView(c).apply { this.text = "${t.app}  •  now"; setTextColor(sub); textSize = 12f; maxLines = 1 })
+            col.addView(TextView(c).apply {
+                this.text = t.title; setTextColor(AColor.WHITE); textSize = 16f; typeface = android.graphics.Typeface.DEFAULT_BOLD
                 maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+            })
+            col.addView(TextView(c).apply {
+                this.text = text; setTextColor(AColor.argb(225, 255, 255, 255)); textSize = 15f; maxLines = 3; ellipsize = TextUtils.TruncateAt.END
+            })
+            val typing = TextView(c).apply { setTextColor(green); textSize = 12f; visibility = View.GONE; setPadding(0, dp(c, 2), 0, 0) }
+            col.addView(typing)
+            head.addView(avatar, LinearLayout.LayoutParams(dp(c, 44), dp(c, 44)).apply { rightMargin = dp(c, 12) })
+            head.addView(col, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            var downX = 0f
+            var downY = 0f
+            head.setOnTouchListener { _, e ->
+                when (e.action) {
+                    android.view.MotionEvent.ACTION_DOWN -> { downX = e.rawX; downY = e.rawY; true }
+                    android.view.MotionEvent.ACTION_MOVE -> {
+                        val dx = e.rawX - downX
+                        box.translationX = dx
+                        box.alpha = (1f - kotlin.math.abs(dx) / dp(c, 320)).coerceIn(0.2f, 1f)
+                        true
+                    }
+                    android.view.MotionEvent.ACTION_UP -> {
+                        val dx = e.rawX - downX
+                        val dy = e.rawY - downY
+                        if (kotlin.math.abs(dx) > dp(c, 90) || dy < -dp(c, 40)) dismiss()
+                        else {
+                            box.translationX = 0f; box.alpha = 1f
+                            if (kotlin.math.abs(dx) < dp(c, 8) && kotlin.math.abs(dy) < dp(c, 8)) openChat()
+                        }
+                        true
+                    }
+                    android.view.MotionEvent.ACTION_CANCEL -> { box.translationX = 0f; box.alpha = 1f; true }
+                    else -> false
+                }
             }
-            val x = TextView(c).apply { this.text = "✕"; setTextColor(AColor.argb(190, 255, 255, 255)); textSize = 16f; setPadding(dp(c, 10), 0, 0, 0); setOnClickListener { dismiss() } }
-            head.addView(name, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)); head.addView(x)
-            val body = TextView(c).apply { this.text = text; setTextColor(AColor.argb(235, 255, 255, 255)); textSize = 14f; maxLines = 3; ellipsize = TextUtils.TruncateAt.END; setPadding(0, dp(c, 4), 0, 0) }
-            val typing = TextView(c).apply { setTextColor(AColor.rgb(48, 209, 88)); textSize = 12f; visibility = View.GONE; setPadding(0, dp(c, 2), 0, 0) }
-            val status = TextView(c).apply { setTextColor(AColor.argb(190, 255, 255, 255)); textSize = 12f; visibility = View.GONE; setPadding(0, dp(c, 4), 0, 0) }
+
+            // ---- bottom: "Reply" and "Mark as read" (WhatsApp style) ----
+            fun textBtn(label: String, onTap: () -> Unit) = TextView(c).apply {
+                this.text = label; setTextColor(green); textSize = 14f; typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setPadding(dp(c, 2), dp(c, 12), dp(c, 22), dp(c, 10)); setOnClickListener { onTap() }
+            }
+            val actions = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL }
+
+            // ---- the inline reply field with the round send button ----
+            val status = TextView(c).apply { setTextColor(sub); textSize = 12f; visibility = View.GONE; setPadding(dp(c, 4), dp(c, 4), 0, 0) }
             val input = EditText(c).apply {
-                hint = "Reply to ${t.title}"; setHintTextColor(AColor.argb(120, 255, 255, 255)); setTextColor(AColor.WHITE); textSize = 15f
+                hint = "Reply"; setHintTextColor(sub); setTextColor(AColor.WHITE); textSize = 15f
                 inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                maxLines = 3; visibility = View.GONE
-                background = GradientDrawable().apply { setColor(AColor.argb(60, 255, 255, 255)); cornerRadius = dp(c, 16).toFloat() }
-                setPadding(dp(c, 12), dp(c, 8), dp(c, 12), dp(c, 8))
+                maxLines = 4
+                background = GradientDrawable().apply { setColor(AColor.rgb(42, 57, 66)); cornerRadius = dp(c, 24).toFloat() }
+                setPadding(dp(c, 16), dp(c, 10), dp(c, 16), dp(c, 10))
             }
-            val row = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(c, 10), 0, 0) }
-            lateinit var replyBtn: TextView
-            lateinit var sendBtn: TextView
-            replyBtn = pill(c, "Reply", AColor.rgb(10, 132, 255)) {
+            val sendBtn = android.widget.ImageView(c).apply {
+                setImageResource(android.R.drawable.ic_menu_send); setColorFilter(AColor.WHITE)
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(green) }
+                setPadding(dp(c, 11), dp(c, 11), dp(c, 11), dp(c, 11))
+            }
+            val replyRow = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM; setPadding(0, dp(c, 10), 0, dp(c, 6)); visibility = View.GONE }
+            replyRow.addView(input, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            replyRow.addView(sendBtn, LinearLayout.LayoutParams(dp(c, 44), dp(c, 44)).apply { leftMargin = dp(c, 8) })
+
+            val replyBtn = textBtn("Reply") {
                 interacting = true
-                input.visibility = View.VISIBLE; sendBtn.visibility = View.VISIBLE; replyBtn.visibility = View.GONE
+                actions.visibility = View.GONE; replyRow.visibility = View.VISIBLE
                 // the card takes the keyboard only now, so it never steals focus from the app underneath before that
-                lp?.let { p -> p.flags = p.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv(); p.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN; try { w.updateViewLayout(box, p) } catch (e: Exception) { } }
+                lp?.let { p ->
+                    p.flags = p.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+                    p.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN or WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE
+                    try { w.updateViewLayout(outer, p) } catch (e: Exception) { }
+                }
                 input.requestFocus()
                 input.postDelayed({ (c.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(input, 0) }, 150)
             }
-            sendBtn = pill(c, "Send", AColor.rgb(48, 209, 88)) {
+            val readBtn = textBtn("Mark as read") {
+                var ok = false
+                val a = t.markRead
+                if (a != null) ok = try { a.actionIntent.send(); true } catch (e: Exception) { false }
+                if (!ok) try { NeoNotificationService.instance?.cancelNotification(t.sbnKey) } catch (e: Exception) { }
+                dismiss()
+            }
+            actions.addView(replyBtn); actions.addView(readBtn)
+
+            sendBtn.setOnClickListener {
                 val msg = input.text.toString().trim()
                 if (msg.isNotEmpty()) {
                     status.visibility = View.VISIBLE; status.text = "Sending…"
                     NotifChats.send(c, t, msg) { ok ->
-                        status.text = if (ok) "Sent ✓" else "Couldn’t send. Open the chat."
+                        status.text = if (ok) "Sent ✓" else "Couldn’t send. Tap the message to open the chat."
                         if (ok) { input.setText(""); main.postDelayed({ dismiss() }, 900) }
                     }
                 }
-            }.apply { visibility = View.GONE }
-            val chat = pill(c, "Open chat", AColor.argb(110, 255, 255, 255)) {
-                c.startActivity(Intent(c, NotifChatActivity::class.java).putExtra("thread", t.key).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                dismiss()
             }
-            row.addView(replyBtn); row.addView(sendBtn)
-            row.addView(View(c), LinearLayout.LayoutParams(dp(c, 8), 1))
-            row.addView(chat)
-            box.addView(head); box.addView(body); box.addView(typing); box.addView(input); box.addView(status); box.addView(row)
+
+            box.addView(head); box.addView(actions); box.addView(replyRow); box.addView(status)
 
             val p = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT,
@@ -303,8 +388,6 @@ object ReplyCard {
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT
             ).apply { gravity = Gravity.TOP; this.x = 0; this.y = dp(c, 40) }
-            // small side margins
-            val outer = LinearLayout(c).apply { setPadding(dp(c, 10), 0, dp(c, 10), 0); addView(box, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)) }
             w.addView(outer, p)
             wm = w; lp = p; card = outer; typingView = typing; currentKey = t.key; interacting = false
             // keep the typing line fresh, and close the card after a while if nobody touched it
@@ -315,7 +398,7 @@ object ReplyCard {
                     val s = TypingWatch.statusFor(t.key)
                     typing.visibility = if (s != null) View.VISIBLE else View.GONE
                     if (s != null) typing.text = "${t.title} is $s"
-                    if (!interacting && System.currentTimeMillis() - started > 14_000L) { dismiss(); return }
+                    if (!interacting && System.currentTimeMillis() - started > 10_000L) { dismiss(); return }
                     main.postDelayed(this, 500)
                 }
             }

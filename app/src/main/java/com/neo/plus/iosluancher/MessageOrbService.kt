@@ -41,19 +41,12 @@ import android.widget.TextView
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.abs
 
-/** A text arrived: float an orb carrying it over whatever is on screen. */
+/**
+ * A text arrived. This used to float a second orb over the screen, which doubled up with the assistant's own orb and the reply
+ * card. Texts now show only the WhatsApp-style reply card (NotifChat.kt), so this receiver deliberately does nothing.
+ */
 class SmsOrbReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
-        val app = context.applicationContext
-        if (!MessageOrbs.enabled(app) || !MessageOrbs.canShow(app)) return
-        val parts = try { Telephony.Sms.Intents.getMessagesFromIntent(intent) } catch (e: Exception) { null }
-        if (parts == null || parts.isEmpty()) return
-        val from = parts[0].displayOriginatingAddress ?: parts[0].originatingAddress ?: ""
-        val body = parts.joinToString("") { it.displayMessageBody ?: "" }
-        if (body.isBlank()) return
-        MessageOrbs.show(app, from, body)
-    }
+    override fun onReceive(context: Context, intent: Intent) { }
 }
 
 /** One text waiting in an orb: who it is shown as, the raw number to answer, and the text. */

@@ -368,7 +368,12 @@ private const val NOTIF_KEY = "reply_text"
 private fun notifyIncoming(ctx: Context, from: String, body: String) {
     try {
         val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-        if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(android.app.NotificationChannel("neo_msgs_in", "Messages", android.app.NotificationManager.IMPORTANCE_HIGH))
+        if (Build.VERSION.SDK_INT >= 26) {
+            nm.createNotificationChannel(android.app.NotificationChannel("neo_msgs_in", "Messages", android.app.NotificationManager.IMPORTANCE_HIGH))
+            // no system pop-up on this one: the reply card is the pop-up, so a text never shows twice
+            nm.createNotificationChannel(android.app.NotificationChannel("neo_msgs_card", "Messages (reply card)", android.app.NotificationManager.IMPORTANCE_DEFAULT))
+        }
+        val cardOn = try { ReplyCard.enabled(ctx) && android.provider.Settings.canDrawOverlays(ctx) && NeoNotificationService.instance != null } catch (e: Throwable) { false }
         val id = from.hashCode()
         val who = displayNameFor(ctx, from)
         val open = Intent(ctx, NeoMessagesActivity::class.java).setData(Uri.fromParts("smsto", from, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -385,7 +390,7 @@ private fun notifyIncoming(ctx: Context, from: String, body: String) {
         val readAction = android.app.Notification.Action.Builder(
             android.graphics.drawable.Icon.createWithResource(ctx, android.R.drawable.ic_menu_view), "Mark as read", action(NOTIF_READ, 2, false)
         ).build()
-        val b = android.app.Notification.Builder(ctx, "neo_msgs_in")
+        val b = android.app.Notification.Builder(ctx, if (cardOn) "neo_msgs_card" else "neo_msgs_in")
             .setSmallIcon(android.R.drawable.stat_notify_chat).setContentTitle(who).setContentText(body)
             .setStyle(android.app.Notification.BigTextStyle().bigText(body)).setAutoCancel(true).setContentIntent(pi)
             .addAction(replyAction).addAction(readAction)
@@ -804,7 +809,7 @@ private fun ListScreen(
         ChatBackdrop(bg, th0.text == Color.White, th0.accent)
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             val lctx = LocalContext.current
-            var orbsOn by remember { mutableStateOf(MessageOrbs.enabled(lctx)) }
+            var orbsOn by remember { mutableStateOf(ReplyCard.enabled(lctx)) }
             val unread = threads.count { t -> unreadFor(lctx, t) > 0 }
             Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Image(
@@ -821,16 +826,16 @@ private fun ListScreen(
                     )
                 }
                 Row(Modifier.clip(RoundedCornerShape(50)).background(th.card).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    TopIcon(Icons.Filled.Notifications, th, "Floating orbs for new messages", orbsOn) {
+                    TopIcon(Icons.Filled.Notifications, th, "Pop-up reply card for new messages", orbsOn) {
                         if (orbsOn) {
-                            orbsOn = false; MessageOrbs.setEnabled(lctx, false)
-                            android.widget.Toast.makeText(lctx, "New messages will not float as orbs", android.widget.Toast.LENGTH_SHORT).show()
+                            orbsOn = false; ReplyCard.setEnabled(lctx, false)
+                            android.widget.Toast.makeText(lctx, "New messages will not pop up a reply card", android.widget.Toast.LENGTH_SHORT).show()
                         } else {
-                            orbsOn = true; MessageOrbs.setEnabled(lctx, true)
-                            if (!MessageOrbs.canShow(lctx)) {
-                                android.widget.Toast.makeText(lctx, "Allow “Display over other apps” for Neo Plus so the orbs can float", android.widget.Toast.LENGTH_LONG).show()
+                            orbsOn = true; ReplyCard.setEnabled(lctx, true)
+                            if (!android.provider.Settings.canDrawOverlays(lctx)) {
+                                android.widget.Toast.makeText(lctx, "Allow “Display over other apps” for Neo Plus so the reply card can pop up", android.widget.Toast.LENGTH_LONG).show()
                                 try { lctx.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + lctx.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
-                            } else android.widget.Toast.makeText(lctx, "New messages will float as orbs", android.widget.Toast.LENGTH_SHORT).show()
+                            } else android.widget.Toast.makeText(lctx, "New messages will pop up a reply card", android.widget.Toast.LENGTH_SHORT).show()
                         }
                     }
                     TopIcon(Icons.Filled.PhotoLibrary, th, "Background", false, onBg)
