@@ -7,11 +7,37 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
+
+/**
+ * Fits the artwork to a taller screen without cropping and without squashing the logo: the picture is scaled to the screen width,
+ * the middle band (the logo, 27%..68% of the height) keeps its true proportions, and only the top band (sky) and the bottom band
+ * (ground) are stretched a little to take up the extra height. Each entry is [srcY, srcHeight, dstY, dstHeight].
+ * Returns null when the screen is not taller than the artwork (then the artwork is simply stretched to the screen).
+ */
+internal fun neoFillBands(sw: Int, sh: Int, w: Int, h: Int): List<IntArray>? {
+    val scale = w.toFloat() / sw
+    if (sh * scale >= h) return null
+    val topH = (sh * 0.27f).toInt()
+    val botStart = (sh * 0.68f).toInt()
+    val midH = botStart - topH
+    val botH = sh - botStart
+    val midDst = Math.round(midH * scale)
+    val remaining = h - midDst
+    if (remaining <= 0) return null
+    val topDst = Math.round(remaining * topH.toFloat() / (topH + botH))
+    val botDst = remaining - topDst
+    return listOf(
+        intArrayOf(0, topH, 0, topDst),
+        intArrayOf(topH, midH, topDst, midDst),
+        intArrayOf(botStart, botH, topDst + midDst, botDst),
+    )
+}
 
 /**
  * The Neo Plus home-screen wallpaper: the space artwork by default, or the black-and-gold artwork (Edit bubble).
@@ -23,7 +49,7 @@ object NeoWallpaper {
     const val SPACE = 0
     const val GOLD = 1
 
-    /** The artwork, centre-cropped to the screen (it is 1024 x 1536), with a light veil at the bottom so icon labels stay readable. */
+    /** The artwork, filling the WHOLE screen and shown in full, never cropped or zoomed (it is 1024 x 1536), with a light veil at the bottom so icon labels stay readable. */
     fun build(ctx: Context, which: Int = SPACE): Bitmap {
         val dm = ctx.resources.displayMetrics
         val wm = WallpaperManager.getInstance(ctx)
@@ -35,12 +61,14 @@ object NeoWallpaper {
         c.drawColor(0xFF020712.toInt())
         val src = BitmapFactory.decodeResource(ctx.resources, if (which == GOLD) R.drawable.neo_wall_gold else R.drawable.neo_wall_space)
         if (src != null) {
-            val scale = maxOf(w.toFloat() / src.width, h.toFloat() / src.height)
-            val dw = src.width * scale
-            val dh = src.height * scale
-            val left = (w - dw) / 2f
-            val top = (h - dh) / 2f
-            c.drawBitmap(src, null, RectF(left, top, left + dw, top + dh), p)
+            val bands = neoFillBands(src.width, src.height, w, h)
+            if (bands != null) {
+                for (r in bands) {
+                    c.drawBitmap(src, Rect(0, r[0], src.width, r[0] + r[1]), RectF(0f, r[2].toFloat(), w.toFloat(), (r[2] + r[3]).toFloat()), p)
+                }
+            } else {
+                c.drawBitmap(src, null, RectF(0f, 0f, w.toFloat(), h.toFloat()), p)
+            }
             src.recycle()
         }
         p.shader = LinearGradient(0f, h * 0.55f, 0f, h.toFloat(), 0x00000000, 0x66000000, Shader.TileMode.CLAMP)
