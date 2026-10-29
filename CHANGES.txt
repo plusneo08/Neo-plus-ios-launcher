@@ -79,3 +79,10 @@ Modes.kt        "working mode", "travelling / traveling mode" are now understood
                 says "<Mode> is on" and "phone you with a summary at <time>" instead of the sleep wording about calling you to wake up.
 SleepExtras.kt  "enable sleep mode" with no time no longer falls through to the AI: it starts sleep mode with the default end 07:00.
 Assistant.kt    the AI prompt no longer tells the model to ask for a wake-up time; it must use the mode action with its default end.
+
+GEMINI VOICE FOR EVERYTHING
+Speaker.kt   Speaker.speak already sent everything to the Gemini voice when a key exists, but fell back to the phone's voice after 5 s, on any
+             failure, and for text that looks like Chichewa. Now (setting "gemini_always", default ON): Chichewa-looking text also uses Gemini,
+             the first words wait up to 9 s, one more try is made, and only then the phone's voice is used, with a short message saying why.
+OrbService.kt  comment only.
+The Gemini voice needs a Gemini key that is allowed to use the speech models (gemini-3.8-flash-tts); the message shows the reason if it is not.
