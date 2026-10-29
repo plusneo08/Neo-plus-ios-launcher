@@ -138,7 +138,8 @@ object PhoneActions {
             return ActionResult("Couldn’t do that: the phone is time-locked until ${TimeLock.untilText(ctx)}.", false, false, info = true)
         }
         val note = try {
-            exec(ctx, name, a, apps)
+            if (name in phoneSearches) limited(15_000L, "Couldn’t finish searching your phone within 15 seconds") { exec(ctx, name, a, apps) }
+            else exec(ctx, name, a, apps)
         } catch (e: Exception) {
             "Couldn’t do that (${e.javaClass.simpleName})"
         }
@@ -146,6 +147,16 @@ object PhoneActions {
             !note.startsWith("Turn on") && !note.startsWith("Pick ") && !note.startsWith("Unknown")
         val card = if (name == "read_notifications" && ok) lastNotifJson else null
         return ActionResult(note, ok, ok && name in leaving && !note.startsWith("Sending your message"), info = name in infoActions, card = card)
+    }
+
+    /** Looking through the phone (messages, calls, notifications, calendar) gets 15 seconds, then the assistant says so instead of hanging. */
+    private val phoneSearches = setOf("read_messages", "read_sms", "call_log", "read_app", "read_notifications", "last_message", "calendar")
+    private val searchPool = java.util.concurrent.Executors.newCachedThreadPool()
+    private fun limited(ms: Long, fallback: String, block: () -> String): String {
+        val f = searchPool.submit(java.util.concurrent.Callable { block() })
+        return try { f.get(ms, java.util.concurrent.TimeUnit.MILLISECONDS) }
+        catch (e: java.util.concurrent.TimeoutException) { f.cancel(true); fallback }
+        catch (e: java.util.concurrent.ExecutionException) { throw (e.cause as? Exception) ?: e }
     }
 
     private fun granted(ctx: Context, perm: String) =

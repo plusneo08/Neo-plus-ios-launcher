@@ -58,7 +58,7 @@ import java.util.concurrent.atomic.AtomicInteger
 object WebTask {
     private val main = Handler(Looper.getMainLooper())
     private const val MAX_STEPS = 150   // only a safety limit: a task stops the moment it is done, big ones just get room to continue
-    private const val MAX_MILLIS = 45 * 60_000L
+    private const val MAX_MILLIS = 15 * 60_000L   // one task: 15 minutes at most
     /** How long the task waits for the user to finish a CAPTCHA / code step before it gives up. */
     private const val HANDOFF_MILLIS = 60 * 60_000L   // how long a task waits for you (CAPTCHA / code step) before giving up
     private const val ALERT_EVERY_MILLIS = 3 * 60_000L

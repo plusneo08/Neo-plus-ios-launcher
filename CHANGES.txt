@@ -37,3 +37,26 @@ CHANGED  OrbService.kt, AssistantUi.kt, LockActivity.kt, ApprovalCall.kt, WakeCa
          recogniser opens the mic and returns nothing)
          onError now calls SpeechOpts.report(...), so the real reason appears ("Neo Plus mic: ...") instead of silent retries
 CallConversation.kt (caller talks to the assistant) never forced offline, so it is unchanged.
+
+ASSISTANT READS THE PHONE'S OWN MESSAGES AND CALL LOG (not only notifications)
+CHANGED  Assistant.kt  read_messages: now reads the newest texts from the Messages app (the SMS store, read and unread, marked "(unread)") and
+                       adds chats that arrived as notifications; no longer fails just because notification access is off.
+                       call_log: new filters type = missed | incoming | outgoing | rejected and from = name/number; contact name looked up when the
+                       log has none; the model prompt now lists call_log (it was missing) and says to always use it for calls and missed calls.
+                       read_sms: looks deeper (600 rows) when searching for one person.
+CHANGED  Comms.kt      "missed calls" -> only missed calls; new "did John call me" / "when did Mary call"; "read my texts" returns 5 instead of 3.
+Needs the READ_SMS and READ_CALL_LOG permissions (already in the manifest and asked at first start).
+
+NEW WALLPAPERS + FASTER REPLIES + SPEECH CORRECTION
+res/drawable-nodpi/neo_wall_space.webp, neo_wall_gold.webp   your two artworks (space / black and gold)
+NeoWallpaper.kt  home wallpaper = the SPACE artwork (centre-cropped, light veil at the bottom), set once automatically (flag neo_wallpaper_v2, so
+                 phones that already got the first logo wallpaper get the new one once). Edit bubble: "Neo Space Wallpaper" / "Neo Gold Wallpaper".
+NeoBackdrop.kt   default backdrop of Phone + Messages = the GOLD artwork with a dark veil.
+Home.kt          the two bubble items.
+Timing           OrbService: end of speech after 0.6 s / 0.45 s of silence (was 0.7 / 0.6); after 6 s without an answer the orb shows "One moment...".
+                 Assistant.kt: searching the phone (messages, calls, notifications, calendar) gets 15 s, then it says so.
+                 AppTask.kt: a phone task gets 3 minutes by default (max 15). WebTask.kt: one website task max 15 minutes (was 45).
+SpeechFix.kt     listens carefully: uses the recogniser's 5 guesses, prefers the one with a real contact/app name, corrects a misheard name/app
+                 after call/text/message/open/... ("Jon Banda" -> "John Banda", "Face book" -> "Facebook"), and offers the closest names as suggestions
+                 (chat shows them as the alternatives). Only the word after the command is touched.
+OrbService.kt, AssistantUi.kt use it.

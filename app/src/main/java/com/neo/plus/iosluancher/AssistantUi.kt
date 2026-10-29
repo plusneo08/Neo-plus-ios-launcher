@@ -947,11 +947,11 @@ fun AssistantOverlay(a: AssistantViewModel, apps: List<AppEntry>, onClose: () ->
                 val l = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION) ?: return
                 if (l.isEmpty()) return
                 voiceAt[0] = System.currentTimeMillis()
-                heard = l.first()
-                alts = l.drop(1).distinct().take(2)
+                heard = SpeechFix.fix(l.first()).text
+                alts = (SpeechFix.suggest(l.first()) + l.drop(1)).distinct().filter { !it.equals(heard, true) }.take(3)
             }
             override fun onResults(results: Bundle?) {
-                finishWith(results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: heard)
+                finishWith(SpeechFix.pick(results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)) ?: heard)
             }
             override fun onError(error: Int) {
                 BeepMute.restore(ctx)
@@ -987,7 +987,9 @@ fun AssistantOverlay(a: AssistantViewModel, apps: List<AppEntry>, onClose: () ->
                     .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                     .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, SpeechOpts.offline(ctx))
-                    .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+                    .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+                    .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 700L)
+                    .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 500L)
                     .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
             )
             listening = true

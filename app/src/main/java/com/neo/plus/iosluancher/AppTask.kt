@@ -43,7 +43,7 @@ Rules: do exactly what the goal says, nothing extra. One action per reply. Never
         }
 
         val maxSteps = a.optInt("max_steps", MAX_STEPS).coerceIn(5, 80)
-        val maxMillis = a.optInt("max_minutes", 5).coerceIn(1, 15) * 60_000L
+        val maxMillis = a.optInt("max_minutes", 3).coerceIn(1, 15) * 60_000L
         val log = ArrayList<String>()
         val start = SystemClock.uptimeMillis()
         var lastSig = ""

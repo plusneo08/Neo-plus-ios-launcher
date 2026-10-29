@@ -681,16 +681,18 @@ class OrbService : Service() {
         if (!alive || paused || st == St.THINKING || st == St.SPEAKING) return
         if (mode == "manual" && !manualActive && !engaged()) { setState(St.IDLE); return }
         val r = recognizer ?: return
+        SpeechFix.warm(this)
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, SpeechOpts.offline(this))
+            .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
             .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
         // Commands are short: treat ~0.7 s of silence as "finished" instead of the recogniser's default 1.5-2 s. Not while the user is
         // dictating the text of a reply (replyStep 2), where a longer pause between sentences is normal.
         if (replyStep != 2) {
-            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 700L)
-                .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 600L)
+            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 600L)
+                .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 450L)
         }
         try {
             beepGuard()
@@ -763,7 +765,7 @@ class OrbService : Service() {
                 }
                 return
             }
-            val t = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+            val t = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let { SpeechFix.fix(it).text }
             if (!t.isNullOrBlank()) { subtitle(t, true); armEarly(t) }
         }
 
@@ -772,7 +774,7 @@ class OrbService : Service() {
             main.removeCallbacks(earlyFire)
             beepGuard()
             errorStreak = 0
-            val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+            val text = SpeechFix.pick(results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION))
             if (text.isNullOrBlank()) scheduleRestart(200) else handle(text)
         }
 
@@ -902,6 +904,9 @@ class OrbService : Service() {
     private fun process(text: String) {
         cancelListening()
         setState(St.THINKING)
+        // a delay is never silent: after 6 seconds without an answer the orb says it is still working
+        val slowNotice = Runnable { if (alive && st == St.THINKING) subtitle("One moment…", false) }
+        main.postDelayed(slowNotice, 6000L)
         val ctx = applicationContext
         val apps = OrbBridge.apps()
         val executor = io
@@ -956,7 +961,7 @@ class OrbService : Service() {
                 } catch (e: Exception) {
                     e.message ?: "Something went wrong."
                 }
-                main.post { if (alive) speakReply(reply, natural = aiReply) }
+                main.post { main.removeCallbacks(slowNotice); if (alive) speakReply(reply, natural = aiReply) }
             }
         } catch (e: Exception) {
             speakReply("Something went wrong.")
