@@ -95,7 +95,13 @@ object Comms {
 
         // ---- call history ----
         if (Regex("^(?:(?:show|read|check|what(?:'s| is| are)?) (?:my |the )?)?(?:missed calls?|call log|call history|recent calls)$|^who (?:called|rang|phoned)(?: me)?(?: last)?$|^(?:did|have) (?:anyone|someone) (?:call|called|rang)(?:ed)?(?: me)?$", I).containsMatchIn(low))
-            return LocalPlan("", listOf("call_log" to JSONObject().put("count", 5)))
+            return LocalPlan("", listOf("call_log" to JSONObject().put("count", 5).put("type", if (low.contains("missed")) "missed" else "")))
+        // "did John call me", "when did Mary call"
+        Regex("^(?:when did|did|has|have) (?!anyone|anybody|someone|somebody|any )(.+?) (?:call|called|ring|rang|phone|phoned)(?: me)?(?: last)?$", I).find(low)?.let { m ->
+            val who = m.groupValues[1].trim()
+            if (who.isNotEmpty() && who.split(" ").size <= 4)
+                return LocalPlan("", listOf("call_log" to JSONObject().put("count", 3).put("from", who)))
+        }
 
         // ---- reply to the latest message / notification ----
         Regex("^(?:reply|respond|answer)(?: to (.+?))?\\s*$SAY\\s*(.+)$|^(?:reply|respond|answer)(?: to (.+?))?\\s+(?:with\\s+)(.+)$", I).find(t)?.let { m ->
@@ -133,8 +139,8 @@ object Comms {
             val ch = m.groupValues[1].lowercase(Locale.ROOT).replace(" ", "")
             val from = m.groupValues[2].trim()
             return LocalPlan("", listOf(when {
-                ch.startsWith("missedcall") -> "call_log" to JSONObject().put("count", 5)
-                ch == "sms" || ch.startsWith("text") -> "read_sms" to JSONObject().put("count", 3).put("from", from)
+                ch.startsWith("missedcall") -> "call_log" to JSONObject().put("count", 5).put("type", "missed")
+                ch == "sms" || ch.startsWith("text") -> "read_sms" to JSONObject().put("count", 5).put("from", from)
                 ch.startsWith("whatsapp") || ch.startsWith("facebook") || ch.startsWith("messenger") || ch.startsWith("tiktok") ||
                     ch.startsWith("insta") || ch.startsWith("gemini") || ch.contains("mail") || ch == "inbox" ||
                     ch.endsWith("messages") && ch != "messages" || ch == "messagesapp" ->
