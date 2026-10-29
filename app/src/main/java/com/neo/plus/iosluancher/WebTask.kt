@@ -1276,7 +1276,7 @@ return 'started';})"""
         var res = ""
         while (waited < 40_000) {
             Thread.sleep(250); waited += 250
-            if (cancelled) return "Stopped."
+            if (s.cancelled) return "Stopped."
             res = unquote(js(s, "window.__neoApi", 3_000))
             if (res.isNotBlank()) break
         }
