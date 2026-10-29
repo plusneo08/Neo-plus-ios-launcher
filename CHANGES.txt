@@ -60,3 +60,12 @@ SpeechFix.kt     listens carefully: uses the recogniser's 5 guesses, prefers the
                  after call/text/message/open/... ("Jon Banda" -> "John Banda", "Face book" -> "Facebook"), and offers the closest names as suggestions
                  (chat shows them as the alternatives). Only the word after the command is touched.
 OrbService.kt, AssistantUi.kt use it.
+
+WHY PERMISSIONS AND THE DEFAULT LAUNCHER KEEP RESETTING  (app/build.gradle.kts + app/neo-debug.keystore)
+Cause: the repo has no signing key, so every GitHub build is signed with a NEW random debug key. Android will not update an app over
+one signed with a different key, so each new APK needs an uninstall first, and an uninstall wipes all permissions, the LADB / adb grants
+(WRITE_SECURE_SETTINGS, appops, notification listener, accessibility, device admin) and the default-home setting.
+Fix: app/neo-debug.keystore is one fixed key used for every build (signingConfigs.debug), and versionCode now grows with each GitHub run.
+Copy both files into the repo (keep the repo private: whoever has the key can sign updates of this app).
+ONE last time: uninstall the current Neo Plus, install the new APK, run the grant steps again and set it as the default home.
+From then on every new APK installs over the old one and keeps permissions, grants and the default launcher.

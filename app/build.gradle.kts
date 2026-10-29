@@ -12,8 +12,20 @@ android {
         applicationId = "com.neo.plus.iosluancher"
         minSdk = 26
         targetSdk = 28
-        versionCode = 51
+        // always higher than the installed one, and it grows with every GitHub build, so a new APK can be installed over the old one
+        versionCode = 1000 + (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0)
         versionName = "3.11.23"
+    }
+
+    // One fixed key for every build. Without it each GitHub build is signed with a new random key, Android refuses to update
+    // over the old app, you have to uninstall, and an uninstall wipes every permission, grant and the default-launcher setting.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("neo-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     compileOptions {
@@ -43,7 +55,5 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
-    implementation("dev.rikka.shizuku:api:13.1.5")
-    implementation("dev.rikka.shizuku:provider:13.1.5")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
