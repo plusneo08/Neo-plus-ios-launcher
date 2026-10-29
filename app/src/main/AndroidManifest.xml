@@ -94,8 +94,6 @@
     <!-- Power off: only granted when installed as a system app (see rom/) -->
     <uses-permission android:name="android.permission.SHUTDOWN" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.REBOOT" tools:ignore="ProtectedPermissions" />
-    <!-- Shizuku (runs the shell commands without root) -->
-    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
@@ -154,15 +152,6 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
-
-        <!-- Lets the Shizuku app hand NEO PLUS its connection (shell commands without root) -->
-        <provider
-            android:name="rikka.shizuku.ShizukuProvider"
-            android:authorities="${applicationId}.shizuku"
-            android:multiprocess="false"
-            android:enabled="true"
-            android:exported="true"
-            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
         <!-- Lets WhatsApp, Messenger, Instagram and Gmail read the photo / song / file the assistant sends for you -->
         <provider
@@ -394,6 +383,12 @@
             </intent-filter>
         </receiver>
 
+        <receiver android:name=".NeoWallpaperReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <receiver android:name=".SleepWakeReceiver" android:exported="false" />
         <receiver android:name=".SleepPrepReceiver" android:exported="false" />
 

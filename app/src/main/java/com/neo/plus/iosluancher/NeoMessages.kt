@@ -95,6 +95,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import java.io.File
 import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -785,21 +786,32 @@ private fun ListScreen(
 ) {
     val th = chromeTheme(th0, bgIsLight(bg))
     var q by remember { mutableStateOf("") }
-    val shown = remember(q, threads) { if (q.isBlank()) threads else threads.filter { it.name.contains(q, true) || it.address.contains(q) || it.msgs.last().body.contains(q, true) } }
+    var filter by remember { mutableStateOf(0) }   // 0 All, 1 Unread, 2 Unknown numbers, 3 Alerts (senders with a name, not a number)
+    val fctx = LocalContext.current
+    val shown = remember(q, threads, filter) {
+        val base = when (filter) {
+            1 -> threads.filter { unreadFor(fctx, it) > 0 }
+            2 -> threads.filter { t -> t.name == t.address && t.address.none { c -> c.isLetter() } }
+            3 -> threads.filter { t -> t.address.any { c -> c.isLetter() } }
+            else -> threads
+        }
+        if (q.isBlank()) base else base.filter { it.name.contains(q, true) || it.address.contains(q) || it.msgs.last().body.contains(q, true) }
+    }
     var menuFor by remember { mutableStateOf<String?>(null) }
     var editFor by remember { mutableStateOf<Pair<String, String>?>(null) }
     editFor?.let { e -> ContactEditDialog(e.first, e.second) { editFor = null } }
     Box(Modifier.fillMaxSize()) {
-        ChatBackdrop(bg)
+        ChatBackdrop(bg, th0.text == Color.White, th0.accent)
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             val lctx = LocalContext.current
             var orbsOn by remember { mutableStateOf(MessageOrbs.enabled(lctx)) }
             val unread = threads.count { t -> unreadFor(lctx, t) > 0 }
             Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier.size(46.dp).clip(RoundedCornerShape(16.dp)).background(Brush.linearGradient(th.sent)),
-                    contentAlignment = Alignment.Center
-                ) { Icon(Icons.Filled.Email, null, tint = Color.White, modifier = Modifier.size(24.dp)) }
+                Image(
+                    painterResource(R.drawable.neo_icon), null,
+                    Modifier.size(46.dp).clip(RoundedCornerShape(16.dp)).border(1.dp, th.accent.copy(alpha = 0.5f), RoundedCornerShape(16.dp)),
+                    contentScale = ContentScale.Crop
+                )
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Messages", color = th.text, fontSize = 26.sp, fontWeight = FontWeight.Bold)
@@ -837,6 +849,20 @@ private fun ListScreen(
                     BasicTextField(q, { q = it }, singleLine = true, textStyle = TextStyle(color = th.text, fontSize = 16.sp), cursorBrush = SolidColor(th.accent), modifier = Modifier.fillMaxWidth())
                 }
             }
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf("All", "Unread", "Unknown", "Alerts").forEachIndexed { i, label ->
+                    val on = filter == i
+                    Box(
+                        Modifier.clip(RoundedCornerShape(50))
+                            .background(if (on) th.accent.copy(alpha = 0.22f) else th.card)
+                            .border(1.dp, if (on) th.accent else Color.Transparent, RoundedCornerShape(50))
+                            .clickable { filter = i }.padding(horizontal = 16.dp, vertical = 7.dp)
+                    ) { Text(label, color = if (on) th.accent else th.sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
+                }
+            }
             if (!isDefault) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).clip(RoundedCornerShape(18.dp)).background(th.card).padding(14.dp),
@@ -854,7 +880,7 @@ private fun ListScreen(
             }
             if (shown.isEmpty()) {
                 Column(Modifier.fillMaxSize().padding(36.dp), Arrangement.Center, Alignment.CenterHorizontally) {
-                    Text(if (threads.isEmpty()) "No messages yet" else "No match", color = th.sub, fontSize = 16.sp)
+                    Text(if (threads.isEmpty()) "No messages yet" else if (filter != 0 && q.isBlank()) "Nothing in this filter" else "No match", color = th.sub, fontSize = 16.sp)
                 }
             } else LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
                 items(shown, key = { it.key }) { t ->
@@ -952,8 +978,11 @@ private fun BgTile(label: String, brush: Brush, selected: Boolean, accent: Color
 
 /** The picture or colours behind the chat (drawn under the bubbles). */
 @Composable
-private fun ChatBackdrop(v: String) {
+private fun ChatBackdrop(v: String, dark: Boolean = true, accent: Color = Color(0xFF38BDF8)) {
     val ctx = LocalContext.current
+    // "" / "-" = the Neo Plus logo wallpaper (default; only on the dark themes), "n:" = plain theme colours
+    if (v.isEmpty() || v == "-") { if (dark) NeoLogoBackdrop(accent); return }
+    if (v == "n:") return
     if (v.startsWith("g:")) {
         val c = ChatBgs.firstOrNull { "g:" + it.id == v }
         if (c != null) Box(Modifier.fillMaxSize().background(Brush.verticalGradient(c.colors)))
@@ -1015,7 +1044,7 @@ private fun ChatScreen(
     LaunchedEffect(rows.size) { if (rows.isNotEmpty()) list.scrollToItem(rows.lastIndex) }
 
     Box(Modifier.fillMaxSize()) {
-        ChatBackdrop(bg)
+        ChatBackdrop(bg, th.text == Color.White, th.accent)
         Column(Modifier.fillMaxSize().statusBarsPadding().imePadding()) {
             if (selecting) {
                 // selection bar: Copy / Forward / Delete the chosen messages
@@ -1237,7 +1266,8 @@ private fun BoxScope.BackgroundSheet(
             Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                BgTile("Default", Brush.verticalGradient(th.bg), current.isEmpty() || current == "-", th.accent) { onApply("-") }
+                BgTile("Neo Plus", Brush.verticalGradient(listOf(Color(0xFF061830), Color(0xFF020712))), current.isEmpty() || current == "-", th.accent) { onApply("-") }
+                BgTile("Plain", Brush.verticalGradient(th.bg), current == "n:", th.accent) { onApply("n:") }
                 ChatBgs.forEach { c -> BgTile(c.name, Brush.verticalGradient(c.colors), current == "g:" + c.id, th.accent) { onApply("g:" + c.id) } }
                 val cc = customColor(current)
                 BgTile(

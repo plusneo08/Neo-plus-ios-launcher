@@ -308,6 +308,7 @@ fun LauncherRoot(
                     BubbleItem("Edit Home Screen", true) { menuOpen = false; editing = true }
                     BubbleItem("Add Widget", true) { menuOpen = false; showPicker = true }
                     BubbleItem("Customize", true) { menuOpen = false; showGlass = true }
+                    BubbleItem("Neo Plus Wallpaper", true) { menuOpen = false; NeoWallpaper.applyWithToast(rootCtx) }
                     BubbleItem("Edit Wallpaper", true) {
                         menuOpen = false
                         rootCtx.safeStart(Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Wallpaper"))

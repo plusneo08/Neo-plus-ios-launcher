@@ -1,0 +1,13 @@
+PHONE + MESSAGES REDESIGN - Neo Plus logo wallpaper
+===================================================
+NEW      NeoBackdrop.kt     NeoLogoBackdrop(): logo + glow, feathered edges, dark veil (default wallpaper)
+CHANGED  NeoDialerUi.kt     default background ("") = logo wallpaper; "Plain" option; real Neo logo in header; "Neo Plus" tile
+CHANGED  NeoMessages.kt     default background ("" and "-") = logo wallpaper on dark themes; "Plain" option;
+                            real Neo logo in header; filter chips All / Unread / Unknown / Alerts
+
+Copy the 3 files over the same paths and build. NOT compiled here (no Gradle/Kotlin in my sandbox);
+brackets balance in all three. Send me the first build error if there is one.
+Saved choices are untouched: a photo or colour background someone already picked stays as it was.
+Daylight (light) theme in Messages keeps its plain look, since a dark wallpaper would hide its dark text.
+neo_icon.png is only 192 px, so the logo is kept at 62% width and fed into the background; replace it with a
+larger logo (same file name) for a sharper wallpaper, no code change needed.

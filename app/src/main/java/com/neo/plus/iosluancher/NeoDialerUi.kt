@@ -176,6 +176,9 @@ private fun saveDialPhoto(ctx: Context, uri: Uri): String? {
 @Composable
 private fun DialBackdrop(v: String) {
     val ctx = LocalContext.current
+    // "" = the Neo Plus logo wallpaper (default), "n:" = plain theme colours
+    if (v.isEmpty()) { NeoLogoBackdrop(DialLook.cyan); return }
+    if (v == "n:") return
     if (v.startsWith("g:")) {
         val c = DialBgs.firstOrNull { "g:" + it.id == v }
         if (c != null) Box(Modifier.fillMaxSize().background(Brush.verticalGradient(c.colors)))
@@ -429,7 +432,7 @@ fun DialerScreen(initial: String, onClose: () -> Unit) {
             // ---- header
             Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Image(
-                    painterResource(R.drawable.neo_art_connected), null,
+                    painterResource(R.drawable.neo_icon), null,
                     Modifier.size(42.dp).clip(RoundedCornerShape(13.dp)).border(1.dp, DialLook.cyan.copy(alpha = 0.5f), RoundedCornerShape(13.dp)),
                     contentScale = androidx.compose.ui.layout.ContentScale.Crop
                 )
@@ -526,7 +529,11 @@ fun DialerScreen(initial: String, onClose: () -> Unit) {
                 Text("Background", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(12.dp))
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    DialTile("Theme", Brush.verticalGradient(look.base), bg.isEmpty(), look.cyan) { setBg("") }
+                    DialTile(
+                        "Neo Plus", Brush.verticalGradient(look.base), bg.isEmpty(), look.cyan,
+                        content = { Image(painterResource(R.drawable.neo_icon), null, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop) }
+                    ) { setBg("") }
+                    DialTile("Plain", Brush.verticalGradient(look.base), bg == "n:", look.cyan) { setBg("n:") }
                     DialBgs.forEach { c -> DialTile(c.name, Brush.verticalGradient(c.colors), bg == "g:" + c.id, look.cyan) { setBg("g:" + c.id) } }
                     val photo = bg.startsWith("p:")
                     DialTile(

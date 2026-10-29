@@ -174,57 +174,55 @@ fun HomePanel(modifier: Modifier = Modifier) {
     val ampm = if (use24) "" else SimpleDateFormat("a", loc).format(date).uppercase(loc)
     val weekday = SimpleDateFormat("EEEE", loc).format(date)
     val dayMonth = SimpleDateFormat("d MMMM", loc).format(date)
+    val weekdayS = SimpleDateFormat("EEE", loc).format(date)
+    val dayMonthS = SimpleDateFormat("d MMM", loc).format(date)
 
     val w = weather
     val card = RoundedCornerShape(26.dp)
     val sky = rememberSkyKind()
     val kind = if (w != null) weatherKind(w.code, w.isDay) else sky
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        // ---- clock: big glowing digits, a 24-hour day bar, and the seconds ring
-        Box(
-            Modifier.weight(1f).fillMaxWidth().neoCard(card)
-                .clickable { ctx.safeStart(Intent(AlarmClock.ACTION_SHOW_ALARMS)) }
-        ) {
-            Canvas(Modifier.matchParentSize()) { clockStreaks() }
-            Column(Modifier.fillMaxSize().padding(start = 18.dp, end = 14.dp, top = 8.dp, bottom = 10.dp), verticalArrangement = Arrangement.Center) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            AnimatedContent(
-                                targetState = hours,
-                                transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
-                                label = "clockHours"
-                            ) { h -> Text(h, color = Color.White, fontSize = 58.sp, fontWeight = FontWeight.Thin, style = GlowText, maxLines = 1, softWrap = false) }
-                            PulsingColon()
-                            AnimatedContent(
-                                targetState = minutes,
-                                transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
-                                label = "clockMinutes"
-                            ) { m -> Text(m, color = Color(0xFF7DD3FC), fontSize = 58.sp, fontWeight = FontWeight.Thin, style = GlowText, maxLines = 1, softWrap = false) }
-                            if (ampm.isNotEmpty()) {
-                                Text(ampm, color = NeoCyanC, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 5.dp, bottom = 12.dp))
-                            }
-                        }
-                        // day and date as two glass chips
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.clickable {
-                                val uri = CalendarContract.CONTENT_URI.buildUpon().appendPath("time").appendPath(System.currentTimeMillis().toString()).build()
-                                ctx.safeStart(Intent(Intent.ACTION_VIEW, uri))
-                            }
-                        ) {
-                            Chip(weekday.uppercase(loc), NeoCyanC.copy(alpha = 0.22f), NeoCyanC)
-                            Chip(dayMonth.uppercase(loc), Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.9f))
+        // ---- clock (left) and calendar (right) side by side
+        Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(
+                Modifier.weight(1.5f).fillMaxHeight().neoCard(card)
+                    .clickable { ctx.safeStart(Intent(AlarmClock.ACTION_SHOW_ALARMS)) }
+            ) {
+                Canvas(Modifier.matchParentSize()) { clockStreaks() }
+                Column(Modifier.fillMaxSize().padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 10.dp), verticalArrangement = Arrangement.Center) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        AnimatedContent(
+                            targetState = hours,
+                            transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
+                            label = "clockHours"
+                        ) { h -> Text(h, color = Color.White, fontSize = 46.sp, fontWeight = FontWeight.Thin, style = GlowText, maxLines = 1, softWrap = false) }
+                        PulsingColon(42.sp)
+                        AnimatedContent(
+                            targetState = minutes,
+                            transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
+                            label = "clockMinutes"
+                        ) { m -> Text(m, color = Color(0xFF7DD3FC), fontSize = 46.sp, fontWeight = FontWeight.Thin, style = GlowText, maxLines = 1, softWrap = false) }
+                        if (ampm.isNotEmpty()) {
+                            Text(ampm, color = NeoCyanC, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 4.dp, bottom = 9.dp))
                         }
                     }
-                    Box(Modifier.size(74.dp), contentAlignment = Alignment.Center) {
-                        SecondsRing(Modifier.matchParentSize())
-                        LiveSeconds()
+                    Spacer(Modifier.height(4.dp))
+                    // day and date as two glass chips
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        modifier = Modifier.clickable {
+                            val uri = CalendarContract.CONTENT_URI.buildUpon().appendPath("time").appendPath(System.currentTimeMillis().toString()).build()
+                            ctx.safeStart(Intent(Intent.ACTION_VIEW, uri))
+                        }
+                    ) {
+                        Chip(weekdayS.uppercase(loc), NeoCyanC.copy(alpha = 0.22f), NeoCyanC)
+                        Chip(dayMonthS.uppercase(loc), Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.9f))
                     }
+                    Spacer(Modifier.height(8.dp))
+                    DayBar(now)
                 }
-                Spacer(Modifier.height(8.dp))
-                DayBar(now)
             }
+            CalendarTile(Modifier.weight(1f).fillMaxHeight().neoCard(card), now)
         }
 
         // ---- bottom row: weather and footsteps as two square glass tiles
@@ -400,10 +398,10 @@ private fun SecondsSweep(modifier: Modifier = Modifier) {
 
 /** The colon between hours and minutes breathes once a second. */
 @Composable
-private fun PulsingColon() {
+private fun PulsingColon(size: androidx.compose.ui.unit.TextUnit = 52.sp) {
     val t = rememberFrameSeconds()
     val a = 0.45f + 0.55f * ((kotlin.math.sin(t.value * 3f) + 1f) / 2f)
-    Text(":", color = NeoCyanC.copy(alpha = a), fontSize = 52.sp, fontWeight = FontWeight.Light, style = GlowText,
+    Text(":", color = NeoCyanC.copy(alpha = a), fontSize = size, fontWeight = FontWeight.Light, style = GlowText,
         modifier = Modifier.padding(horizontal = 1.dp).padding(bottom = 4.dp))
 }
 
@@ -426,5 +424,98 @@ private fun SecondsRing(modifier: Modifier = Modifier) {
         val r = d / 2f
         val head = Offset(size.width / 2f + r * kotlin.math.cos(ang).toFloat(), size.height / 2f + r * kotlin.math.sin(ang).toFloat())
         drawCircle(Color.White, 2.8.dp.toPx(), head)
+    }
+}
+
+
+private class CalEvent(val title: String, val begin: Long, val end: Long, val allDay: Boolean)
+
+/** Events from the phone's calendars between [from] and [to] (needs the calendar permission, asked at first start). */
+private fun weekEvents(ctx: android.content.Context, from: Long, to: Long): List<CalEvent> = try {
+    val b = CalendarContract.Instances.CONTENT_URI.buildUpon()
+    android.content.ContentUris.appendId(b, from)
+    android.content.ContentUris.appendId(b, to)
+    val out = ArrayList<CalEvent>()
+    ctx.contentResolver.query(
+        b.build(),
+        arrayOf(CalendarContract.Instances.TITLE, CalendarContract.Instances.BEGIN, CalendarContract.Instances.END, CalendarContract.Instances.ALL_DAY),
+        null, null, CalendarContract.Instances.BEGIN + " ASC"
+    )?.use { c ->
+        while (c.moveToNext() && out.size < 80) {
+            val allDay = c.getInt(3) == 1
+            var bg = c.getLong(1); var en = c.getLong(2)
+            if (allDay) { // all-day events are stored in UTC: move them to the phone's own day
+                bg -= java.util.TimeZone.getDefault().getOffset(bg); en -= java.util.TimeZone.getDefault().getOffset(en)
+            }
+            out.add(CalEvent(c.getString(0).orEmpty().ifBlank { "Event" }, bg, en, allDay))
+        }
+    }
+    out
+} catch (e: Exception) { emptyList() }
+
+/** Calendar card beside the clock: big day number, month, this week with today lit and a dot on days with events, and the next event. */
+@Composable
+private fun CalendarTile(modifier: Modifier, now: Long) {
+    val ctx = LocalContext.current
+    val loc = Locale.getDefault()
+    val use24 = DateFormat.is24HourFormat(ctx)
+    val cal = java.util.Calendar.getInstance().apply { timeInMillis = now }
+    val back = (cal.get(java.util.Calendar.DAY_OF_WEEK) - cal.firstDayOfWeek + 7) % 7
+    val start = (cal.clone() as java.util.Calendar).apply {
+        add(java.util.Calendar.DAY_OF_MONTH, -back)
+        set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+    }
+    val days = (0..6).map { i -> (start.clone() as java.util.Calendar).apply { add(java.util.Calendar.DAY_OF_MONTH, i) } }
+    val weekFrom = start.timeInMillis
+    val weekTo = days.last().timeInMillis + 24L * 3600_000L
+    val allowed = ctx.checkSelfPermission(Manifest.permission.READ_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    var events by remember { mutableStateOf(emptyList<CalEvent>()) }
+    LaunchedEffect(now / 60_000L, allowed) {
+        if (allowed) events = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { weekEvents(ctx, weekFrom, weekTo) }
+    }
+    fun key(c: java.util.Calendar) = c.get(java.util.Calendar.YEAR) * 1000 + c.get(java.util.Calendar.DAY_OF_YEAR)
+    val todayKey = key(cal)
+    val busy = events.map { e -> key(java.util.Calendar.getInstance().apply { timeInMillis = e.begin }) }.toSet()
+    val next = events.firstOrNull { it.end > now }
+    val sub = Color.White.copy(alpha = 0.65f)
+
+    Column(
+        modifier.clickable {
+            val uri = CalendarContract.CONTENT_URI.buildUpon().appendPath("time").appendPath(System.currentTimeMillis().toString()).build()
+            ctx.safeStart(Intent(Intent.ACTION_VIEW, uri))
+        }.padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(SimpleDateFormat("d", loc).format(Date(now)), color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Thin, style = GlowText, maxLines = 1, softWrap = false)
+            Spacer(Modifier.width(6.dp))
+            Column {
+                Text(SimpleDateFormat("MMM", loc).format(Date(now)).uppercase(loc), color = NeoCyanC, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp, maxLines = 1)
+                Text(SimpleDateFormat("yyyy", loc).format(Date(now)), color = sub, fontSize = 10.sp, maxLines = 1)
+            }
+        }
+        Row(Modifier.fillMaxWidth()) {
+            days.forEach { d ->
+                val isToday = key(d) == todayKey
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(SimpleDateFormat("EEEEE", loc).format(d.time).uppercase(loc), color = sub, fontSize = 9.sp, maxLines = 1)
+                    Box(Modifier.size(17.dp).background(if (isToday) NeoCyanC else Color.Transparent, RoundedCornerShape(50)), contentAlignment = Alignment.Center) {
+                        Text(d.get(java.util.Calendar.DAY_OF_MONTH).toString(), color = if (isToday) Color(0xFF031026) else Color.White, fontSize = 10.sp, fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal, maxLines = 1, softWrap = false)
+                    }
+                    Box(Modifier.padding(top = 2.dp).size(3.dp).background(if (key(d) in busy) NeoCyanC else Color.Transparent, RoundedCornerShape(50)))
+                }
+            }
+        }
+        Column {
+            if (next != null) {
+                val sameDay = key(java.util.Calendar.getInstance().apply { timeInMillis = next.begin }) == todayKey
+                val whenText = (if (sameDay) "" else SimpleDateFormat("EEE ", loc).format(Date(next.begin))) +
+                    (if (next.allDay) "All day" else SimpleDateFormat(if (use24) "HH:mm" else "h:mm a", loc).format(Date(next.begin)))
+                Text(next.title, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(whenText, color = NeoCyanC, fontSize = 10.sp, maxLines = 1)
+            } else {
+                Text(if (allowed) "No events this week" else "Tap to open calendar", color = sub, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
     }
 }

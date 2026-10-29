@@ -69,6 +69,7 @@ class MainActivity : ComponentActivity() {
         StepCounter.start(this) // footsteps counter: starts counting as soon as the launcher runs
         current = this
         Kiosk.configure(this)
+        NeoWallpaper.applyOnce(this) // Neo Plus logo = home-screen wallpaper, set automatically on the first start
         if (Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
 
         if (intent?.getBooleanExtra("open_cc", false) == true) ccTick++
@@ -91,16 +92,14 @@ class MainActivity : ComponentActivity() {
             }
         }
         askPermissionsOnce()
-        val p0 = getSharedPreferences("neo_launcher", MODE_PRIVATE)
-        // Shizuku (no root): asks for its permission and finishes the setup as soon as Shizuku is running and allowed
-        ShizukuSetup.start(applicationContext)
-        if (!p0.getBoolean("root_setup_v1", false)) {
-            // Rooted phone or Shizuku already allowed: grant everything and switch the services on automatically
-            val app = applicationContext
-            Thread {
-                if (RootSetup.applyAll(app)) p0.edit().putBoolean("root_setup_v1", true).apply()
-                else SecureAccess.ensure(app)
-            }.start()
+        // No Shizuku / root: only normal permissions, the settings pages and the default Home app prompt
+        val app0 = applicationContext
+        Thread { SecureAccess.ensure(app0) }.start()
+        // Once after install: ask Android (its own prompt, no root) to make NEO PLUS the Home app
+        val hp = getSharedPreferences("neo_launcher", MODE_PRIVATE)
+        if (!hp.getBoolean("home_asked_v1", false) && !EnableAssistant.isDefaultHome(this)) {
+            hp.edit().putBoolean("home_asked_v1", true).apply()
+            window.decorView.postDelayed({ EnableAssistant.requestDefaultHome(this) }, 1500)
         }
     }
 
