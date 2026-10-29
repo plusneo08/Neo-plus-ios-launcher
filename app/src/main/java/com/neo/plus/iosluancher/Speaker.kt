@@ -367,7 +367,26 @@ object Speaker {
         pool.execute { try { NaturalVoice.prewarm(cfg.key, cfg.voice) } catch (e: Exception) { } }
     }
 
-    /** [natural] = false always uses the phone's own voice (no Gemini request). */
+    /**
+     * Gemini voice for EVERYTHING (default on): replies, command answers, announcements, and also text that looks like Chichewa.
+     * The phone's own voice is used only when there is no Gemini key, or when the Gemini voice failed twice in a row (and then a
+     * short message says why). Set "gemini_always" to false in the "neo_assistant" preferences to bring the old behaviour back.
+     */
+    fun geminiAlways(ctx: Context): Boolean =
+        ctx.applicationContext.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE).getBoolean("gemini_always", true)
+
+    @Volatile private var lastFallbackToast = 0L
+
+    private fun fallbackNotice(app: Context, why: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastFallbackToast < 60_000L) return
+        lastFallbackToast = now
+        main.post {
+            try { android.widget.Toast.makeText(app, "Gemini voice didn’t answer (" + why.take(90) + "), so the phone’s voice read this.", android.widget.Toast.LENGTH_LONG).show() } catch (e: Exception) { }
+        }
+    }
+
+    /** [natural] is kept for old call sites: the voice is chosen by the settings above. */
     fun speak(ctx: Context, text: String, onStart: ((String) -> Unit)? = null, onDone: (() -> Unit)? = null, natural: Boolean = true) {
         val app = ctx.applicationContext
         appCtx = app
@@ -376,7 +395,7 @@ object Speaker {
             // One voice for everything: when a Gemini key exists, command answers and announcements use the same Gemini
             // voice as chat replies (the phone's own voice is a different speaker and sounded like a second person).
             val cfg = NaturalVoice.config(app)
-            if (cfg != null && !LangGuess.isChichewa(text)) speakNatural(app, text, cfg, onStart, onDone)
+            if (cfg != null && (geminiAlways(app) || !LangGuess.isChichewa(text))) speakNatural(app, text, cfg, onStart, onDone)
             else speakSystem(app, text, onStart, onDone)
         }
     }
@@ -463,11 +482,19 @@ object Speaker {
             try {
                 for (i in chunks.indices) {
                     if (naturalToken != my) { jobs.forEach { it.cancel(true) }; return@execute }
-                    // The first words must not keep the user waiting: after 5 s the phone's own voice takes over.
-                    val pcm = try { jobs[i].get(if (i == 0) 5L else 25L, TimeUnit.SECONDS) } catch (e: Exception) { null }
+                    // The first words wait up to 9 s for the Gemini voice (5 s when "gemini_always" is off); one more try before the phone's voice.
+                    val always = geminiAlways(app)
+                    var why = ""
+                    var pcm = try { jobs[i].get(if (i == 0) (if (always) 9L else 5L) else 25L, TimeUnit.SECONDS) } catch (e: Exception) { why = e.cause?.message ?: e.message ?: e.javaClass.simpleName; null }
+                    if (pcm == null && always && naturalToken == my) {
+                        pcm = try {
+                            pool.submit<ByteArray> { NaturalVoice.synth(cfg.key, chunks[i].first, cfg.voice, fast = i == 0) }.get(10L, TimeUnit.SECONDS)
+                        } catch (e: Exception) { why = e.cause?.message ?: e.message ?: why; null }
+                    }
                     if (naturalToken != my) { jobs.forEach { it.cancel(true) }; return@execute }
-                    if (pcm == null) { // cloud voice failed: finish with the phone's own voice
+                    if (pcm == null) { // cloud voice failed twice: finish with the phone's own voice
                         jobs.forEach { it.cancel(true) }
+                        fallbackNotice(app, why.ifBlank { "no answer in time" })
                         val rest = chunks.subList(i, chunks.size).joinToString(" ") { it.first }
                         main.post { if (naturalToken == my) { speaking = false; speakSystem(app, rest, onStart, onDone) } }
                         return@execute

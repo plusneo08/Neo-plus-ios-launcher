@@ -986,7 +986,7 @@ class OrbService : Service() {
     /*  Speaking with subtitles                                            */
     /* ------------------------------------------------------------------ */
 
-    /** Only answers written by Gemini use the natural Gemini voice; everything else uses the phone's own voice. */
+    /** Every spoken answer uses the Gemini voice (see Speaker.geminiAlways); the phone's voice is only the fallback. */
     private fun speakReply(text: String, natural: Boolean = false, then: (() -> Unit)? = null) {
         if (!alive) return
         cancelListening()
