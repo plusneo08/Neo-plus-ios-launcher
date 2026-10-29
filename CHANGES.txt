@@ -73,3 +73,9 @@ From then on every new APK installs over the old one and keeps permissions, gran
 BUILD FIX 2 (rikka / Shizuku errors in Shell.kt)
 Shell.kt  (unchanged, copied from your upload) - the Shell.kt in your GitHub repo is an OLD version that imports Shizuku; the no-root project
           replaced it with an empty stub that never runs commands. Copy this stub over the repo's Shell.kt. No Shizuku dependency is needed.
+
+"ENABLE WORKING / SLEEP / JOURNEY MODE" ONLY TALKED ABOUT A WAKE-UP ALARM
+Modes.kt        "working mode", "travelling / traveling mode" are now understood (only "work mode" was); the reply for work / journey / chill / meeting
+                says "<Mode> is on" and "phone you with a summary at <time>" instead of the sleep wording about calling you to wake up.
+SleepExtras.kt  "enable sleep mode" with no time no longer falls through to the AI: it starts sleep mode with the default end 07:00.
+Assistant.kt    the AI prompt no longer tells the model to ask for a wake-up time; it must use the mode action with its default end.

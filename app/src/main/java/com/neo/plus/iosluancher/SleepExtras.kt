@@ -112,7 +112,12 @@ object SleepCmd {
             SleepMode.pendingAt = System.currentTimeMillis()
             return LocalPlan("", listOf("sleep_mode" to JSONObject().put("on", true).put("hour", bh).put("minute", bm).put("activity", act)))
         }
-        val m = timeRe.find(t) ?: return null
+        val m = timeRe.find(t) ?: run {
+            // "enable sleep mode" with no wake-up time: do not ask for one, use the default (07:00) and say so
+            if (t.contains("sleep mode", true) || t.contains("sleeping mode", true))
+                return LocalPlan("", listOf("mode" to JSONObject().put("on", true).put("mode", "sleep")))
+            return null
+        }
         var h = m.groupValues[1].toIntOrNull() ?: return null
         val min = m.groupValues[2].toIntOrNull() ?: 0
         val ap = m.groupValues[3].lowercase(Locale.ROOT).replace(".", "")

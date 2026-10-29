@@ -101,7 +101,10 @@ object Modes {
         if (!SleepMode.isOn(app)) return r   // it could not start (notification access, no Gemini key)
         SleepMode.prefs(app).edit().putString("mode", m.key).apply()
         val why = CallConversation.cannotRun(app)
-        return r + if (why == null) " Calls: I’ll answer them and talk to the caller for you."
+        // the sleep text talks about waking up; the other modes end with a summary call, so say that
+        val msg = if (m.key == "sleep") r
+        else m.label + " is on. " + r.removePrefix("Okay. ").replace(" and call you ", " and phone you with a summary at ")
+        return msg + if (why == null) " Calls: I’ll answer them and talk to the caller for you."
         else " Calls: I can’t talk to callers yet ($why), so they get the short greeting."
     }
 
@@ -123,7 +126,7 @@ object Modes {
 /** Understands "meeting mode until 3pm", "journey mode for 2 hours", "work mode", "turn off chill mode" without the AI model. */
 object ModeCmd {
     private val I = RegexOption.IGNORE_CASE
-    private const val NAMES = "work|meeting|journey|chill|travel|driving"
+    private const val NAMES = "work|working|meeting|journey|chill|travel|travelling|traveling|driving"
     private val onRe = Regex("\\b($NAMES)\\s+mode\\b", I)
     private val offRe = Regex("\\b(?:stop|end|turn off|cancel|switch off|disable|exit)\\b.{0,12}\\b(?:$NAMES)\\s+mode\\b|\\b(?:$NAMES)\\s+mode\\s+off\\b", I)
     private val untilRe = Regex("\\b(?:until|till|by|to)\\s+(\\d{1,2})(?:[:.](\\d{2}))?\\s*(a\\.?m\\.?|p\\.?m\\.?)?", I)
@@ -153,7 +156,7 @@ object ModeCmd {
             return null
         }
         val word = m.groupValues[1].lowercase(Locale.ROOT)
-        val key = if (word == "travel" || word == "driving") "journey" else word
+        val key = when (word) { "travel", "travelling", "traveling", "driving" -> "journey"; "working" -> "work"; else -> word }
         val a = JSONObject().put("on", true).put("mode", key)
         val f = forRe.find(t)
         if (f != null) {
