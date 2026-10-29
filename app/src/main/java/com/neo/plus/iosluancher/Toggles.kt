@@ -22,7 +22,7 @@ internal inline fun attempt(block: () -> Boolean): Boolean = try { block() } cat
  * Real on/off switches (no Settings screens). Each switch tries, in order:
  *  1. the direct Android API (works on older Android targets / system apps / device owners),
  *  2. hidden system APIs (work when the app is installed as a privileged system app, e.g. in a custom ROM),
- *  3. Shizuku or root (`su`) shell commands.
+ *  3. (removed) no shell commands are used.
  * Only if all of them fail does the user get a short message.
  */
 object Toggles {
@@ -48,7 +48,7 @@ object Toggles {
         }.start()
     }
 
-    // Shizuku or root. A prompt nobody answers must not freeze the switch for ever.
+    // No shell is used any more; a prompt nobody answers must not freeze the switch for ever.
     private fun su(cmd: String): Boolean = attempt { Shell.ok(cmd, 4_000) }
 
     private fun flag(on: Boolean, a: String, b: String) = if (on) a else b

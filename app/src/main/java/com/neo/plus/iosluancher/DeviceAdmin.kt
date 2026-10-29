@@ -52,7 +52,7 @@ object DeviceAdmin {
  * WRITE_SECURE_SETTINGS is what lets Dark mode and Battery saver flip directly (no Settings screen).
  * Android never lets an app give this permission to itself, so [ensure] tries every on-device route:
  *  - already granted (adb grant, priv-app install) -> done
- *  - Shizuku or root (`pm grant`)
+ *  - (removed: no shell is used)
  *  - device owner (`dpm set-device-owner`) -> the app grants the permission to itself
  */
 object SecureAccess {
@@ -114,7 +114,7 @@ object Kiosk {
         }
     }
 
-    /** Phones with root or Shizuku can become device owner from inside the app (fails harmlessly if accounts are signed in). */
+    /** (Shell is a no-op now) used to become device owner from inside the app (fails harmlessly if accounts are signed in). */
     fun becomeOwnerViaRoot(ctx: Context): Boolean {
         if (isOwner(ctx)) return true
         attempt {

@@ -1,3 +1,9 @@
+# No Shizuku, no root
+REMOVED  Shizuku library + provider + permission (build.gradle.kts, AndroidManifest.xml), RootSetup.kt, ShizukuSetup
+CHANGED  Shell.kt        now a no-op (never runs a command)
+CHANGED  EnableAssistant "Enable" walks the normal screens, then asks Android for the Home role (createRequestRoleIntent ROLE_HOME / Home settings)
+CHANGED  MainActivity    asks once after install to become the default Home app
+
 # Parallel tasks with split-screen tiles (replaces the old SplitTasks.kt panes)
 REMOVED  SplitTasks.kt   (its "take turns on one screen" panes and voice commands are gone)
 CHANGED  TaskLog.kt      one TaskFeed per task (up to 9) + tile grid: TaskTiles (home, under the weather card) and TaskSplitScreen (full screen)
