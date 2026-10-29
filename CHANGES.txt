@@ -11,3 +11,21 @@ Saved choices are untouched: a photo or colour background someone already picked
 Daylight (light) theme in Messages keeps its plain look, since a dark wallpaper would hide its dark text.
 neo_icon.png is only 192 px, so the logo is kept at 62% width and fed into the background; replace it with a
 larger logo (same file name) for a sharper wallpaper, no code change needed.
+
+HOME SCREEN WALLPAPER (added)
+NEW      NeoWallpaper.kt   builds a screen-sized wallpaper (navy gradient + glow + feathered NP logo in the empty middle of the home screen)
+CHANGED  Home.kt           Edit bubble gets "Neo Plus Wallpaper" to set it again any time
+CHANGED  MainActivity.kt   sets it automatically on the very first start of the app (retried until it works, then never again on its own)
+CHANGED  AndroidManifest.xml  NeoWallpaperReceiver: also sets it after an app update and after a reboot (covers the Magisk system-app install)
+Only the home-screen wallpaper is set (the Neo lock screen keeps its own art). Uses the SET_WALLPAPER permission already in the manifest.
+
+CALENDAR WIDGET (added)
+CHANGED  HomePanel.kt   the top clock card is now clock (left) + calendar tile (right), side by side.
+                        Calendar tile: big day number, month and year, this week with today lit, a dot under days that have events,
+                        and the next event (title + time) read from the phone's calendars (READ_CALENDAR, already asked at first start).
+                        Tap it to open the calendar. Clock card: digits 58sp -> 46sp, shows short day/date chips, and the seconds ring
+                        was removed to make room (LiveSeconds / SecondsRing code is still in the file, just not used).
+
+BUILD FIX
+EnableAssistant.kt  (unchanged, copied from your own upload) - your GitHub copy is older and lacks isDefaultHome() / requestDefaultHome(),
+                    which MainActivity.kt already calls. Copy this file over the one in the repo.

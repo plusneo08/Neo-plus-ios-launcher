@@ -2,6 +2,7 @@ package com.neo.plus.iosluancher
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -42,28 +43,28 @@ object EnableAssistant {
 
     private fun toast(ctx: Context, msg: String) = Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
 
-    /** Shizuku or root: sets everything up silently. Otherwise opens the next settings page. */
-    fun next(ctx: Context) {
-        val app = ctx.applicationContext
-        Thread {
-            val via = Shell.label()
-            val done = RootSetup.applyAll(app)
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                when {
-                    done -> toast(app, "Enabled with $via. Everything is switched on.")
-                    // Shizuku is installed and running but NEO PLUS is not allowed yet: ask, then press Enable again
-                    ShizukuSetup.running() && !Shell.shizukuReady() ->
-                        if (ShizukuSetup.requestPermission()) toast(app, "Allow NEO PLUS in the Shizuku prompt")
-                        else { toast(app, "Allow NEO PLUS inside the Shizuku app, then press Enable again"); ShizukuSetup.openShizukuApp(app) }
-                    // Shizuku is installed but stopped (it stops after every restart): hint, then carry on with the settings pages
-                    ShizukuSetup.installed(app) && !ShizukuSetup.running() -> {
-                        toast(app, "Shizuku isn't running. Start it (Wireless debugging) for automatic setup")
-                        pages(ctx)
-                    }
-                    else -> pages(ctx)
+    /** Walks through the normal Android screens, one per tap: overlay, accessibility, device admin, then the default Home app. */
+    fun next(ctx: Context) { pages(ctx) }
+
+    /** True when NEO PLUS is the phone's default Home app. */
+    fun isDefaultHome(ctx: Context): Boolean {
+        val r = ctx.packageManager.resolveActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY)
+        return r?.activityInfo?.packageName == ctx.packageName
+    }
+
+    /** Asks Android to make NEO PLUS the Home app (the system's own prompt, no root needed). */
+    fun requestDefaultHome(ctx: Context) {
+        try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                val rm = ctx.getSystemService(android.app.role.RoleManager::class.java)
+                if (rm != null && rm.isRoleAvailable(android.app.role.RoleManager.ROLE_HOME) && !rm.isRoleHeld(android.app.role.RoleManager.ROLE_HOME)) {
+                    ctx.safeStart(rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    return
                 }
             }
-        }.start()
+        } catch (e: Throwable) { }
+        toast(ctx, "Choose NEO PLUS as the Home app")
+        ctx.safeStart(Intent(Settings.ACTION_HOME_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     /** Opens the next page that still needs a switch. Tap the button again after each page. */
@@ -87,6 +88,7 @@ object EnableAssistant {
                 }
             }
             !DeviceAdmin.isActive(ctx) -> ctx.safeStart(DeviceAdmin.requestIntent(ctx))
+            !isDefaultHome(ctx) -> requestDefaultHome(ctx)
             else -> toast(ctx, "Neo Plus Assistant is enabled")
         }
     }
