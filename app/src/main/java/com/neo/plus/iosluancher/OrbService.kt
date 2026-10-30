@@ -586,20 +586,8 @@ class OrbService : Service() {
     private fun awake() = st == St.THINKING || st == St.SPEAKING || engaged() || dragging || TaskLog.splitOpen ||
         System.currentTimeMillis() < armedUntil || System.currentTimeMillis() < peekUntil || sub?.visibility == View.VISIBLE
 
-    /**
-     * Woken while tasks are running: shows the split screen of every task (the launcher comes to the front) and keeps the
-     * microphone on, with no wake phrase needed, until the split screen is closed ("close tasks" or the Close button).
-     */
-    private fun openSplit() {
-        if (TaskLog.activeCount() == 0 && !TaskLog.splitOpen) return
-        TaskLog.splitOpen = true
-        TaskLog.micOn = true
-        try {
-            packageManager.getLaunchIntentForPackage(packageName)?.let {
-                startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
-            }
-        } catch (e: Exception) { }
-    }
+    /** The split screen was removed: waking the orb while tasks run no longer opens anything. */
+    private fun openSplit() { }
 
     private fun updateVisibility() {
         val root = orbRoot ?: return

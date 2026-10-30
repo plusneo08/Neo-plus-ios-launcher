@@ -353,9 +353,6 @@ fun LauncherRoot(
             }
         }
 
-        // Full-screen split of every task; the orb's microphone stays on while it is open
-        AnimatedVisibility(TaskLog.splitOpen, enter = fadeIn(), exit = fadeOut()) { TaskSplitScreen() }
-
         // iOS status bar: time, SIM signal + data type, Wi-Fi, battery %
         IosStatusBar(Modifier.align(Alignment.TopCenter))
     }
@@ -426,8 +423,6 @@ fun HomeGrid(apps: List<AppEntry>, vm: LauncherViewModel, iconSize: Dp, rowH: Dp
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp)) {
         if (withWidgets) {
             HomePanel(Modifier.fillMaxWidth().height(302.dp).padding(horizontal = 4.dp, vertical = 4.dp))
-            // One tile per running task (1 to 9), directly below the weather card; empty when no task is running
-            TaskTiles()
             Spacer(Modifier.weight(1f))   // the wallpaper's logo shows here
         }
         apps.chunked(4).forEach { row ->

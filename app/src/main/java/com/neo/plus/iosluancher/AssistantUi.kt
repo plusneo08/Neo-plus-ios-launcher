@@ -1119,8 +1119,13 @@ fun AssistantOverlay(a: AssistantViewModel, apps: List<AppEntry>, onClose: () ->
                 RoundIconButton(Icons.Filled.Close, "Close") { onClose() }
             }
 
-            // ---- conversation
+            // ---- conversation (page 1) and the Neo Plus dashboard (page 2: swipe left)
+            val pager = androidx.compose.foundation.pager.rememberPagerState(pageCount = { 2 })
             Box(Modifier.weight(1f).fillMaxWidth()) {
+              androidx.compose.foundation.pager.HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
+                if (page == 1) {
+                    NeoDashboard(a, apps) { scope.launch { pager.animateScrollToPage(0) } }
+                } else Box(Modifier.fillMaxSize()) {
                 if (a.messages.isEmpty()) {
                     Column(
                         Modifier.fillMaxSize().padding(horizontal = 32.dp),
@@ -1153,6 +1158,13 @@ fun AssistantOverlay(a: AssistantViewModel, apps: List<AppEntry>, onClose: () ->
                         if (a.busy) item(key = "typing") { TypingDots() }
                     }
                 }
+                }
+              }
+              Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                  repeat(2) { i ->
+                      Box(Modifier.size(if (pager.currentPage == i) 7.dp else 5.dp).background(Color.White.copy(alpha = if (pager.currentPage == i) 0.9f else 0.35f), androidx.compose.foundation.shape.CircleShape))
+                  }
+              }
             }
 
             if (listening && heard.isNotBlank()) {

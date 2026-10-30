@@ -241,8 +241,9 @@ return 'none';}catch(e){return 'none';}})()"""
             }
             s.feed.finish(out.lineSequence().firstOrNull().orEmpty().take(200), s.lastKind == "finish")
             return if (s.lastKind == "finish") out else out + diagnosisFor(s)
-        } catch (e: Exception) {
-            val m = "Couldn’t finish the website task (${e.javaClass.simpleName}: ${e.message?.take(100)})."
+        } catch (e: Throwable) {
+            val top = e.stackTrace.firstOrNull()?.let { " at ${it.fileName}:${it.lineNumber}" }.orEmpty()
+            val m = "Website task failed with an app error: ${e.javaClass.simpleName}: ${e.message?.take(160)}$top"
             s.feed.finish(m, false)
             return m
         } finally {
@@ -1355,6 +1356,7 @@ return 'started';})"""
         f.onStop = { s.cancelled = true }
         f.onResume = { if (s.waitingForUser) s.userSignal = 1 }
         sessions += s
+        HudOverlay.start(s.ctx)
         startTicker()
         if (h != null) { h.id = f.id; h.domain = s.entry.domain; h.feed = f; h.started = true; h.latch.countDown() }
         return f
@@ -1368,18 +1370,23 @@ return 'started';})"""
         val app = ctx.applicationContext
         val h = Handoff()
         Thread({
-            TaskService.begin(app, "Website task")
-            val res = try { if (batch) runBatch(app, a, h) else run(app, a, h) } catch (e: Exception) { "Couldn’t run the task (${e.javaClass.simpleName})." }
-            TaskService.end(app)
+            var res: String
+            try {
+                try { TaskService.begin(app, "Website task") } catch (e: Throwable) { }
+                res = try { if (batch) runBatch(app, a, h) else run(app, a, h) }
+                catch (e: Throwable) { "Website task failed with an app error: ${e.javaClass.simpleName}: ${e.message?.take(160)}" }
+                try { TaskService.end(app) } catch (e: Throwable) { }
+            } catch (e: Throwable) { res = "Website task failed: ${e.javaClass.simpleName}: ${e.message?.take(160)}" }
             if (!h.started) { h.early = res; h.latch.countDown() }
             else {
                 val ok = h.feed?.status == "Finished"
-                Announcer.say(app, "Task ${h.id} on ${h.domain} " + (if (ok) "is finished: " else "stopped: ") + res.lineSequence().firstOrNull().orEmpty().take(160))
+                // The real reason, word for word, is spoken and shown (never a vague "technical error")
+                Announcer.say(app, "Task ${h.id} on ${h.domain} " + (if (ok) "is finished: " else "stopped: ") + res.lineSequence().firstOrNull().orEmpty().take(200))
             }
         }, "neo-web-task").start()
         h.latch.await(20, TimeUnit.SECONDS)
         return if (h.started) "Started task ${h.id} on ${h.domain}. It runs in the background in its own tile of the split screen, and I will say when it finishes."
-        else h.early.ifBlank { "Couldn’t start the website task." }
+        else h.early.ifBlank { "The website task did not start within 20 seconds (nothing was reported by the browser setup)." }
     }
 
     private var ticking = false
