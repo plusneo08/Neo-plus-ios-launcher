@@ -126,7 +126,7 @@ object PhoneActions {
     )
 
     /** Actions that fetch something to tell the user (the note is the answer). */
-    val infoActions = setOf("calendar", "weather", "lookup", "news", "stock", "sports", "read_sms", "call_log", "screen", "read_messages", "read_notifications", "read_app", "last_message", "sleep_mode", "mode", "sleep_report", "sleep_voice", "time_lock", "send_money", "money_setup", "web_search", "look", "excel_create", "excel_edit", "excel_read", "compare_files", "word_report", "web_task", "web_batch", "page_source", "file_read", "ui_list", "app_task", "goal", "call_assist", "lock_app", "post_apps", "queue", "approvals", "schedule", "schedules", "report_number")
+    val infoActions = setOf("calendar", "weather", "lookup", "news", "stock", "sports", "read_sms", "call_log", "screen", "read_messages", "read_notifications", "read_app", "last_message", "sleep_mode", "wake_call", "mode", "sleep_report", "sleep_voice", "time_lock", "send_money", "money_setup", "web_search", "look", "excel_create", "excel_edit", "excel_read", "compare_files", "word_report", "web_task", "web_batch", "page_source", "file_read", "ui_list", "app_task", "goal", "call_assist", "lock_app", "post_apps", "queue", "approvals", "schedule", "schedules", "report_number")
 
     fun run(ctx: Context, name: String, a: JSONObject, apps: List<AppEntry>): ActionResult {
         // Neo Plus lock: while it is locked nothing is done for whoever is holding the phone (jobs the owner set up to run alone are not blocked)
@@ -485,6 +485,7 @@ object PhoneActions {
 
             "time_lock" -> return TimeLock.request(ctx, a)
 
+            "wake_call" -> return SleepMode.start(ctx, a.optInt("hour", 7), a.optInt("minute", 0), callOnly = true)
             "sleep_mode" -> return if (onOff(a)) SleepMode.start(ctx, a.optInt("hour", 7), a.optInt("minute", 0)) else SleepMode.stop(ctx)
 
             "mode" -> return Modes.handle(ctx, a)
@@ -1444,7 +1445,8 @@ You can also control the phone. To do something, add action tags on their own li
 
 ${doIt}Actions:
 open_app {"app":"Camera"}
-alarm {"hour":7,"minute":30,"label":""}   (24-hour clock)
+alarm {"hour":7,"minute":30,"label":""}   (24-hour clock; ONLY for a plain alarm the user calls an alarm. If they say wake me up, wake me, or a wake-up call, use wake_call instead)
+wake_call {"hour":8,"minute":30}   (24-hour clock; the user wants to be woken up: at that time the phone rings like an incoming call from you, and when they answer you greet them and tell what happened (missed calls, texts, notifications). It does NOT answer their messages. If the time is not given, ask for it)
 timer {"seconds":300,"label":""}
 flashlight {"on":true}
 wifi / bluetooth / airplane / mobile_data / dark_mode / low_power (battery saver) / dnd  {"on":true}

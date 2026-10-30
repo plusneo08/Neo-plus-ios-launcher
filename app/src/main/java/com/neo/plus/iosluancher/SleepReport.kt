@@ -37,6 +37,12 @@ Phone calls, goal progress (app starts with Goal), texts on the assistant line a
 
     fun SleepMode.report(ctx: Context): String {
         val app = ctx.applicationContext
+        if (prefs(app).getBoolean("calls_only", false)) {
+            // wake-up call only: greet, then tell what came in since it was set (missed calls, texts, notifications)
+            val text = try { ClapWake.report(app, prefs(app).getLong("started", 0L), "") } catch (e: Exception) { "Good morning." }
+            prefs(app).edit().putString("report", text).apply()
+            return text
+        }
         val arr = try { JSONArray(prefs(app).getString("log", "[]")) } catch (e: Exception) { JSONArray() }
         val tf = SimpleDateFormat("h:mm a", Locale.getDefault())
         val sb = StringBuilder()

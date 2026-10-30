@@ -90,3 +90,7 @@ The Gemini voice needs a Gemini key that is allowed to use the speech models (ge
 Clap twice to wake (hooked up): OrbService now listens for two claps while the screen is off (ClapWake.kt had no caller before).
 Two claps wake the screen, open the phone as far as Android allows (Neo lock / no lock), then speak a greeting plus a report of
 missed calls, texts and notifications. Settings: Assistant settings > Lock > "Clap twice to wake" (Clap wake / Claps unlock).
+
+Wake-up call: "wake me up at 8:30" now schedules the assistant's wake-up call (the phone rings like an incoming call, then the
+assistant greets and reports missed calls, texts and notifications) instead of a plain alarm. It does not answer messages
+(SleepMode.start callOnly). A plain alarm is only set when the user says "alarm".

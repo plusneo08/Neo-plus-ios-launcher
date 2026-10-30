@@ -87,6 +87,8 @@ object SleepCmd {
     private val sleepRe = Regex("\\b(?:sleep|sleeping|going to (?:bed|sleep)|good ?night|bedtime)\\b|ndikugona|ndigona", I)
     private val timeRe = Regex("(?:\\bcall\\b|\\bwake\\b|\\bring\\b|\\buntil\\b|\\btill\\b|\\bat\\b|\\bby\\b|\\baround\\b)[^0-9]{0,15}(\\d{1,2})(?:[:.](\\d{2}))?\\s*(a\\.?m\\.?|p\\.?m\\.?)?", I)
 
+    private val wakeRe = Regex("\\bwake me\\b|\\bwake[- ]?up call\\b|\\bgive me a wake\\b|\\bcall me (?:to|and) wake\\b", I)
+
     private val answerRe = Regex("\\b(?:answer|reply(?: to)?|respond to|handle|cover)\\b.{0,12}\\bmessages?\\b|\\breply for me\\b", I)
     private val busyRe = Regex("\\b(?:i['’]?m|i am|im)\\s+(.{3,40}?)(?=\\s*(?:[,.;]|\\band\\b|\\buntil\\b|\\btill\\b|\\bfor the next\\b|\\b(?:call|wake|ring)\\b|$))", I)
 
@@ -96,6 +98,18 @@ object SleepCmd {
         if (gemRe.containsMatchIn(t)) return LocalPlan("", listOf("sleep_voice" to JSONObject().put("free", false)))
         if (offRe.containsMatchIn(t)) return LocalPlan("", listOf("sleep_mode" to JSONObject().put("on", false)))
         if (reportRe.containsMatchIn(t)) return LocalPlan("", listOf("sleep_report" to JSONObject()))
+        if (wakeRe.containsMatchIn(t) && !sleepRe.containsMatchIn(t) && !t.contains("sleep mode", true)) {
+            // "wake me up at 8:30 am": a wake-up call at that time (not a plain alarm, and no answering of messages)
+            val wm = timeRe.find(t)
+            var wh = wm?.groupValues?.get(1)?.toIntOrNull() ?: -1
+            if (wm != null && wh >= 0) {
+                val wmin = wm.groupValues[2].toIntOrNull() ?: 0
+                val wap = wm.groupValues[3].lowercase(Locale.ROOT).replace(".", "")
+                if (wap == "pm" && wh < 12) wh += 12
+                if (wap == "am" && wh == 12) wh = 0
+                if (wh in 0..23 && wmin in 0..59) return LocalPlan("", listOf("wake_call" to JSONObject().put("hour", wh).put("minute", wmin)))
+            }
+        }
         if (!sleepRe.containsMatchIn(t) && !t.contains("sleep mode", true)) {
             // "I'm in a meeting until 3pm, answer my messages": same as sleep mode, but the replies say what you are doing
             if (!answerRe.containsMatchIn(t)) return null
