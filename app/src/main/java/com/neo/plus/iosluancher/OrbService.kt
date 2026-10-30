@@ -10,7 +10,9 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
+import android.content.BroadcastReceiver
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.graphics.Color
@@ -162,6 +164,19 @@ class OrbService : Service() {
 
     private var recognizer: SpeechRecognizer? = null
     private var st = St.IDLE
+
+    // Clap twice to wake: while the screen is off the microphone listens for two claps instead of words (see ClapWake.kt)
+    private var clapMode = false
+    private var clap: ClapDetector? = null
+    private var clapReceiverOn = false
+    private val clapScreenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+                Intent.ACTION_SCREEN_OFF -> main.post { startClap() }
+                Intent.ACTION_SCREEN_ON -> main.post { stopClap(true) }
+            }
+        }
+    }
     private var paused = false
     private var alive = false
     private var errorStreak = 0
@@ -246,6 +261,47 @@ class OrbService : Service() {
         subtitle("Say “Hey Neo”, then your request. Drag me down to the ✕ to remove me.", false)
         subtitleLater(3500)
         scheduleRestart(500)
+        try {
+            ContextCompat.registerReceiver(this, clapScreenReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF).apply { addAction(Intent.ACTION_SCREEN_ON) }, ContextCompat.RECEIVER_NOT_EXPORTED)
+            clapReceiverOn = true
+        } catch (e: Exception) { }
+        // started while the screen is already off (for example after a restart): go straight to listening for claps
+        try { if (!(getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isInteractive) main.post { startClap() } } catch (e: Exception) { }
+    }
+
+    /** The screen went off: stop listening for words and listen for two claps. */
+    private fun startClap() {
+        if (!alive || clapMode || !ClapWake.enabled(this)) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
+        clapMode = true
+        ClapWake.screenOffAt = System.currentTimeMillis()
+        cancelListening()
+        setState(St.IDLE)
+        val d = ClapDetector(this, { main.post { onDoubleClap() } }, { main.post { stopClap(true) } })
+        clap = d
+        d.start()
+    }
+
+    private fun stopClap(resumeListening: Boolean) {
+        if (!clapMode) return
+        clapMode = false
+        try { clap?.stop() } catch (e: Exception) { }
+        clap = null
+        if (resumeListening && alive && !paused) scheduleRestart(400)
+    }
+
+    /** Two claps: wake the screen, open the phone as far as Android allows, then greet and report what happened. */
+    private fun onDoubleClap() {
+        if (!alive || !clapMode) return
+        val since = ClapWake.screenOffAt
+        stopClap(false)
+        val app = applicationContext
+        io.execute {
+            val note = try { ClapWake.wakeAndUnlock(app) } catch (e: Exception) { "" }
+            try { Thread.sleep(700) } catch (e: InterruptedException) { }
+            val text = try { ClapWake.report(app, since, note) } catch (e: Exception) { "Hello." }
+            main.post { if (alive) speakReply(text) }
+        }
     }
 
     private val closeSplitPhrases = setOf("close tasks", "close the tasks", "close split", "close the split", "hide tasks", "hide the tasks", "close task view")
@@ -254,6 +310,8 @@ class OrbService : Service() {
         TaskLog.micOn = false
         alive = false
         instance = null
+        stopClap(false)
+        if (clapReceiverOn) { try { unregisterReceiver(clapScreenReceiver) } catch (e: Exception) { }; clapReceiverOn = false }
         main.removeCallbacksAndMessages(null)
         try { recognizer?.destroy() } catch (e: Exception) { }
         recognizer = null
@@ -678,7 +736,7 @@ class OrbService : Service() {
     }
 
     private fun startListening() {
-        if (!alive || paused || st == St.THINKING || st == St.SPEAKING) return
+        if (!alive || paused || clapMode || st == St.THINKING || st == St.SPEAKING) return
         if (mode == "manual" && !manualActive && !engaged()) { setState(St.IDLE); return }
         val r = recognizer ?: return
         SpeechFix.warm(this)

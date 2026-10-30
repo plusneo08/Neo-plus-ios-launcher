@@ -86,3 +86,7 @@ Speaker.kt   Speaker.speak already sent everything to the Gemini voice when a ke
              the first words wait up to 9 s, one more try is made, and only then the phone's voice is used, with a short message saying why.
 OrbService.kt  comment only.
 The Gemini voice needs a Gemini key that is allowed to use the speech models (gemini-3.8-flash-tts); the message shows the reason if it is not.
+
+Clap twice to wake (hooked up): OrbService now listens for two claps while the screen is off (ClapWake.kt had no caller before).
+Two claps wake the screen, open the phone as far as Android allows (Neo lock / no lock), then speak a greeting plus a report of
+missed calls, texts and notifications. Settings: Assistant settings > Lock > "Clap twice to wake" (Clap wake / Claps unlock).

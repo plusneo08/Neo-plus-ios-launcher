@@ -1496,6 +1496,25 @@ private fun LockPanel(apps: List<AppEntry>, onBack: () -> Unit) {
         color = note, fontSize = 12.sp, lineHeight = 17.sp
     )
 
+    Text("Clap twice to wake", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+    Text(
+        "While the screen is off the assistant listens for two claps instead of words. Clap twice: the screen turns on, the phone opens, and " +
+            "the assistant greets you and reports missed calls, texts and notifications that came in. Android never lets an app enter a PIN, pattern or " +
+            "fingerprint for you, so the phone only opens by itself when Android has no lock of its own (swipe or none) or when the Neo lock above replaces it. " +
+            "With an Android PIN it wakes the screen, greets you and reports, and you unlock as usual. It listens through the microphone all the time the " +
+            "screen is off, which uses some battery, and anyone who claps twice next to your phone can open it while this is on.",
+        color = note, fontSize = 13.sp, lineHeight = 18.sp
+    )
+    var clapOn by remember { mutableStateOf(ClapWake.enabled(ctx)) }
+    var clapUnlock by remember { mutableStateOf(ClapWake.unlockEnabled(ctx)) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        Pill(if (clapOn) "Clap wake: On" else "Clap wake: Off", clapOn) { clapOn = !clapOn; ClapWake.setEnabled(ctx, clapOn) }
+        Pill(if (clapUnlock) "Claps unlock: On" else "Claps unlock: Off", clapUnlock) {
+            if (clapUnlock) { clapUnlock = false; ClapWake.setUnlockEnabled(ctx, false) }
+            else needStrong { clapUnlock = true; ClapWake.setUnlockEnabled(ctx, true) }
+        }
+    }
+
     Text("Voice unlock", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
     Text(
         "Say a phrase you choose to open the lock. It only checks the words, not whose voice it is, so anyone who hears your phrase can use it. " +
