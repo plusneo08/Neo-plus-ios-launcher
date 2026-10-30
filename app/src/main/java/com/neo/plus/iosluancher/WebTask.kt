@@ -1385,7 +1385,7 @@ return 'started';})"""
             }
         }, "neo-web-task").start()
         h.latch.await(20, TimeUnit.SECONDS)
-        return if (h.started) "Started task ${h.id} on ${h.domain}. It runs in the background in its own tile of the split screen, and I will say when it finishes."
+        return if (h.started) "Started task ${h.id} on ${h.domain}. It runs in the background and I will say when it finishes."
         else h.early.ifBlank { "The website task did not start within 20 seconds (nothing was reported by the browser setup)." }
     }
 
