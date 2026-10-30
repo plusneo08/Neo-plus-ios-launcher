@@ -736,6 +736,11 @@ class OrbService : Service() {
     }
 
     private fun startListening() {
+        // Safety: the clap listener must never keep the microphone while the screen is on (a missed SCREEN_ON left it stuck).
+        if (clapMode) {
+            val on = try { (getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isInteractive } catch (e: Exception) { false }
+            if (on) stopClap(false)
+        }
         if (!alive || paused || clapMode || st == St.THINKING || st == St.SPEAKING) return
         if (mode == "manual" && !manualActive && !engaged()) { setState(St.IDLE); return }
         val r = recognizer ?: return

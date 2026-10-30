@@ -181,12 +181,25 @@ object PhoneActions {
                 val sim = if (a.optString("from").equals("assistant", true)) AssistantLine.lineSlot(ctx) else a.optInt("sim", 0)
                 val chosen = CallSim.pick(ctx, sim)
                 if (chosen.ask) return "Which SIM should I use for $label, SIM 1 or SIM 2? Say “SIM 1” or “SIM 2”."
+                // Place the call straight through Telecom: it needs no screen to be started from, so it also works from the
+                // background orb / a service, where starting the call screen with startActivity() is blocked by Android and
+                // used to fail silently (the assistant said "Calling ..." and nothing happened).
+                if (granted(ctx, Manifest.permission.CALL_PHONE)) {
+                    val placed = try {
+                        val extras = android.os.Bundle()
+                        chosen.handle?.let { extras.putParcelable(android.telecom.TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, it) }
+                        val tm = ctx.getSystemService(android.telecom.TelecomManager::class.java)
+                        tm.placeCall(Uri.fromParts("tel", number, null), extras)
+                        true
+                    } catch (e: Exception) { false }
+                    if (placed) return "Calling $label" + (chosen.slot?.let { " on SIM $it" } ?: "")
+                }
                 val action = if (granted(ctx, Manifest.permission.CALL_PHONE)) Intent.ACTION_CALL else Intent.ACTION_DIAL
                 val intent = Intent(action, Uri.parse("tel:" + Uri.encode(number)))
                 chosen.handle?.let { intent.putExtra(android.telecom.TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, it) }
                 if (action == Intent.ACTION_DIAL) intent.setClass(ctx, NeoDialerActivity::class.java)
                 val ok = ctx.safeStart(intent)
-                return if (ok) "Calling $label" + (chosen.slot?.let { " on SIM $it" } ?: "") else "Couldn’t start the call"
+                return if (ok) "Calling $label" + (chosen.slot?.let { " on SIM $it" } ?: "") else if (!granted(ctx, Manifest.permission.CALL_PHONE)) "Couldn’t call: allow the Phone permission for Neo Plus (Settings > Apps > Neo Plus > Permissions)" else "Couldn’t start the call"
             }
 
             "message" -> {

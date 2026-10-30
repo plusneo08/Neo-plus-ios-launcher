@@ -146,6 +146,66 @@ object NaturalVoice {
         throw last ?: Exception("No voice")
     }
 
+    /**
+     * The newer Gemini voice models (gemini-3.8-*-tts) return a WAV file (RIFF header) by default, not headerless PCM.
+     * The header was being played as audio and the rest of the code assumes 24 kHz mono 16-bit, so strip the header and,
+     * if the file is a different rate or stereo, convert it. Headerless PCM (older models) passes through unchanged.
+     */
+    private fun toPcm24k(raw: ByteArray): ByteArray {
+        if (raw.size < 44 || raw[0] != 'R'.code.toByte() || raw[1] != 'I'.code.toByte() || raw[2] != 'F'.code.toByte() || raw[3] != 'F'.code.toByte()) return raw
+        fun le32(o: Int) = (raw[o].toInt() and 0xFF) or ((raw[o + 1].toInt() and 0xFF) shl 8) or ((raw[o + 2].toInt() and 0xFF) shl 16) or ((raw[o + 3].toInt() and 0xFF) shl 24)
+        fun le16(o: Int) = (raw[o].toInt() and 0xFF) or ((raw[o + 1].toInt() and 0xFF) shl 8)
+        var rate = RATE
+        var channels = 1
+        var pos = 12
+        var start = -1
+        var len = 0
+        while (pos + 8 <= raw.size) {
+            val id = String(raw, pos, 4, Charsets.US_ASCII)
+            val size = le32(pos + 4)
+            if (id == "fmt " && pos + 8 + 16 <= raw.size) {
+                channels = le16(pos + 10).coerceAtLeast(1)
+                rate = le32(pos + 12).takeIf { it in 8000..96000 } ?: RATE
+            }
+            if (id == "data") {
+                start = pos + 8
+                // streamed files can carry 0 / 0xFFFFFFFF as the size: take everything that is left
+                len = if (size <= 0 || start + size > raw.size) raw.size - start else size
+                break
+            }
+            if (size < 0 || pos + 8 + size > raw.size) break
+            pos += 8 + size + (size and 1)
+        }
+        if (start < 0) { start = 44; len = raw.size - 44 }
+        len -= len % (2 * channels)
+        if (len <= 0) return ByteArray(0)
+        // mix down to mono
+        val frames = len / (2 * channels)
+        val mono = ShortArray(frames)
+        for (f in 0 until frames) {
+            var sum = 0
+            for (c in 0 until channels) {
+                val o = start + (f * channels + c) * 2
+                sum += (raw[o].toInt() and 0xFF) or (raw[o + 1].toInt() shl 8)
+            }
+            mono[f] = (sum / channels).toShort()
+        }
+        // resample (linear) to 24 kHz when needed
+        val out = if (rate == RATE) mono else {
+            val n = (frames.toLong() * RATE / rate).toInt()
+            ShortArray(n) { i ->
+                val p = i.toDouble() * rate / RATE
+                val i0 = p.toInt().coerceAtMost(frames - 1)
+                val i1 = (i0 + 1).coerceAtMost(frames - 1)
+                val fr = p - i0
+                (mono[i0] * (1 - fr) + mono[i1] * fr).toInt().toShort()
+            }
+        }
+        val res = ByteArray(out.size * 2)
+        for (i in out.indices) { res[i * 2] = (out[i].toInt() and 0xFF).toByte(); res[i * 2 + 1] = (out[i].toInt() shr 8).toByte() }
+        return res
+    }
+
     private fun synthWith(model: String, key: String, text: String, voice: String): ByteArray {
         // Only the words to be spoken go to the voice model. An instruction such as "say this naturally" in the same
         // text is read out loud by the model ("speak in natural human voice..."), so there is none. The voice name
@@ -190,7 +250,7 @@ object NaturalVoice {
                 }
             }
             if (data == null) throw Exception("No audio in reply")
-            val pcm = Base64.decode(data, Base64.DEFAULT)
+            val pcm = toPcm24k(Base64.decode(data, Base64.DEFAULT))
             if (pcm.size < 2000) throw Exception("Empty audio")
             return pcm
         } finally {

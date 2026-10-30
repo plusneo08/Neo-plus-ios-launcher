@@ -171,7 +171,11 @@ class ClapDetector(private val ctx: Context, private val onDouble: () -> Unit, p
         running = false
         try { lock?.let { if (it.isHeld) it.release() } } catch (e: Exception) { }
         lock = null
+        // Wait until the clap thread has really let go of the microphone. While it still holds it, the speech recogniser
+        // (a different app process) is silenced by Android: the orb says "listening" but nothing is heard.
+        val t = thread
         thread = null
+        if (t != null && t !== Thread.currentThread()) { try { t.join(800) } catch (e: InterruptedException) { } }
     }
 
     private fun loop() {
