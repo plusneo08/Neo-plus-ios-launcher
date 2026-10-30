@@ -1370,7 +1370,7 @@ return 'started';})"""
         val app = ctx.applicationContext
         val h = Handoff()
         Thread({
-            var res: String
+            var res = ""
             try {
                 try { TaskService.begin(app, "Website task") } catch (e: Throwable) { }
                 res = try { if (batch) runBatch(app, a, h) else run(app, a, h) }
