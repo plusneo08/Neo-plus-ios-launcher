@@ -60,7 +60,7 @@ object HudState {
 object HudOverlay {
     private val main = Handler(Looper.getMainLooper())
     private var ctx: Context? = null
-    private var view: HudView? = null
+    private var view: NeoHudView? = null
     private var wm: WindowManager? = null
     private var ticking = false
     private var idleSince = 0L
@@ -114,7 +114,7 @@ object HudOverlay {
 
     private fun add(c: Context) {
         val host = WebTask.overlayHost(c) ?: return
-        val v = HudView(c)
+        val v = NeoHudView(c)
         val lp = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, host.second,
             WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -132,7 +132,7 @@ object HudOverlay {
 }
 
 /** The HUD itself: one custom view, drawn with plain Canvas calls (no layouts, so it is cheap and cannot crash on lifecycle). */
-private class HudView(c: Context) : View(c) {
+private class NeoHudView(c: Context) : View(c) {
     private val d = c.resources.displayMetrics.density
     private val cyan = Color.rgb(34, 229, 255)
     private val red = Color.rgb(255, 69, 58)
