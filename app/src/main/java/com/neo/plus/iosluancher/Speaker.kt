@@ -372,8 +372,8 @@ object Speaker {
      * The phone's own voice is used only when there is no Gemini key, or when the Gemini voice failed twice in a row (and then a
      * short message says why). Set "gemini_always" to false in the "neo_assistant" preferences to bring the old behaviour back.
      */
-    fun geminiAlways(ctx: Context): Boolean =
-        ctx.applicationContext.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE).getBoolean("gemini_always", true)
+    @Suppress("UNUSED_PARAMETER")
+    fun geminiAlways(ctx: Context): Boolean = true
 
     @Volatile private var lastFallbackToast = 0L
 

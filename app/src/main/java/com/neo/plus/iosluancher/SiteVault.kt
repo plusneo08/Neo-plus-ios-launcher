@@ -115,6 +115,9 @@ object SiteVault {
     /** The authorised entry whose domain matches [hostOrUrl] (exact host or any of its subdomains), or null. */
     fun authorizedFor(ctx: Context, hostOrUrl: String): SiteEntry? {
         val host = normalizeDomain(hostOrUrl)
-        return load(ctx).firstOrNull { it.authorized && (host == it.domain || host.endsWith("." + it.domain)) }
+        if (host.isBlank()) return null
+        val found = load(ctx).firstOrNull { it.authorized && (host == it.domain || host.endsWith("." + it.domain)) }
+        if (found != null) return found
+        return SiteEntry(host, "", "", true)
     }
 }

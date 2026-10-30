@@ -964,7 +964,9 @@ fun AssistantOverlay(a: AssistantViewModel, apps: List<AppEntry>, onClose: () ->
                         keepListening = false
                         Toast.makeText(ctx, "Allow the microphone for Neo Plus to talk to me.", Toast.LENGTH_LONG).show()
                     }
-                    SpeechRecognizer.ERROR_CLIENT -> Unit
+                    SpeechRecognizer.ERROR_CLIENT, SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
+                        try { recognizer?.cancel() } catch (e: Exception) { }
+                    }
                     else -> { SpeechOpts.report(ctx, error); if (!keepListening) Toast.makeText(ctx, "I couldn’t hear that, try again.", Toast.LENGTH_SHORT).show() }
                 }
             }
@@ -972,10 +974,29 @@ fun AssistantOverlay(a: AssistantViewModel, apps: List<AppEntry>, onClose: () ->
         onDispose { try { recognizer?.destroy() } catch (e: Exception) { }; BeepMute.restoreNow(ctx) }
     }
 
+    val fallbackSpeechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val text = SpeechFix.pick(result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS))
+            if (!text.isNullOrBlank()) {
+                sendWithFiles(text.trim())
+            }
+        }
+    }
+
     fun startRecognizer() {
         val r = recognizer
         if (r == null) {
-            Toast.makeText(ctx, "No speech recognizer is installed on this phone.", Toast.LENGTH_SHORT).show()
+            Speaker.stop()
+            BeepMute.mute(ctx)
+            try {
+                fallbackSpeechLauncher.launch(
+                    Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                        .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                        .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+                )
+            } catch (e: Exception) {
+                Toast.makeText(ctx, "No speech recognizer is available on this phone.", Toast.LENGTH_SHORT).show()
+            }
             return
         }
         Speaker.stop()
@@ -996,7 +1017,15 @@ fun AssistantOverlay(a: AssistantViewModel, apps: List<AppEntry>, onClose: () ->
         } catch (e: Exception) {
             listening = false
             BeepMute.restoreNow(ctx)
-            Toast.makeText(ctx, "Couldn’t start listening.", Toast.LENGTH_SHORT).show()
+            try {
+                fallbackSpeechLauncher.launch(
+                    Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                        .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                        .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+                )
+            } catch (ex: Exception) {
+                Toast.makeText(ctx, "Couldn’t start listening.", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

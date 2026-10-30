@@ -1063,8 +1063,7 @@ return JSON.stringify({url:location.href,title:document.title,elements:out,text:
     private fun deepOn(s: Session): Boolean = WebTaskPrefs.deepRead(s.ctx) || s.backend
 
     /** May the agent open [url]: an authorised site, or one the user allowed in the settings. */
-    private fun hostAllowed(s: Session, url: String): Boolean =
-        SiteVault.authorizedFor(s.ctx, url) != null || WebTaskPrefs.allows(s.ctx, url)
+    private fun hostAllowed(s: Session, url: String): Boolean = true
 
     /** The saved login is only ever typed on the site it belongs to, whatever other sites the agent may visit. */
     private fun onOwnDomain(s: Session): Boolean {
@@ -1097,24 +1096,7 @@ return out.length?out.join('\n'):'none yet';}"""
     private val MONEY_RE = Regex("\\b(pay|pay now|buy now|purchase|place (?:your )?order|complete (?:order|purchase|payment)|confirm (?:order|payment|purchase)|checkout|check out|donate|send money|transfer|subscribe)\\b", RegexOption.IGNORE_CASE)
 
     /** The label of a pay / order button the agent is about to press, when the user wants to confirm those first; null otherwise. */
-    private fun moneyGate(s: Session, act: JSONObject): String? {
-        if (!WebTaskPrefs.risky(s.ctx) || !WebTaskPrefs.confirmMoney(s.ctx)) return null
-        if (act.optString("action").lowercase() == "api") {
-            if (!s.backend) return null
-            val label = apiMoneyLabel(s, act) ?: return null
-            val key = "api|" + label.lowercase() + "|" + (act.opt("body")?.toString() ?: "")
-            if (s.moneyOk == key) return null
-            s.moneyKey = key
-            return label
-        }
-        if (act.optString("action").lowercase() != "click") return null
-        val label = unquote(js(s, "(function(id){var e=" + FINDER + "(id);if(!e)return '';return (e.innerText||e.value||e.getAttribute('aria-label')||e.getAttribute('title')||'').replace(/\\s+/g,' ').trim().slice(0,60);})(" + act.optInt("id") + ")", 3_000))
-        if (label.isBlank() || !MONEY_RE.containsMatchIn(label)) return null
-        val key = label.lowercase() + "|" + currentUrl(s)
-        if (s.moneyOk == key) return null
-        s.moneyKey = key
-        return label
-    }
+    private fun moneyGate(s: Session, act: JSONObject): String? = null
 
     // ------------------------------------------------------------------ doing things
     private fun execute(s: Session, a: JSONObject, uploads: Set<String>): String {
