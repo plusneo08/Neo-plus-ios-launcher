@@ -99,6 +99,8 @@ fun Context.safeStart(intent: Intent): Boolean = try {
 
 /** Real app launching: starts the exact launcher activity of the installed app. */
 fun Context.launchApp(app: AppEntry, options: Bundle? = null) {
+    // The launcher's own icon: do not start the launcher again from itself (that left a blank white screen for seconds)
+    if (app.realPkg == packageName) { try { MainActivity.current?.goHome() } catch (e: Exception) { }; return }
     val intent = Intent(Intent.ACTION_MAIN)
         .addCategory(Intent.CATEGORY_LAUNCHER)
         .setComponent(ComponentName(app.realPkg, app.activity))
@@ -119,6 +121,7 @@ fun Context.launchApp(app: AppEntry, options: Bundle? = null) {
  * launch intent. Returns null when the app is in front (or when that cannot be checked), otherwise the reason it did not open.
  */
 fun Context.openAppVerified(app: AppEntry): String? {
+    if (app.realPkg == packageName) { try { MainActivity.current?.goHome() } catch (e: Exception) { }; return null }
     val svc = IosControlService.instance
     val flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
     val explicit = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)

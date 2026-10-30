@@ -103,6 +103,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Tapping Neo Plus's own icon on its own home screen: just go back to the first home page (no relaunch, no blank screen). */
+    fun goHome() { homeTick++ }
+
     override fun onStart() {
         super.onStart()
         widgets.start()
