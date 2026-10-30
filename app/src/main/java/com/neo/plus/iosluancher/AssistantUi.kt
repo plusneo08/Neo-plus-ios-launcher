@@ -1381,9 +1381,7 @@ private fun LockPanel(apps: List<AppEntry>, onBack: () -> Unit) {
 
     Text("Lock", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
     Text(
-        "A second lock on top of your phone’s own: it covers Neo Plus and the apps you choose. It opens with your phone’s own unlock " +
-            "(fingerprint, face, PIN, pattern or password; Neo Plus never sees them) or with your voice phrase if you set one. " +
-            "To switch it off or weaken it, the phone asks for your own unlock first.",
+        "Switch it on and Neo Plus and the apps you pick below ask for your phone’s own unlock (fingerprint, face or PIN) before they open.",
         color = note, fontSize = 13.sp, lineHeight = 18.sp
     )
     if (!strong) {
@@ -1405,6 +1403,29 @@ private fun LockPanel(apps: List<AppEntry>, onBack: () -> Unit) {
             else needStrong { AppLock.setEnabled(ctx, false); on = false }
         }
     }
+    Text("Locked apps", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+    GlassField(query, { query = it }, "Search apps")
+    apps.filter { query.isBlank() || it.shownLabel.contains(query.trim(), ignoreCase = true) }
+        .sortedBy { it.shownLabel.lowercase() }
+        .forEach { app ->
+            val isOn = app.pkg in locked
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.12f)).padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                androidx.compose.foundation.Image(app.icon, app.shownLabel, Modifier.size(36.dp).clip(RoundedCornerShape(9.dp)))
+                Text(app.shownLabel, color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f), maxLines = 1)
+                Pill(if (isOn) "Locked" else "Off", isOn) {
+                    if (!isOn) { AppLock.setApp(ctx, app.pkg, true); locked = AppLock.lockedApps(ctx) }
+                    else needStrong { AppLock.setApp(ctx, app.pkg, false); locked = AppLock.lockedApps(ctx) }
+                }
+            }
+        }
+    var more by remember { mutableStateOf(false) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        Pill(if (more) "Hide more options" else "More options", more) { more = !more }
+    }
+    if (more) {
     Text("Lock again after leaving", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf(0 to "At once", 1 to "1 min", 2 to "2 min", 5 to "5 min", 15 to "15 min").forEach { (m, label) ->
@@ -1531,24 +1552,8 @@ private fun LockPanel(apps: List<AppEntry>, onBack: () -> Unit) {
         }
     }
 
-    Text("Locked apps", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-    GlassField(query, { query = it }, "Search apps")
-    apps.filter { query.isBlank() || it.shownLabel.contains(query.trim(), ignoreCase = true) }
-        .sortedBy { it.shownLabel.lowercase() }
-        .forEach { app ->
-            val isOn = app.pkg in locked
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.12f)).padding(10.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                androidx.compose.foundation.Image(app.icon, app.shownLabel, Modifier.size(36.dp).clip(RoundedCornerShape(9.dp)))
-                Text(app.shownLabel, color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f), maxLines = 1)
-                Pill(if (isOn) "Locked" else "Off", isOn) {
-                    if (!isOn) { AppLock.setApp(ctx, app.pkg, true); locked = AppLock.lockedApps(ctx) }
-                    else needStrong { AppLock.setApp(ctx, app.pkg, false); locked = AppLock.lockedApps(ctx) }
-                }
-            }
-        }
+    }
+
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
         Box(
             Modifier.weight(1f).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.16f)).clickable { onBack() }.padding(vertical = 12.dp),
