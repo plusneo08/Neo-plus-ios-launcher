@@ -4,15 +4,9 @@ CHANGED  Shell.kt        now a no-op (never runs a command)
 CHANGED  EnableAssistant "Enable" walks the normal screens, then asks Android for the Home role (createRequestRoleIntent ROLE_HOME / Home settings)
 CHANGED  MainActivity    asks once after install to become the default Home app
 
-# Parallel tasks with split-screen tiles (replaces the old SplitTasks.kt panes)
-REMOVED  SplitTasks.kt   (its "take turns on one screen" panes and voice commands are gone)
-CHANGED  TaskLog.kt      one TaskFeed per task (up to 9) + tile grid: TaskTiles (home, under the weather card) and TaskSplitScreen (full screen)
-CHANGED  WebTask.kt      every task has its own session, feed, cancel / continue flags and page picture; runAsync() starts tasks in the background;
-                         each task sends only ITS OWN page picture to Gemini. Your backend / API mode is kept.
-CHANGED  Assistant.kt    web_task / web_batch start in the background ("wait":true = old blocking behaviour); stop/continue take "task":N
-CHANGED  OrbService.kt   waking the orb (Hey Neo / 147 / tap) while tasks run opens the split screen and keeps the mic on until "close tasks"
-CHANGED  Home.kt, Money.kt, MoneySteps.kt, AssistantUi.kt   tiles under the weather card; transfers keep their own tile
-Say: "task 2 continue", "stop task 3", "status", "close tasks".   NOT compiled here: send me the first build error.
+# Parallel tasks
+The split screen (task tiles, split view, SplitTasks.kt) was removed. Tasks still run in parallel (up to 9, each with its own feed);
+steps show in the assistant chat's task view and the HUD overlay. Stop / continue by number still works ("stop task 3", "task 2 continue", "status").
 
 # Contacts, home widgets, chat notifications (new)
 NEW      ContactEditor.kt   in-app contact editor: name, number, email, save to Phone / SIM 1 / SIM 2 / each email account

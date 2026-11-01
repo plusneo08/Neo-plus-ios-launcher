@@ -177,7 +177,6 @@ fun LauncherRoot(
             // NEO PLUS A-Z ring home screen: no dock, no app grid, no icons until a letter is tapped
             BackHandler(enabled = true) {
                 when {
-                    TaskLog.splitOpen -> TaskLog.splitOpen = false
                     showGlass -> showGlass = false
                     menuOpen -> menuOpen = false
                     editing -> editing = false
@@ -203,7 +202,7 @@ fun LauncherRoot(
                 val rowH = iconSize + 36.dp
                 val rows = ((maxHeight - 72.dp) / rowH).toInt().coerceIn(3, 7)
                 val perPage = rows * 4
-                val taskRoom = TaskLog.homeRoom()   // room for the task tiles under the weather card
+                val taskRoom = 0.dp
                 val firstCap = ((maxHeight - 72.dp - 120.dp - 366.dp - taskRoom) / rowH).toInt().coerceIn(1, 3) * 4
                 val homeList = vm.homeApps
                 val homePages = remember(homeList, perPage, firstCap) {
@@ -220,7 +219,6 @@ fun LauncherRoot(
                 }
                 BackHandler(enabled = true) {
                     when {
-                        TaskLog.splitOpen -> TaskLog.splitOpen = false
                         showGlass -> showGlass = false
                         menuOpen -> menuOpen = false
                         editing -> editing = false

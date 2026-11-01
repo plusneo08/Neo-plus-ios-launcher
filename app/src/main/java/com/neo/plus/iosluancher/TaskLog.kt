@@ -110,10 +110,6 @@ object TaskLog {
     const val MAX = 9
     val feeds = mutableStateListOf<TaskFeed>()
     var focusId by mutableStateOf(-1)
-    /** The full-screen split view (all tasks at once) is open. Set when the orb is woken while tasks are running. */
-    var splitOpen by mutableStateOf(false)
-    /** The orb's microphone is on and listening for the split view. */
-    var micOn by mutableStateOf(false)
 
     private val bound = ThreadLocal<TaskFeed?>()
     private val idle = TaskFeed(0)
@@ -126,12 +122,6 @@ object TaskLog {
     fun activeCount(): Int = feeds.count { it.active }
     fun byId(id: Int): TaskFeed? = feeds.firstOrNull { it.id == id }
     fun owned(who: String): TaskFeed? = feeds.lastOrNull { it.owner == who && it.active }
-
-    /** Height the small tile panel needs on the home screen (0 when there is nothing to show). */
-    fun homeRoom(): androidx.compose.ui.unit.Dp {
-        val n = visible().size
-        return when { n == 0 -> 0.dp; n == 1 -> 150.dp; n <= 4 -> 210.dp; else -> 250.dp }
-    }
 
     /** Opens a new feed (a new tile). Returns null when 9 tasks are already on screen and none of them is finished. */
     @Synchronized fun begin(name: String, totalItems: Int = 0, owner: String = ""): TaskFeed? {
@@ -257,103 +247,4 @@ private fun PanelButton(label: String, tint: Color = Color.White, onClick: () ->
         Modifier.clip(RoundedCornerShape(50)).background(tint.copy(alpha = 0.18f)).clickable { onClick() }
             .padding(horizontal = 10.dp, vertical = 5.dp)
     ) { Text(label, color = tint, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) }
-}
-
-
-/* ------------------------------------------------------------------------------------------------------------------ */
-/*  Split screen: one tile per running task (1 to 9). Each tile shows ITS OWN page picture and ITS OWN steps.         */
-/* ------------------------------------------------------------------------------------------------------------------ */
-
-private fun lineColor(k: TaskLine.Kind): Color = when (k) {
-    TaskLine.Kind.OK -> Color(0xFF30D158)
-    TaskLine.Kind.WARN -> Color(0xFFFFD60A)
-    TaskLine.Kind.ERROR -> Color(0xFFFF453A)
-    TaskLine.Kind.FIX -> Color(0xFF64D2FF)
-    TaskLine.Kind.STEP -> Color.White.copy(alpha = 0.9f)
-    TaskLine.Kind.INFO -> Color.White.copy(alpha = 0.65f)
-}
-
-/** The grid: 1 task = one tile, 2 = side by side, 3-4 = 2 x 2, 5-9 = 3 columns. */
-@Composable
-fun TaskGrid(feeds: List<TaskFeed>, compact: Boolean, modifier: Modifier = Modifier) {
-    val n = feeds.size
-    if (n == 0) return
-    val cols = when { n <= 1 -> 1; n <= 4 -> 2; else -> 3 }
-    val rows = (n + cols - 1) / cols
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        for (r in 0 until rows) {
-            Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                for (c in 0 until cols) {
-                    val i = r * cols + c
-                    if (i < n) TaskTile(feeds[i], compact, Modifier.weight(1f).fillMaxHeight())
-                    else Spacer(Modifier.weight(1f))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun TaskTile(f: TaskFeed, compact: Boolean, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(if (compact) 14.dp else 18.dp)
-    val accent = when {
-        f.waiting -> Color(0xFFFFD60A)
-        f.active -> Color(0xFF38BDF8)
-        f.status == "Finished" -> Color(0xFF30D158)
-        else -> Color(0xFFFF453A)
-    }
-    val pad = if (compact) 6.dp else 10.dp
-    Box(
-        modifier.clip(shape).background(Color(0xFF050B16).copy(alpha = 0.82f))
-            .clickable { TaskLog.focusId = f.id; if (compact) TaskLog.splitOpen = true }
-    ) {
-        val img = f.thumb
-        if (img != null) Image(img, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alpha = 0.40f)
-        Column(Modifier.fillMaxSize().padding(pad), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.clip(RoundedCornerShape(50)).background(accent.copy(alpha = 0.25f)).padding(horizontal = 7.dp, vertical = 2.dp)) {
-                    Text("#" + f.id, color = accent, fontSize = if (compact) 10.sp else 12.sp, fontWeight = FontWeight.Bold)
-                }
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    f.title.ifBlank { "Task" }, color = Color.White, fontSize = if (compact) 11.sp else 14.sp, fontWeight = FontWeight.SemiBold,
-                    maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
-                )
-            }
-            val prog = if (f.total > 0) "  ·  ${f.done + f.failed}/${f.total}" else ""
-            Text(
-                (if (f.waiting) "Needs you: " + f.question.ifBlank { "tap Continue" } else f.status) + prog,
-                color = if (f.waiting) Color(0xFFFFD60A) else Color.White.copy(alpha = 0.75f),
-                fontSize = if (compact) 10.sp else 12.sp, maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis
-            )
-            if (f.total > 0) {
-                val frac = ((f.done + f.failed).toFloat() / f.total).coerceIn(0f, 1f)
-                Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.18f))) {
-                    Box(Modifier.fillMaxWidth(frac).height(3.dp).background(Color(0xFF30D158)))
-                }
-            }
-            val show = if (compact) 2 else 6
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                f.lines.toList().takeLast(show).forEach { l ->
-                    Text(l.text, color = lineColor(l.kind), fontSize = if (compact) 9.sp else 11.sp, lineHeight = if (compact) 11.sp else 14.sp, maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis)
-                }
-            }
-            if (!compact) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (f.waiting) TileButton("Continue", Color(0xFF30D158)) { f.resume() }
-                    if (f.active) {
-                        TileButton(if (f.showBrowser) "Hide page" else "Watch page") { f.showBrowser = !f.showBrowser }
-                        TileButton("Stop", Color(0xFFFF453A)) { f.stop() }
-                    } else TileButton("Close") { f.dismissed = true }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun TileButton(label: String, tint: Color = Color.White, onClick: () -> Unit) {
-    Box(Modifier.clip(RoundedCornerShape(50)).background(tint.copy(alpha = 0.2f)).clickable { onClick() }.padding(horizontal = 10.dp, vertical = 5.dp)) {
-        Text(label, color = tint, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-    }
 }

@@ -304,10 +304,7 @@ class OrbService : Service() {
         }
     }
 
-    private val closeSplitPhrases = setOf("close tasks", "close the tasks", "close split", "close the split", "hide tasks", "hide the tasks", "close task view")
-
     override fun onDestroy() {
-        TaskLog.micOn = false
         alive = false
         instance = null
         stopClap(false)
@@ -583,11 +580,8 @@ class OrbService : Service() {
     private var peekUntil = 0L      // the wake phrase was just heard in a half-finished sentence
     private var dragging = false    // the orb is being moved to the ✕
 
-    private fun awake() = st == St.THINKING || st == St.SPEAKING || engaged() || dragging || TaskLog.splitOpen ||
+    private fun awake() = st == St.THINKING || st == St.SPEAKING || engaged() || dragging ||
         System.currentTimeMillis() < armedUntil || System.currentTimeMillis() < peekUntil || sub?.visibility == View.VISIBLE
-
-    /** The split screen was removed: waking the orb while tasks run no longer opens anything. */
-    private fun openSplit() { }
 
     private fun updateVisibility() {
         val root = orbRoot ?: return
@@ -669,7 +663,6 @@ class OrbService : Service() {
                 }
             }
             else -> { // wake mode: tapping means "talk now", no wake phrase needed
-                openSplit()
                 armedUntil = now + 9000
                 cancelListening()
                 subtitle("Listening…", true)
@@ -749,7 +742,6 @@ class OrbService : Service() {
             beepGuard()
             r.startListening(intent)
             setState(St.LISTENING)
-            TaskLog.micOn = TaskLog.splitOpen
         } catch (e: Exception) {
             errorStreak++
             scheduleRestart(backoff())
@@ -805,7 +797,7 @@ class OrbService : Service() {
 
         override fun onPartialResults(partialResults: Bundle?) {
             if (!alive || st != St.LISTENING) return
-            if (mode == "wake" && !engaged() && !TaskLog.splitOpen && System.currentTimeMillis() >= armedUntil) {
+            if (mode == "wake" && !engaged() && System.currentTimeMillis() >= armedUntil) {
                 // standby: as soon as the wake phrase shows up the orb appears and shows that it is listening
                 val heard = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
                 if (!heard.isNullOrBlank() && (wakeRegex.containsMatchIn(heard) || WakeCode.re.containsMatchIn(heard)) && System.currentTimeMillis() >= peekUntil) {
@@ -865,7 +857,7 @@ class OrbService : Service() {
     private fun handle(raw: String) {
         val text = raw.trim()
         val t = text.lowercase(Locale.ROOT).trim().trimEnd('.', '!', '?', ',')
-        if (mode == "manual" || engaged() || TaskLog.splitOpen || System.currentTimeMillis() < armedUntil || wakeRegex.containsMatchIn(text)) {
+        if (mode == "manual" || engaged() || System.currentTimeMillis() < armedUntil || wakeRegex.containsMatchIn(text)) {
             subtitle(text, true)
         }
 
@@ -897,7 +889,6 @@ class OrbService : Service() {
             val now = System.currentTimeMillis()
             val code = WakeCode.re.find(text)
             val m = if (code == null) wakeRegex.find(text) else null
-            if (code != null || m != null) openSplit()
             if (code != null) {
                 // the code “147”, alone or followed by the request
                 cmd = code.groupValues[1].trim().trimStart(',', '.', ' ')
@@ -916,7 +907,7 @@ class OrbService : Service() {
                     speakReply("Yes?")
                     return
                 }
-            } else if (now >= armedUntil && !TaskLog.splitOpen) {
+            } else if (now >= armedUntil) {
                 setState(St.IDLE) // not for me: ignore it and keep waiting
                 scheduleRestart(100)
                 return
@@ -927,11 +918,6 @@ class OrbService : Service() {
         val tc = cmd.lowercase(Locale.ROOT).trim().trimEnd('.', '!', '?', ',')
         if (tc in stopPhrases) {
             speakReply(if (LangGuess.isChichewa(tc)) "Tsalani bwino." else "Okay, goodbye.") { stopSelf() }
-            return
-        }
-        if (TaskLog.splitOpen && tc in closeSplitPhrases) {
-            TaskLog.splitOpen = false; TaskLog.micOn = false
-            speakReply("Okay, I closed the tasks.")
             return
         }
         if (TaskLog.visible().isNotEmpty() && Regex("\\b(status|what is happening|what's happening|how are the tasks|what are the tasks doing|task status)\\b").containsMatchIn(tc)) {
