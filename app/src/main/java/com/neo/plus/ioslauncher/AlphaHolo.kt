@@ -59,6 +59,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -248,7 +249,6 @@ private fun LogoGlobe(
         ) {
             Image(painterResource(R.drawable.neo_np_logo), "NEO PLUS", Modifier.fillMaxSize(0.92f), contentScale = ContentScale.Fit)
         }
-        Box(Modifier.align(Alignment.BottomCenter).offset(y = 5.dp)) { AssistantOrb(26.dp) }
     }
 }
 
@@ -272,6 +272,8 @@ fun AlphaHoloHome(
     val all = remember(apps) {
         apps.distinctBy { it.pkg + "/" + it.activity }.sortedBy { it.shownLabel.lowercase() }
     }
+    // the assistant gem is the first place on the first ring, so it turns with the apps and gets its own room
+    val items = remember(all) { listOf<AppEntry?>(null) + all }
     val stars = remember {
         val r = java.util.Random(7)
         List(90) { floatArrayOf(r.nextFloat(), r.nextFloat(), 0.5f + r.nextFloat() * 1.3f, 0.25f + r.nextFloat() * 0.6f) }
@@ -314,12 +316,16 @@ fun AlphaHoloHome(
         val globeCy = coinTop.value + coinD.value / 2f
 
         // the app rings: every app gets a place on one of them, rings turn in opposite directions
-        val rings = max(1, (all.size + PER_RING - 1) / PER_RING)
-        val perRing = if (all.isEmpty()) 1 else (all.size + rings - 1) / rings
+        // the rings only use the space between the widgets (top of the stage) and the platform, so apps never creep under the widgets
         val orbitRx = stageW.value * 0.40f
-        val orbitRy = max(min(stageH.value * 0.10f, 44f), 22f)
-        val spread = if (rings == 1) 0f else min(46f, (discCy.value - 70f) / (rings - 1).coerceAtLeast(1))
-        val firstCy = globeCy - spread * (rings - 1) / 2f
+        val cyMin = 30f + 55f                                   // clear of the widgets (stage starts just below them)
+        val cyMax = max(cyMin, discCy.value - 30f - 41f)        // clear of the platform
+        val maxRings = max(1, ((cyMax - cyMin) / 38f).toInt() + 1)
+        val rings = min(max(1, (items.size + PER_RING - 1) / PER_RING), maxRings)
+        val perRing = (items.size + rings - 1) / rings         // more apps share a ring when there is no room for another one
+        val spread = if (rings == 1) 0f else min(50f, (cyMax - cyMin) / (rings - 1))
+        val orbitRy = if (rings == 1) 30f else max(12f, min(30f, spread * 0.8f))
+        val firstCy = (globeCy - spread * (rings - 1) / 2f).coerceIn(cyMin, max(cyMin, cyMax - spread * (rings - 1)))
 
         val swipeMod = Modifier.pointerInput(Unit) {
             detectHorizontalDragGestures { _, d -> handTurn.floatValue += d * 0.45f }
@@ -427,46 +433,63 @@ fun AlphaHoloHome(
             )
 
             // ---- all the apps, travelling round the globe on turning rings ----
-            all.forEachIndexed { idx, app ->
-                key(app.pkg + "/" + app.activity) {
+            items.forEachIndexed { idx, app ->
+                key(if (app == null) "assistant" else app.pkg + "/" + app.activity) {
                     val ring = idx / perRing
                     val slot = idx % perRing
-                    val inRing = if (ring == rings - 1) all.size - ring * perRing else perRing
+                    val inRing = if (ring == rings - 1) items.size - ring * perRing else perRing
                     val dir = if (ring % 2 == 0) 1f else -1f
                     val base = 360f * slot / max(inRing, 1) + ring * 23f
                     val cyDp = firstCy + spread * ring
+                    fun angle() = (base + dir * orbitS.value + handTurn.floatValue * dir) * PI.toFloat() / 180f
                     Column(
                         Modifier.align(Alignment.TopStart).width(74.dp)
+                            // depth order: the side of the ring facing you rises above the globe, the far side sinks behind it
+                            .layout { m, c ->
+                                val p = m.measure(c)
+                                layout(p.width, p.height) { p.place(0, 0, zIndex = sin(angle())) }
+                            }
                             .graphicsLayer {
-                                val a = (base + dir * orbitS.value + handTurn.floatValue * dir) * PI.toFloat() / 180f
+                                val a = angle()
                                 val s = sin(a)             // -1 far side .. 1 near side
                                 val near = (s + 1f) / 2f
                                 translationX = (stageW.value / 2f + orbitRx * cos(a) - 37f).dp.toPx()
-                                translationY = (cyDp + orbitRy * s - 41f).dp.toPx()
+                                translationY = (cyDp + orbitRy * s - 41f - 10f * near).dp.toPx()  // near apps float up
                                 val sc = 0.62f + 0.38f * near
                                 scaleX = sc; scaleY = sc
                                 alpha = 0.55f + 0.45f * near
                             }
                             .noRipple {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                ctx.launchAlphaApp(app)
+                                if (app == null) onAssistant() else ctx.launchAlphaApp(app)
                             },
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Box(
-                            Modifier.size(56.dp).drawBehind {
+                            Modifier.size(56.dp)
+                                .graphicsLayer {
+                                    val deg = spinS.value * 3f + idx * 47f
+                                    cameraDistance = 12f * density
+                                    rotationY = deg
+                                    scaleX = if (cos(deg * PI.toFloat() / 180f) < 0f) -1f else 1f
+                                }
+                                .drawBehind {
                                 val rr = size.minDimension * 0.9f
                                 drawCircle(Brush.radialGradient(listOf(Color.hsv(hueS.value, 1f, 1f).copy(alpha = 0.40f * pulseS.value + 0.1f), Color.Transparent), center, rr), rr)
                             },
                             contentAlignment = Alignment.Center
                         ) {
-                            Image(
-                                app.icon, app.shownLabel,
-                                Modifier.size(48.dp).clip(RoundedCornerShape(13.dp)).border(1.6.dp, Brush.linearGradient(listOf(NeonCyan, HoloPurple, NeonMagenta)), RoundedCornerShape(13.dp))
-                            )
+                            if (app == null) {
+                                AssistantOrb(44.dp)
+                            } else {
+                                Image(
+                                    app.icon, app.shownLabel,
+                                    Modifier.size(48.dp).clip(RoundedCornerShape(13.dp)).border(1.6.dp, Brush.linearGradient(listOf(NeonCyan, HoloPurple, NeonMagenta)), RoundedCornerShape(13.dp))
+                                )
+                            }
                         }
                         Text(
-                            app.shownLabel, color = Color(0xFFBFFBFF), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            app?.shownLabel ?: "Assistant", color = Color(0xFFBFFBFF), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                             textAlign = TextAlign.Center, modifier = Modifier.padding(top = 2.dp),
                             style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(NeonCyan, Offset.Zero, 14f))
                         )
