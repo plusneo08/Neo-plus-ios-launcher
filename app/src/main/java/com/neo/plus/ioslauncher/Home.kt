@@ -174,7 +174,7 @@ fun LauncherRoot(
     ) {
         if (!alphaMode) WeatherScene(rememberSkyKind(), Modifier.then(if (blurDp > 0.dp) Modifier.blur(blurDp) else Modifier))
         if (alphaMode) {
-            // NEO PLUS A-Z ring home screen: no dock, no app grid, no icons until a letter is tapped
+            // NEO PLUS globe home screen: rotating globe, all apps on rotating rings, no A-Z chain
             BackHandler(enabled = true) {
                 when {
                     showGlass -> showGlass = false
