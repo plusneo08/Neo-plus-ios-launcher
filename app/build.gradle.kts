@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.neo.plus.iosluancher"
+    namespace = "com.neo.plus.ioslauncher"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.neo.plus.iosluancher"
+        applicationId = "com.neo.plus.ioslauncher"
         minSdk = 26
         targetSdk = 28
         // always higher than the installed one, and it grows with every GitHub build, so a new APK can be installed over the old one

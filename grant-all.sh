@@ -4,7 +4,7 @@
 #   sh grant-all.sh --kiosk    -> (implies --gesture) also makes it device owner: Android's status + navigation bars are hidden in EVERY app
 #                                 (phone must have no Google/other accounts signed in while this runs; re-add them after)
 #   sh grant-all.sh --gesture  -> also switches Android to gesture navigation (thinnest system nav bar)
-P=com.neo.plus.iosluancher
+P=com.neo.plus.ioslauncher
 A="adb shell"
 for perm in CAMERA READ_CONTACTS CALL_PHONE SEND_SMS READ_SMS READ_CALL_LOG READ_PHONE_STATE ANSWER_PHONE_CALLS RECEIVE_SMS READ_CALENDAR RECORD_AUDIO \
             ACCESS_COARSE_LOCATION ACCESS_FINE_LOCATION POST_NOTIFICATIONS READ_MEDIA_AUDIO \

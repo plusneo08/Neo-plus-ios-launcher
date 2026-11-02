@@ -180,8 +180,8 @@ JDK 17 + Android SDK 35, then `gradle assembleDebug`. The GitHub Actions workflo
 Wi-Fi, Bluetooth, Airplane, Mobile data, Dark mode and Low power switch directly. Each tries the normal Android API, then hidden
 system APIs, then root. The app targets Android 9 behaviour so Android still allows Wi-Fi/Bluetooth switching for it.
 - Stock Android 13/14 blocks Airplane and Mobile data for normal apps. They work with **root**, or when the APK is installed as a
-  **system priv-app** (custom ROM): copy the APK to `/system/priv-app/NeoPlusLauncher/` and `rom/privapp-permissions-com.neo.plus.iosluancher.xml` to `/system/etc/permissions/`.
-- Low power / Dark mode also work after one adb grant: `adb shell pm grant com.neo.plus.iosluancher android.permission.WRITE_SECURE_SETTINGS`.
+  **system priv-app** (custom ROM): copy the APK to `/system/priv-app/NeoPlusLauncher/` and `rom/privapp-permissions-com.neo.plus.ioslauncher.xml` to `/system/etc/permissions/`.
+- Low power / Dark mode also work after one adb grant: `adb shell pm grant com.neo.plus.ioslauncher android.permission.WRITE_SECURE_SETTINGS`.
 - Notification Centre and the Control Center "Now Playing" card need Notification access once (the panel shows a button for it).
 - Screen recording is built in: tap the tile, accept Android's one-time capture prompt, tap again (or the notification) to stop. Videos go to Movies/NeoRecordings. No audio is recorded.
 - Notes and QR scanner tiles open the matching app installed on your phone.
@@ -189,8 +189,8 @@ system APIs, then root. The app targets Android 9 behaviour so Android still all
 
 ## One-time adb grants (no root, makes Dark mode / Low Power work)
 ```
-adb shell pm grant com.neo.plus.iosluancher android.permission.WRITE_SECURE_SETTINGS
-adb shell pm grant com.neo.plus.iosluancher android.permission.READ_PHONE_STATE
+adb shell pm grant com.neo.plus.ioslauncher android.permission.WRITE_SECURE_SETTINGS
+adb shell pm grant com.neo.plus.ioslauncher android.permission.READ_PHONE_STATE
 ```
 Airplane mode and Mobile data still need root or the priv-app install on Android 10+ (Android does not allow them for any normal app).
 
@@ -218,7 +218,7 @@ Tap the glowing orb next to Search. Say or type "Neo Plus Assistant, ..." (or ju
 - **Neo Plus Assistant**: the assistant is renamed. Battery saver and dark mode are now also local voice/typed commands ("turn on battery saver", "dark mode off") that work even without an API key.
 - **Device admin**: the first-run walkthrough now asks for device admin (lock-screen policy only; it cannot wipe data or change passwords). "Lock the screen" then locks instantly.
 - **Direct Dark mode + Battery saver**: both flip without opening Settings, from Control Center and from the assistant. Android requires the WRITE_SECURE_SETTINGS permission for this and does not let device admin grant it, so grant it once:
-  `adb shell pm grant com.neo.plus.iosluancher android.permission.WRITE_SECURE_SETTINGS`
+  `adb shell pm grant com.neo.plus.ioslauncher android.permission.WRITE_SECURE_SETTINGS`
   (on a PC, or on the phone with an adb app such as LADB). Rooted phones and device-owner installs get it automatically. Until then, tapping the switch shows a dialog with the command instead of opening Settings.
 
 ## Whole-phone launcher mode (v2.8)
