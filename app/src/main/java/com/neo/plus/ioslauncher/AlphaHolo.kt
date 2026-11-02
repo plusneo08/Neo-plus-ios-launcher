@@ -81,41 +81,62 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.runtime.State
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.unit.Dp
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.foundation.layout.BoxScope
 import kotlin.math.PI
+import kotlin.math.sqrt
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.cos
 import kotlin.math.sin
 
 private val HoloPurple = Color(0xFF8B5CF6)
-private const val PER_PAGE = 8
 
-/** One full turn of the logo disc, and one turn of its neon ring (milliseconds). Raise them to spin slower. */
-private const val SPIN_MS = 9000
-private const val RING_MS = 6000
+/** One full turn (milliseconds). Raise a number to spin that part slower. */
+private const val GLOBE_MS = 22000   // the globe
+private const val RING_MS = 7000     // the neon ring around the globe / the bottom ring
+private const val ORBIT_MS = 40000   // the app rings
+private const val PER_RING = 12      // apps on one orbit ring
 
-/** The neon palette of the disc: cyan, blue, violet, magenta, orange, yellow, lime, and back to cyan. */
 private val NeonColors = listOf(
     Color(0xFF00F0FF), Color(0xFF1AA7FF), Color(0xFFA855F7), Color(0xFFFF2BD6),
     Color(0xFFFF6A00), Color(0xFFFFE600), Color(0xFF39FF14), Color(0xFF00F0FF)
 )
 
-/** One app floating around the disc. x / y are in dp inside the stage; s = -1 (far side of the orbit) .. 1 (near side). */
-private class HoloSlot(val app: AppEntry, val x: Float, val y: Float, val s: Float)
-
-private fun holoSlots(items: List<AppEntry>, cx: Float, cy: Float, rx: Float, ry: Float): List<HoloSlot> {
-    val n = items.size
-    return items.mapIndexed { i, a ->
-        val ang = PI / 2 + 2 * PI * i / n // the first app sits at the front
-        HoloSlot(a, cx + rx * cos(ang).toFloat(), cy + ry * sin(ang).toFloat(), sin(ang).toFloat())
-    }.sortedBy { it.s }
-}
+/** Very rough continent outlines, (longitude, latitude) in degrees: enough to read as a world map on a small globe. */
+private val Continents: List<FloatArray> = listOf(
+    // North America
+    floatArrayOf(-168f,66f, -150f,71f, -125f,70f, -95f,73f, -80f,69f, -62f,60f, -56f,52f, -66f,45f, -75f,38f, -81f,31f, -80f,25f, -90f,29f, -97f,26f, -97f,19f, -88f,16f, -83f,9f, -78f,8f, -86f,13f, -95f,16f, -106f,23f, -113f,31f, -118f,34f, -124f,41f, -124f,48f, -135f,58f, -150f,60f, -165f,60f),
+    // Greenland
+    floatArrayOf(-55f,60f, -45f,60f, -20f,70f, -20f,80f, -45f,83f, -65f,80f, -70f,70f),
+    // South America
+    floatArrayOf(-78f,8f, -62f,11f, -50f,0f, -35f,-6f, -39f,-15f, -48f,-26f, -58f,-38f, -66f,-47f, -70f,-54f, -75f,-48f, -73f,-35f, -71f,-18f, -81f,-5f),
+    // Europe
+    floatArrayOf(-10f,36f, -9f,43f, -2f,47f, -5f,50f, 5f,53f, 10f,57f, 5f,62f, 15f,69f, 28f,71f, 40f,66f, 40f,56f, 30f,46f, 28f,41f, 20f,40f, 15f,38f, 8f,44f, 0f,38f),
+    // Africa
+    floatArrayOf(-17f,21f, -10f,35f, 10f,37f, 22f,32f, 33f,31f, 43f,12f, 51f,12f, 40f,-3f, 40f,-16f, 33f,-26f, 20f,-35f, 15f,-28f, 12f,-15f, 9f,-1f, 9f,4f, -8f,4f, -17f,14f),
+    // Asia
+    floatArrayOf(28f,41f, 40f,56f, 40f,66f, 70f,73f, 110f,77f, 150f,71f, 180f,68f, 170f,60f, 140f,54f, 140f,45f, 128f,38f, 122f,30f, 108f,21f, 105f,10f, 100f,3f, 98f,16f, 90f,22f, 80f,13f, 73f,18f, 66f,25f, 57f,25f, 50f,30f, 44f,13f, 35f,28f, 35f,36f),
+    // India (so it reads on its own)
+    floatArrayOf(68f,24f, 73f,20f, 77f,8f, 80f,14f, 88f,22f, 80f,28f, 72f,32f),
+    // Australia
+    floatArrayOf(114f,-22f, 122f,-18f, 131f,-12f, 142f,-11f, 146f,-19f, 153f,-27f, 148f,-38f, 138f,-35f, 129f,-32f, 115f,-34f),
+    // Indonesia / Japan bits
+    floatArrayOf(95f,5f, 105f,-6f, 120f,-9f, 140f,-8f, 130f,-1f, 118f,5f, 108f,3f),
+    floatArrayOf(130f,32f, 135f,35f, 141f,41f, 143f,44f, 138f,38f, 131f,34f),
+    // Antarctica (a thin cap)
+    floatArrayOf(-180f,-72f, -90f,-76f, 0f,-72f, 90f,-76f, 180f,-72f, 180f,-90f, -180f,-90f)
+)
 
 /**
- * The disc: the NEO PLUS logo itself, turning like a coin inside a rotating neon ring whose colours keep cycling.
+ * The logo: a sphere showing a turning world map (grid + continents) inside a rotating neon ring, with the NEO PLUS emblem on it.
  * All the animated values are read while drawing, so the spinning never recomposes the screen.
  */
 @Composable
-private fun LogoDisc(
+private fun LogoGlobe(
     diameter: Dp,
     spin: State<Float>,
     ring: State<Float>,
@@ -125,52 +146,114 @@ private fun LogoDisc(
 ) {
     Box(modifier.size(diameter), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
-            val c = Offset(this.size.width / 2f, this.size.height / 2f)
-            val r = this.size.minDimension / 2f - 8.dp.toPx()
+            val c = Offset(size.width / 2f, size.height / 2f)
+            val rOuter = size.minDimension / 2f - 6.dp.toPx()
+            val r = rOuter - 14.dp.toPx() // globe radius
             val glow = Color.hsv(hue.value, 1f, 1f)
-            // colour-cycling halo behind the disc
-            drawCircle(
-                Brush.radialGradient(listOf(glow.copy(alpha = 0.55f * pulse.value), NeonColors[2].copy(alpha = 0.18f), Color.Transparent), c, r * 1.3f),
-                r * 1.3f, c
-            )
-            // neon ring, turning
+            drawCircle(Brush.radialGradient(listOf(glow.copy(alpha = 0.50f * pulse.value), NeonColors[2].copy(alpha = 0.16f), Color.Transparent), c, rOuter * 1.3f), rOuter * 1.3f, c)
+
+            // ---- the sphere ----
+            drawCircle(Brush.radialGradient(listOf(Color(0xFF0B2A6B), Color(0xFF041033), Color(0xFF01030D)), c - Offset(r * 0.3f, r * 0.3f), r * 1.5f), r, c)
+            val tilt = 18f * PI.toFloat() / 180f
+            val lam0 = spin.value * PI.toFloat() / 180f
+            // projects lon/lat (deg) -> screen point + depth (z > 0 means the front side)
+            fun proj(lon: Float, lat: Float): Triple<Float, Float, Float> {
+                val lam = lon * PI.toFloat() / 180f + lam0
+                val phi = lat * PI.toFloat() / 180f
+                val x = cos(phi) * sin(lam)
+                val y0 = sin(phi)
+                val z0 = cos(phi) * cos(lam)
+                val y = y0 * cos(tilt) - z0 * sin(tilt)
+                val z = y0 * sin(tilt) + z0 * cos(tilt)
+                return Triple(c.x + x * r, c.y - y * r, z)
+            }
+            val clip = Path().apply { addOval(Rect(c.x - r, c.y - r, c.x + r, c.y + r)) }
+            clipPath(clip) {
+                // grid: meridians and parallels
+                val gridCol = NeonColors[0].copy(alpha = 0.28f)
+                for (lon in -180 until 180 step 30) {
+                    val p = Path(); var pen = false
+                    for (lat in -90..90 step 6) {
+                        val (px, py, pz) = proj(lon.toFloat(), lat.toFloat())
+                        if (pz > 0f) { if (!pen) { p.moveTo(px, py); pen = true } else p.lineTo(px, py) } else pen = false
+                    }
+                    drawPath(p, gridCol, style = Stroke(0.8.dp.toPx()))
+                }
+                for (lat in -60..60 step 30) {
+                    val p = Path(); var pen = false
+                    for (lon in -180..180 step 6) {
+                        val (px, py, pz) = proj(lon.toFloat(), lat.toFloat())
+                        if (pz > 0f) { if (!pen) { p.moveTo(px, py); pen = true } else p.lineTo(px, py) } else pen = false
+                    }
+                    drawPath(p, gridCol, style = Stroke(0.8.dp.toPx()))
+                }
+                // continents (points on the far side are pushed onto the rim, the clip cuts the rest)
+                Continents.forEach { poly ->
+                    val path = Path()
+                    var any = false
+                    var i = 0
+                    while (i < poly.size) {
+                        val (px, py, pz) = proj(poly[i], poly[i + 1])
+                        var sx = px; var sy = py
+                        if (pz > 0f) any = true else {
+                            val dx = px - c.x; val dy = py - c.y
+                            val len = max(sqrt(dx * dx + dy * dy), 0.001f)
+                            sx = c.x + dx / len * r * 1.02f; sy = c.y + dy / len * r * 1.02f
+                        }
+                        if (i == 0) path.moveTo(sx, sy) else path.lineTo(sx, sy)
+                        i += 2
+                    }
+                    path.close()
+                    if (any) {
+                        drawPath(path, Brush.linearGradient(listOf(Color(0xFF1AE6A0).copy(alpha = 0.85f), Color(0xFF1AA7FF).copy(alpha = 0.75f)), c - Offset(r, r), c + Offset(r, r)))
+                        drawPath(path, Color.White.copy(alpha = 0.55f), style = Stroke(0.9.dp.toPx()))
+                    }
+                }
+                // light from the upper left, shade on the lower right
+                drawCircle(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.20f), Color.Transparent), c - Offset(r * 0.45f, r * 0.5f), r * 0.9f), r, c)
+                drawCircle(Brush.radialGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)), c, r * 1.05f), r, c)
+            }
+            // atmosphere
+            drawCircle(Brush.sweepGradient(NeonColors, c), r, c, alpha = 0.9f, style = Stroke(1.6.dp.toPx()))
+
+            // ---- neon ring round the globe, turning ----
             rotate(ring.value, c) {
                 val sweep = Brush.sweepGradient(NeonColors, c)
-                drawCircle(sweep, r, c, alpha = 0.22f, style = Stroke(16.dp.toPx()))
-                drawCircle(sweep, r, c, alpha = 0.55f, style = Stroke(8.dp.toPx()))
-                drawCircle(sweep, r, c, style = Stroke(3.dp.toPx()))
+                drawCircle(sweep, rOuter, c, alpha = 0.22f, style = Stroke(14.dp.toPx()))
+                drawCircle(sweep, rOuter, c, alpha = 0.55f, style = Stroke(7.dp.toPx()))
+                drawCircle(sweep, rOuter, c, style = Stroke(2.6.dp.toPx()))
             }
-            // thin dashed ring turning the other way
             rotate(-ring.value * 1.6f, c) {
                 drawCircle(
-                    Brush.sweepGradient(NeonColors.reversed(), c), r - 7.dp.toPx(), c, alpha = 0.9f,
-                    style = Stroke(1.6.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(14.dp.toPx(), 10.dp.toPx())))
+                    Brush.sweepGradient(NeonColors.reversed(), c), rOuter - 6.dp.toPx(), c, alpha = 0.9f,
+                    style = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(12.dp.toPx(), 9.dp.toPx())))
                 )
             }
         }
-        // the logo, turning around its own vertical axis (the back is un-mirrored so the lettering always reads correctly)
+        // the NEO PLUS emblem on the globe, turning round its own vertical axis (the back is un-mirrored so it always reads correctly)
         Box(
-            Modifier.size(diameter - 30.dp)
+            Modifier.size(diameter * 0.42f)
                 .graphicsLayer {
                     cameraDistance = 14f * density
-                    rotationY = spin.value
-                    scaleX = if (cos(spin.value * PI.toFloat() / 180f) < 0f) -1f else 1f
+                    rotationY = spin.value * 2f
+                    scaleX = if (cos(spin.value * 2f * PI.toFloat() / 180f) < 0f) -1f else 1f
+                    alpha = 0.92f
                 }
                 .clip(CircleShape)
-                .background(Color(0xFF020617)),
+                .background(Color(0xFF020617).copy(alpha = 0.55f)),
             contentAlignment = Alignment.Center
         ) {
             Image(painterResource(R.drawable.neo_np_logo), "NEO PLUS", Modifier.fillMaxSize(0.92f), contentScale = ContentScale.Fit)
         }
-        // the assistant gem sits on the rim of the ring
         Box(Modifier.align(Alignment.BottomCenter).offset(y = 5.dp)) { AssistantOrb(26.dp) }
     }
 }
 
 /**
- * NEO PLUS holographic home: the spinning neon NEO PLUS logo disc in the middle, the steps, calendar, time and weather panels on top,
- * and the A-Z letters along the bottom. Pick a letter (or swipe left / right) and its apps float around the disc;
- * keep swiping to turn the pages and to move on to the next or the previous letter.
+ * NEO PLUS holographic home: the NEO PLUS globe in the middle, the steps / calendar / time / weather panels on top,
+ * and ALL of the apps travelling round the globe on turning rings, above a turning platform. Tap an app to open it;
+ * slide a finger sideways over the stage to spin the rings by hand.
+ * (selected / onSelect are kept only so the caller does not change; the A-Z chain is gone.)
  */
 @Composable
 fun AlphaHoloHome(
@@ -183,12 +266,9 @@ fun AlphaHoloHome(
 ) {
     val ctx = LocalContext.current
     val haptic = LocalHapticFeedback.current
-    val density = LocalDensity.current
-    val buckets = remember(apps) {
-        apps.groupBy { alphaKeyOf(it.shownLabel) }
-            .mapValues { (_, v) -> v.distinctBy { it.pkg + "/" + it.activity }.sortedBy { it.shownLabel.lowercase() } }
+    val all = remember(apps) {
+        apps.distinctBy { it.pkg + "/" + it.activity }.sortedBy { it.shownLabel.lowercase() }
     }
-    val chain = remember(buckets) { ('A'..'Z').toList() + (if (buckets['#'].orEmpty().isNotEmpty()) listOf('#') else emptyList()) }
     val stars = remember {
         val r = java.util.Random(7)
         List(90) { floatArrayOf(r.nextFloat(), r.nextFloat(), 0.5f + r.nextFloat() * 1.3f, 0.25f + r.nextFloat() * 0.6f) }
@@ -200,32 +280,14 @@ fun AlphaHoloHome(
     val inf = rememberInfiniteTransition(label = "holo")
     val pulseS = inf.animateFloat(0.55f, 1f, infiniteRepeatable(tween(2200, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "pulse")
     val bobS = inf.animateFloat(0f, 1f, infiniteRepeatable(tween(3200, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "bob")
-    val spinS = inf.animateFloat(0f, 360f, infiniteRepeatable(tween(SPIN_MS, easing = LinearEasing)), label = "spin")
+    val spinS = inf.animateFloat(0f, 360f, infiniteRepeatable(tween(GLOBE_MS, easing = LinearEasing)), label = "spin")
     val ringS = inf.animateFloat(0f, 360f, infiniteRepeatable(tween(RING_MS, easing = LinearEasing)), label = "ring")
     val hueS = inf.animateFloat(0f, 360f, infiniteRepeatable(tween(7000, easing = LinearEasing)), label = "hue")
+    val orbitS = inf.animateFloat(0f, 360f, infiniteRepeatable(tween(ORBIT_MS, easing = LinearEasing)), label = "orbit")
     val pulse by pulseS
-    val bob by bobS
-    val ripple = remember { Animatable(0f) }
-    var rippleKey by remember { mutableIntStateOf(0) }
-    LaunchedEffect(rippleKey) {
-        if (rippleKey > 0) { ripple.snapTo(0f); ripple.animateTo(1f, tween(800, easing = FastOutSlowInEasing)) }
-    }
-    // swiping back into the previous letter lands on its last page
-    val landLast = remember { booleanArrayOf(false) }
-    var page by remember(selected) {
-        mutableIntStateOf(
-            if (landLast[0] && selected != null) maxOf(0, (buckets[selected].orEmpty().size + PER_PAGE - 1) / PER_PAGE - 1) else 0
-        )
-    }
-    LaunchedEffect(selected) { landLast[0] = false }
-    val discScale by animateFloatAsState(if (selected == null) 1f else 0f, tween(450, easing = FastOutSlowInEasing), label = "discScale")
+    val handTurn = remember { mutableFloatStateOf(0f) } // degrees added by the finger
 
-    fun pick(ch: Char) {
-        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        rippleKey++
-        onSelect(if (selected == ch) null else ch)
-    }
-    // one tap on the disc: microphone on / off
+    // one tap on the globe: microphone on / off
     fun micToggle() {
         val turnOn = OrbService.instance == null
         val r = PhoneActions.run(ctx, "listen", org.json.JSONObject().put("on", turnOn).put("now", true), apps)
@@ -234,65 +296,30 @@ fun AlphaHoloHome(
 
     BoxWithConstraints(modifier.fillMaxSize()) {
         val topH = 212.dp
-        val chainH = 54.dp
-        val infoH = 56.dp
         val stageTop = topH + 8.dp
         val stageW = maxWidth
-        val stageH = maxOf(maxHeight - stageTop - chainH - infoH - 12.dp, 230.dp)
+        val stageH = maxOf(maxHeight - stageTop - 8.dp, 260.dp)
 
-        // the platform: a tilted disc with a glass rim, sitting at the bottom of the stage
+        // the platform (bottom ring)
         val discRx = stageW * 0.47f
         val discRy = discRx * 0.26f
         val lift = 22.dp
         val discCy = stageH - discRy - 12.dp
-        // the logo hologram hovers above the middle of the platform
-        val coinD = maxOf(120.dp, minOf(stageW * 0.6f, discCy - 24.dp))
+        // the globe hovers above the middle of the platform
+        val coinD = maxOf(110.dp, minOf(stageW * 0.5f, discCy - 24.dp))
         val coinTop = maxOf(0.dp, discCy - 10.dp - coinD)
-        // the apps float in an oval above the platform
-        val orbitCy = (discCy.value - 20f) / 2f
-        val orbitRx = stageW.value * 0.36f
-        val orbitRy = maxOf(minOf(orbitCy - 56f, 100f), 40f)
+        val globeCy = coinTop.value + coinD.value / 2f
 
-        val shown = if (selected != null) buckets[selected].orEmpty() else emptyList()
-        val pages = maxOf(1, (shown.size + PER_PAGE - 1) / PER_PAGE)
-        val pg = page.coerceIn(0, pages - 1)
+        // the app rings: every app gets a place on one of them, rings turn in opposite directions
+        val rings = max(1, (all.size + PER_RING - 1) / PER_RING)
+        val perRing = if (all.isEmpty()) 1 else (all.size + rings - 1) / rings
+        val orbitRx = stageW.value * 0.40f
+        val orbitRy = max(min(stageH.value * 0.10f, 44f), 22f)
+        val spread = if (rings == 1) 0f else min(46f, (discCy.value - 70f) / (rings - 1).coerceAtLeast(1))
+        val firstCy = globeCy - spread * (rings - 1) / 2f
 
-        val curSlots = remember(shown, pg, stageW, orbitCy, orbitRy) {
-            holoSlots(shown.drop(pg * PER_PAGE).take(PER_PAGE), stageW.value / 2f, orbitCy, orbitRx, orbitRy)
-        }
-
-        fun hasApps(ch: Char) = buckets[ch].orEmpty().isNotEmpty()
-
-        /** dir = +1: swipe left (next), dir = -1: swipe right (previous). Pages first, then the next / previous letter that has apps. */
-        fun swipe(dir: Int) {
-            val cur = selected
-            if (cur == null) {
-                val target = (if (dir > 0) chain.firstOrNull { hasApps(it) } else chain.lastOrNull { hasApps(it) }) ?: return
-                landLast[0] = false
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                rippleKey++
-                onSelect(target)
-                return
-            }
-            if (dir > 0 && pg < pages - 1) { page = pg + 1; haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); return }
-            if (dir < 0 && pg > 0) { page = pg - 1; haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); return }
-            val idx = chain.indexOf(cur)
-            val order: IntProgression = if (dir > 0) (idx + 1)..chain.lastIndex else (idx - 1) downTo 0
-            val next = order.firstOrNull { hasApps(chain[it]) } ?: return
-            landLast[0] = dir < 0
-            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            rippleKey++
-            onSelect(chain[next])
-        }
-
-        // the same sideways swipe works on the stage and on the strip under it
-        val swipeMod = Modifier.pointerInput(selected, pg, pages, buckets) {
-            var drag = 0f
-            detectHorizontalDragGestures(
-                onDragStart = { drag = 0f },
-                onDragEnd = { if (drag < -70f) swipe(1) else if (drag > 70f) swipe(-1) },
-                onDragCancel = { drag = 0f }
-            ) { _, d -> drag += d }
+        val swipeMod = Modifier.pointerInput(Unit) {
+            detectHorizontalDragGestures { _, d -> handTurn.floatValue += d * 0.45f }
         }
 
         // space background
@@ -301,11 +328,8 @@ fun AlphaHoloHome(
             stars.forEach { s -> drawCircle(Color.White.copy(alpha = s[3]), s[2], Offset(s[0] * size.width, s[1] * size.height)) }
         }
 
-        // the stage: the glowing platform, the logo hologram above it, and the apps of the chosen letter
-        Box(
-            Modifier.align(Alignment.TopStart).offset(y = stageTop).fillMaxWidth().height(stageH).then(swipeMod)
-                .pointerInput(selected) { detectTapGestures(onTap = { if (selected != null) onSelect(null) }) }
-        ) {
+        Box(Modifier.align(Alignment.TopStart).offset(y = stageTop).fillMaxWidth().height(stageH).then(swipeMod)) {
+            // ---- the platform with its turning bottom ring ----
             Canvas(Modifier.fillMaxSize()) {
                 val cx = size.width / 2f
                 val cy = discCy.toPx()
@@ -313,66 +337,57 @@ fun AlphaHoloHome(
                 val ryp = discRy.toPx()
                 val lf = lift.toPx()
                 val h = hueS.value
-                val ang = ringS.value * PI.toFloat() / 180f
-                val rimBrush = Brush.sweepGradient(
-                    listOf(0f, 60f, 120f, 180f, 240f, 300f, 360f).map { Color.hsv((h + it) % 360f, 0.85f, 1f) }, Offset(cx, cy)
-                )
+                val turn = ringS.value
+                val ang = turn * PI.toFloat() / 180f
                 val topRect = Rect(cx - rxp, cy - lf - ryp, cx + rxp, cy - lf + ryp)
                 val botRect = Rect(cx - rxp, cy - ryp, cx + rxp, cy + ryp)
-                // light beam rising from the platform
                 val beam = Path().apply {
                     moveTo(cx - rxp * 0.18f, cy); lineTo(cx + rxp * 0.18f, cy)
                     lineTo(cx + rxp * 0.5f, 0f); lineTo(cx - rxp * 0.5f, 0f); close()
                 }
-                drawPath(beam, Brush.verticalGradient(listOf(Color.Transparent, Color.hsv(h, 0.8f, 1f).copy(alpha = if (selected == null) 0.20f else 0.08f)), 0f, cy))
-                // back half of the glass wall
+                drawPath(beam, Brush.verticalGradient(listOf(Color.Transparent, Color.hsv(h, 0.8f, 1f).copy(alpha = 0.18f)), 0f, cy))
                 val back = Path().apply {
                     moveTo(cx + rxp, cy - lf); arcTo(topRect, 0f, -180f, false)
                     lineTo(cx - rxp, cy); arcTo(botRect, 180f, 180f, false); close()
                 }
                 drawPath(back, HoloPurple.copy(alpha = 0.07f))
-                // glow of the platform
                 drawOval(
                     Brush.radialGradient(listOf(NeoBlue.copy(alpha = 0.60f * pulse), HoloPurple.copy(alpha = 0.26f), Color.Transparent), Offset(cx, cy), rxp),
                     Offset(cx - rxp * 1.05f, cy - ryp * 1.05f), Size(rxp * 2.1f, ryp * 2.1f)
                 )
-                // concentric rings (every other one is made of dots that crawl round)
+                // concentric rings: dotted ones crawl round in opposite directions
                 for (k in 0..9) {
                     val f = 1f - k * 0.095f
                     val col = lerp(NeoBlue, HoloPurple, k / 9f).copy(alpha = 0.35f + 0.5f * (1f - k / 9f))
-                    val eff = if (k % 2 == 1) PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(), 6.dp.toPx()), ringS.value * (if (k % 4 == 1) 1f else -1f)) else null
-                    drawOval(col, Offset(cx - rxp * f, cy - ryp * f), Size(rxp * 2f * f, ryp * 2f * f), style = Stroke(if (eff != null) 2.2.dp.toPx() else 1.1.dp.toPx(), pathEffect = eff))
+                    val eff = if (k % 2 == 1) PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(), 6.dp.toPx()), turn * 3f * (if (k % 4 == 1) 1f else -1f)) else
+                        PathEffect.dashPathEffect(floatArrayOf(26.dp.toPx(), 14.dp.toPx()), -turn * 2f * (if (k % 4 == 0) 1f else -1f))
+                    drawOval(col, Offset(cx - rxp * f, cy - ryp * f), Size(rxp * 2f * f, ryp * 2f * f), style = Stroke(if (k % 2 == 1) 2.2.dp.toPx() else 1.3.dp.toPx(), pathEffect = eff))
                 }
-                // bright core
                 drawOval(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.55f), NeoBlue.copy(alpha = 0.35f), Color.Transparent), Offset(cx, cy), rxp * 0.3f),
                     Offset(cx - rxp * 0.3f, cy - ryp * 0.3f), Size(rxp * 0.6f, ryp * 0.6f))
-                // data dust swirling on the platform
                 dust.forEach { d ->
                     val a = d[0] + ang * (1.5f - d[1])
                     val col = if (d[3] < 0.55f) lerp(NeoBlue, HoloPurple, d[3] / 0.55f) else NeonColors[((d[3] - 0.55f) / 0.45f * 6.99f).toInt().coerceIn(0, 6)]
                     drawCircle(col.copy(alpha = 0.85f), d[2], Offset(cx + cos(a) * d[1] * rxp * 0.95f, cy + sin(a) * d[1] * ryp * 0.95f))
                 }
-                // shadows of the floating apps on the platform
-                curSlots.forEach { sl ->
-                    drawOval(
-                        Color.hsv(h, 0.8f, 1f).copy(alpha = 0.22f + 0.2f * pulse),
-                        Offset(sl.x.dp.toPx() - 22.dp.toPx(), (discCy.value + discRy.value * 0.5f * sl.s).dp.toPx() - 6.dp.toPx()),
-                        Size(44.dp.toPx(), 12.dp.toPx())
-                    )
-                }
-                // front half of the glass wall, then the rims
                 val front = Path().apply {
                     moveTo(cx + rxp, cy - lf); arcTo(topRect, 0f, 180f, false)
                     lineTo(cx - rxp, cy); arcTo(botRect, 180f, -180f, false); close()
                 }
                 drawPath(front, HoloPurple.copy(alpha = 0.14f))
+                // the rims: the lower one is a colour sweep that turns round the platform
                 drawOval(HoloPurple.copy(alpha = 0.9f), Offset(topRect.left, topRect.top), Size(rxp * 2f, ryp * 2f), style = Stroke(1.5.dp.toPx()))
-                drawOval(rimBrush, Offset(botRect.left, botRect.top), Size(rxp * 2f, ryp * 2f), style = Stroke(2.4.dp.toPx()))
+                rotate(turn, Offset(cx, cy)) {
+                    // squash the sweep into the oval by drawing it on a scaled canvas
+                    scale(1f, ryp / rxp, Offset(cx, cy)) {
+                        drawCircle(Brush.sweepGradient(NeonColors, Offset(cx, cy)), rxp, Offset(cx, cy), style = Stroke(3.dp.toPx()))
+                    }
+                }
                 drawLine(HoloPurple.copy(alpha = 0.7f), Offset(cx - rxp, cy - lf), Offset(cx - rxp, cy), 1.4.dp.toPx())
                 drawLine(HoloPurple.copy(alpha = 0.7f), Offset(cx + rxp, cy - lf), Offset(cx + rxp, cy), 1.4.dp.toPx())
-                // four small data panels standing on the rim (two each side)
-                for (deg in listOf(150f, 124f, 56f, 30f)) {
-                    val rad = deg * PI.toFloat() / 180f
+                // four small data panels travelling round the rim
+                for (n in 0..3) {
+                    val rad = ang + n * (PI.toFloat() / 2f)
                     val sn = sin(rad)
                     val k = 0.75f + 0.25f * sn
                     val pw = 40.dp.toPx() * k
@@ -380,123 +395,72 @@ fun AlphaHoloHome(
                     val px = cx + rxp * cos(rad) - pw / 2f
                     val py = cy + ryp * sn - ph - 2.dp.toPx()
                     drawRoundRect(Color(0xFF0B1230).copy(alpha = 0.88f), Offset(px, py), Size(pw, ph), CornerRadius(5.dp.toPx()))
-                    drawRoundRect(Color.hsv((h + deg) % 360f, 0.8f, 1f).copy(alpha = 0.85f), Offset(px, py), Size(pw, ph), CornerRadius(5.dp.toPx()), style = Stroke(1.dp.toPx()))
+                    drawRoundRect(Color.hsv((h + n * 90f) % 360f, 0.8f, 1f).copy(alpha = 0.85f), Offset(px, py), Size(pw, ph), CornerRadius(5.dp.toPx()), style = Stroke(1.dp.toPx()))
                     for (bi in 0..3) {
-                        val bh = (4 + bi * 4 + (if (deg > 90f) 2 else 0)).dp.toPx() * k
+                        val bh = (4 + bi * 4 + (if (n % 2 == 0) 2 else 0)).dp.toPx() * k
                         drawRect(HoloPurple.copy(alpha = 0.95f), Offset(px + 5.dp.toPx() * k + bi * 8.dp.toPx() * k, py + ph - 4.dp.toPx() * k - bh), Size(4.dp.toPx() * k, bh))
                     }
                 }
-                val r = ripple.value
-                if (r > 0f && r < 1f) {
-                    drawOval(Color.hsv(h, 0.8f, 1f).copy(alpha = (1f - r) * 0.8f), Offset(cx - rxp * r, cy - ryp * r), Size(rxp * 2f * r, ryp * 2f * r), style = Stroke(3.dp.toPx() * (1f - r) + 1f))
-                }
             }
 
-            // the logo hologram hovering over the platform: tap = microphone, double tap = chat, long press = search
-            LogoDisc(
+            // ---- the globe: tap = microphone, double tap = chat, long press = search ----
+            LogoGlobe(
                 coinD, spinS, ringS, hueS, pulseS,
                 Modifier.align(Alignment.TopCenter).offset(y = coinTop)
-                    .graphicsLayer {
-                        scaleX = discScale
-                        scaleY = discScale
-                        alpha = discScale
-                        translationY = (bobS.value - 0.5f) * 14.dp.toPx()
-                    }
-                    .semantics { contentDescription = "NEO PLUS logo: tap for microphone, double tap for chat, long press to search" }
-                    .pointerInput(selected) {
+                    .graphicsLayer { translationY = (bobS.value - 0.5f) * 14.dp.toPx() }
+                    .semantics { contentDescription = "NEO PLUS globe: tap for microphone, double tap for chat, long press to search" }
+                    .pointerInput(Unit) {
                         detectTapGestures(
-                            onTap = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                if (selected != null) onSelect(null) else micToggle()
-                            },
+                            onTap = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); micToggle() },
                             onDoubleTap = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onAssistant() },
                             onLongPress = { onSearch() }
                         )
                     }
             )
 
-            // the apps of the chosen letter float around the disc; a swipe slides to the next page / letter
-            val ord = if (selected == null) -1 else chain.indexOf(selected).let { if (it < 0) -1 else it * 100 + pg }
-            AnimatedContent(
-                targetState = ord,
-                modifier = Modifier.fillMaxSize(),
-                transitionSpec = {
-                    when {
-                        initialState < 0 -> (fadeIn(tween(300)) + scaleIn(tween(350), initialScale = 0.6f)) togetherWith fadeOut(tween(100))
-                        targetState < 0 -> fadeIn(tween(100)) togetherWith (fadeOut(tween(200)) + scaleOut(tween(250), targetScale = 0.6f))
-                        targetState > initialState ->
-                            (slideInHorizontally(tween(280)) { it } + fadeIn(tween(280))) togetherWith
-                                (slideOutHorizontally(tween(280)) { -it / 2 } + fadeOut(tween(200)))
-                        else ->
-                            (slideInHorizontally(tween(280)) { -it } + fadeIn(tween(280))) togetherWith
-                                (slideOutHorizontally(tween(280)) { it / 2 } + fadeOut(tween(200)))
-                    }
-                },
-                label = "apps"
-            ) { o ->
-                if (o < 0) {
-                    Box(Modifier.fillMaxSize())
-                } else {
-                    val letter = chain[o / 100]
-                    val p = o % 100
-                    val items = buckets[letter].orEmpty()
-                    val pgs = maxOf(1, (items.size + PER_PAGE - 1) / PER_PAGE)
-                    val slots = remember(o, stageW, buckets) {
-                        holoSlots(items.drop(p * PER_PAGE).take(PER_PAGE), stageW.value / 2f, orbitCy, orbitRx, orbitRy)
-                    }
-                    Box(Modifier.fillMaxSize()) {
-                        slots.forEachIndexed { idx, sl ->
-                            key(sl.app.pkg + "/" + sl.app.activity) {
-                                val near = (sl.s + 1f) / 2f
-                                val scale = 0.78f + 0.22f * near
-                                val dy = sin((bob + idx * 0.17f) * 2f * PI.toFloat()) * 4f
-                                Column(
-                                    Modifier.align(Alignment.TopStart).offset(x = (sl.x - 37f).dp, y = (sl.y - 41f + dy).dp).width(74.dp)
-                                        .graphicsLayer(scaleX = scale, scaleY = scale, alpha = 0.72f + 0.28f * near)
-                                        .noRipple {
-                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            ctx.launchAlphaApp(sl.app)
-                                            onSelect(null)
-                                        },
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Box(
-                                        Modifier.size(56.dp)
-                                            .drawBehind {
-                                                val rr = size.minDimension * 0.9f
-                                                drawCircle(Brush.radialGradient(listOf(Color.hsv(hueS.value, 1f, 1f).copy(alpha = 0.45f * pulse + 0.1f), Color.Transparent), center, rr), rr)
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Image(
-                                            sl.app.icon, sl.app.shownLabel,
-                                            Modifier.size(48.dp).clip(RoundedCornerShape(13.dp)).border(1.dp, NeoBlue.copy(alpha = 0.85f), RoundedCornerShape(13.dp))
-                                        )
-                                    }
-                                    Text(
-                                        sl.app.shownLabel, color = Color.White, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                        textAlign = TextAlign.Center, modifier = Modifier.padding(top = 2.dp)
-                                    )
-                                }
+            // ---- all the apps, travelling round the globe on turning rings ----
+            all.forEachIndexed { idx, app ->
+                key(app.pkg + "/" + app.activity) {
+                    val ring = idx / perRing
+                    val slot = idx % perRing
+                    val inRing = if (ring == rings - 1) all.size - ring * perRing else perRing
+                    val dir = if (ring % 2 == 0) 1f else -1f
+                    val base = 360f * slot / max(inRing, 1) + ring * 23f
+                    val cyDp = firstCy + spread * ring
+                    Column(
+                        Modifier.align(Alignment.TopStart).width(74.dp)
+                            .graphicsLayer {
+                                val a = (base + dir * orbitS.value + handTurn.floatValue * dir) * PI.toFloat() / 180f
+                                val s = sin(a)             // -1 far side .. 1 near side
+                                val near = (s + 1f) / 2f
+                                translationX = (stageW.value / 2f + orbitRx * cos(a) - 37f).dp.toPx()
+                                translationY = (cyDp + orbitRy * s - 41f).dp.toPx()
+                                val sc = 0.62f + 0.38f * near
+                                scaleX = sc; scaleY = sc
+                                alpha = 0.55f + 0.45f * near
                             }
-                        }
-                        if (items.isEmpty()) {
-                            Text(
-                                if (letter == '#') "No apps start with a number or symbol" else "No apps start with $letter",
-                                color = NeoSilver.copy(alpha = 0.75f), fontSize = 13.sp, textAlign = TextAlign.Center,
-                                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp)
+                            .noRipple {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                ctx.launchAlphaApp(app)
+                            },
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            Modifier.size(56.dp).drawBehind {
+                                val rr = size.minDimension * 0.9f
+                                drawCircle(Brush.radialGradient(listOf(Color.hsv(hueS.value, 1f, 1f).copy(alpha = 0.40f * pulseS.value + 0.1f), Color.Transparent), center, rr), rr)
+                            },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                app.icon, app.shownLabel,
+                                Modifier.size(48.dp).clip(RoundedCornerShape(13.dp)).border(1.dp, NeoBlue.copy(alpha = 0.85f), RoundedCornerShape(13.dp))
                             )
                         }
-                        if (pgs > 1) {
-                            Row(Modifier.align(Alignment.TopCenter).padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                for (i in 0 until pgs) {
-                                    Box(
-                                        Modifier.size(if (i == p) 10.dp else 7.dp).clip(CircleShape)
-                                            .background(if (i == p) NeoBlue else NeoSilver.copy(alpha = 0.35f)).clickable { page = i }
-                                    )
-                                }
-                            }
-                        }
+                        Text(
+                            app.shownLabel, color = Color.White, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center, modifier = Modifier.padding(top = 2.dp)
+                        )
                     }
                 }
             }
@@ -504,48 +468,5 @@ fun AlphaHoloHome(
 
         // steps, calendar, time and weather panels on top
         NeoTopPanels(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(topH).padding(horizontal = 8.dp))
-
-        // under the stage: a hint when idle, the chosen letter with a close button otherwise (swipe works here too)
-        Box(
-            Modifier.align(Alignment.BottomCenter).padding(bottom = chainH + 4.dp).fillMaxWidth().height(infoH).then(swipeMod),
-            contentAlignment = Alignment.Center
-        ) {
-            if (selected == null) {
-                Text("‹  swipe left or right to browse your apps  ›", color = NeoSilver.copy(alpha = 0.6f), fontSize = 12.sp, textAlign = TextAlign.Center)
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(selected.toString(), color = NeoBlue, fontSize = 26.sp, fontWeight = FontWeight.Black)
-                    Text("  ·  ${shown.size} ${if (shown.size == 1) "app" else "apps"}", color = NeoSilver.copy(alpha = 0.85f), fontSize = 13.sp)
-                    Box(
-                        Modifier.padding(start = 16.dp).size(34.dp).clip(CircleShape).background(NeoBlue.copy(alpha = 0.18f))
-                            .border(1.dp, NeoBlue.copy(alpha = 0.8f), CircleShape)
-                            .semantics { contentDescription = "Close" }.noRipple { onSelect(null) },
-                        contentAlignment = Alignment.Center
-                    ) { Text("✕", color = NeoSilver, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
-                }
-            }
-        }
-
-        // the A-Z chain along the bottom (slide it sideways)
-        val scroll = rememberScrollState()
-        LaunchedEffect(selected) {
-            val i = chain.indexOf(selected ?: return@LaunchedEffect)
-            if (i >= 0) scroll.animateScrollTo(with(density) { (48.dp * i + 19.dp - stageW / 2).toPx() }.toInt().coerceAtLeast(0))
-        }
-        Row(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(chainH).padding(bottom = 8.dp)
-                .horizontalScroll(scroll).padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            chain.forEachIndexed { i, ch ->
-                LetterButton(ch, 38.dp, selected == ch, buckets[ch]?.size ?: 0, pulse) { pick(ch) }
-                if (i < chain.lastIndex) {
-                    Box(
-                        Modifier.width(10.dp).height(5.dp).clip(RoundedCornerShape(3.dp))
-                            .background(Brush.horizontalGradient(listOf(NeoBlue.copy(alpha = 0.9f), HoloPurple.copy(alpha = 0.9f))))
-                    )
-                }
-            }
-        }
     }
 }
