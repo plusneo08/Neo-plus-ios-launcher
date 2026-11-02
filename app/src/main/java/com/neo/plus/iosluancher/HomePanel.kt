@@ -627,6 +627,28 @@ fun NeoTopStrip(modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * Everything at the top of the NEO PLUS home screen: the steps panel and the calendar panel on the first row,
+ * the time and weather panels (NeoTopStrip) on the second.
+ */
+@Composable
+fun NeoTopPanels(modifier: Modifier = Modifier) {
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) {
+            value = System.currentTimeMillis()
+            delay(60_000L - value % 60_000L + 30L)
+        }
+    }
+    val card = RoundedCornerShape(22.dp)
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth().weight(1.3f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StepsCard(Modifier.weight(0.9f).fillMaxHeight().neoCard(card))
+            CalendarTile(Modifier.weight(1.25f).fillMaxHeight().neoCard(card), now)
+        }
+        NeoTopStrip(Modifier.fillMaxWidth().weight(1f))
+    }
+}
+
 /** The footsteps tile (ring, distance, 7-day bars) as a stand-alone glass tile for the NEO PLUS A-Z home screen. */
 @Composable
 fun NeoStepsTile(modifier: Modifier = Modifier) {

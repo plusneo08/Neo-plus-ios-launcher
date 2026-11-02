@@ -94,3 +94,12 @@ missed calls, texts and notifications. Settings: Assistant settings > Lock > "Cl
 Wake-up call: "wake me up at 8:30" now schedules the assistant's wake-up call (the phone rings like an incoming call, then the
 assistant greets and reports missed calls, texts and notifications) instead of a plain alarm. It does not answer messages
 (SleepMode.start callOnly). A plain alarm is only set when the user says "alarm".
+
+HOME SCREEN: LOGO DISC, TOP PANELS, SWIPE
+CHANGED  AlphaHolo.kt   the disc is now the NEO PLUS logo: it turns like a coin inside a rotating neon ring (cyan, blue, violet,
+                        magenta, orange, yellow, lime) with a colour-cycling glow. Tap = microphone (or close while apps show),
+                        double tap = chat, long press = search. Swipe left / right on the stage or the strip under it:
+                        next / previous page of apps, then next / previous letter (letters with no apps are skipped).
+                        Speed: SPIN_MS (logo) and RING_MS (neon ring) at the top of the file.
+CHANGED  HomePanel.kt   NEW NeoTopPanels(): steps + calendar on the first row, time + weather on the second (all on top).
+NOT compiled here (no Gradle/Kotlin in my sandbox); brackets balance in both files. Send me the first build error if there is one.

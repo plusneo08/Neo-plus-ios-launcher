@@ -167,15 +167,15 @@ fun IosArt(kind: IosKind, modifier: Modifier = Modifier) {
     }
 }
 
-private val NeoBlue = Color(0xFF0A84FF)
+private val IconNeoBlue = Color(0xFF0A84FF)
 private val NeoCyan = Color(0xFF38BDF8)
 
 /** Dark translucent glass with a glowing neon-blue edge (widgets, dock, icon tiles). */
 fun Modifier.neonGlass(shape: Shape, glow: Dp = 8.dp): Modifier = this
-    .shadow(glow, shape, clip = false, ambientColor = NeoBlue, spotColor = NeoCyan)
+    .shadow(glow, shape, clip = false, ambientColor = IconNeoBlue, spotColor = NeoCyan)
     .clip(shape)
     .background(Brush.verticalGradient(listOf(Color(0xFF0A1B38).copy(alpha = 0.50f), Color(0xFF020712).copy(alpha = 0.66f))))
-    .border(1.3.dp, Brush.linearGradient(listOf(NeoCyan.copy(alpha = 0.95f), NeoBlue.copy(alpha = 0.40f), NeoCyan.copy(alpha = 0.85f))), shape)
+    .border(1.3.dp, Brush.linearGradient(listOf(NeoCyan.copy(alpha = 0.95f), IconNeoBlue.copy(alpha = 0.40f), NeoCyan.copy(alpha = 0.85f))), shape)
 
 /** Logo-only drawings for the three system apps, so they float on the glass like the other app logos. */
 @Composable
