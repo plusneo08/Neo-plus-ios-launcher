@@ -383,7 +383,7 @@ class NeoLockScreenActivity : ComponentActivity() {
 @Composable
 private fun PinPad(len: Int, resetTick: Int, error: Boolean, enabled: Boolean, bio: (() -> Unit)?, onFull: (String) -> Unit) {
     var entered by remember(resetTick) { mutableStateOf("") }
-    val dot = if (error) Color(0xFFFF453A) else Color.White
+    val dot = if (error) Color(0xFFFF3D6E) else Color.White
     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         repeat(len) { i ->
             Box(
@@ -447,7 +447,7 @@ private fun PasswordEntry(resetTick: Int, enabled: Boolean, button: String, onSu
     }
     Spacer(Modifier.height(16.dp))
     Box(
-        Modifier.clip(RoundedCornerShape(50)).background(if (enabled) Color(0xFF0A84FF) else Color.White.copy(alpha = 0.2f))
+        Modifier.clip(RoundedCornerShape(50)).background(if (enabled) Color(0xFF2E9BFF) else Color.White.copy(alpha = 0.2f))
             .clickable(enabled = enabled && text.isNotEmpty()) { onSubmit(text) }.padding(horizontal = 40.dp, vertical = 12.dp)
     ) { Text(button, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
 }
@@ -456,7 +456,7 @@ private fun PasswordEntry(resetTick: Int, enabled: Boolean, button: String, onSu
 private fun PatternPad(resetTick: Int, error: Boolean, enabled: Boolean, onDone: (String) -> Unit) {
     val path = remember(resetTick) { mutableStateListOf<Int>() }
     var cur by remember(resetTick) { mutableStateOf<Offset?>(null) }
-    val color = if (error) Color(0xFFFF453A) else Color.White
+    val color = if (error) Color(0xFFFF3D6E) else Color.White
     Canvas(
         Modifier.size(280.dp).pointerInput(resetTick, enabled) {
             if (!enabled) return@pointerInput
@@ -521,7 +521,7 @@ private fun ClockScreen(onUnlock: () -> Unit) {
     }
     DisposableEffect(Unit) { onDispose { if (torchOn) { try { cm.cameraIdList.forEach { cm.setTorchMode(it, false) } } catch (e: Exception) { } } } }
 
-    val blue = Color(0xFF0A84FF)
+    val blue = Color(0xFF2E9BFF)
     val glow = Brush.verticalGradient(listOf(Color.White, Color(0xFF4DA3FF), Color(0xFF0A5CFF)))
 
     Box(

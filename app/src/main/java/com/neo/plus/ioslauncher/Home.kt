@@ -248,7 +248,7 @@ fun LauncherRoot(
                                 val sel = pager.currentPage == i
                                 Box(
                                     Modifier.padding(horizontal = 4.dp).size(if (sel) 9.dp else 8.dp).clip(CircleShape)
-                                        .background(if (sel) Color(0xFF1AA7FF) else Color.White.copy(alpha = 0.32f))
+                                        .background(if (sel) Color(0xFF1FB6FF) else Color.White.copy(alpha = 0.32f))
                                 )
                             }
                         }
@@ -399,7 +399,7 @@ private fun BubbleItem(text: String, enabled: Boolean, onClick: () -> Unit) {
 }
 
 private val TodayGlow = androidx.compose.ui.text.TextStyle(
-    shadow = androidx.compose.ui.graphics.Shadow(color = Color(0xFF38BDF8).copy(alpha = 0.5f), offset = androidx.compose.ui.geometry.Offset.Zero, blurRadius = 24f)
+    shadow = androidx.compose.ui.graphics.Shadow(color = Color(0xFF00E5FF).copy(alpha = 0.5f), offset = androidx.compose.ui.geometry.Offset.Zero, blurRadius = 24f)
 )
 
 @Composable
@@ -422,7 +422,7 @@ fun TodayPage(widgets: WidgetController, onAddWidget: () -> Unit) {
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
             Column {
                 Text("Today", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, style = TodayGlow)
-                Text("$greeting · $dateLine", color = Color(0xFF7DD3FC), fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                Text("$greeting · $dateLine", color = Color(0xFF7DF3FF), fontSize = 14.sp, fontWeight = FontWeight.Medium)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 NeoPill(if (editing) "Done" else "Edit") { editing = !editing }

@@ -119,9 +119,9 @@ fun Context.launchAlphaApp(app: AppEntry) {
     Toast.makeText(this, "${app.shownLabel} can't be opened", Toast.LENGTH_SHORT).show()
 }
 
-internal val NeoBlue = Color(0xFF1AA7FF)
+internal val NeoBlue = Color(0xFF1FB6FF)
 internal val NeoBlueDeep = Color(0xFF0B3C9E)
-internal val NeoSilver = Color(0xFFE8EEF8)
+internal val NeoSilver = Color(0xFFD6F6FF)
 
 /** The default NEO PLUS home screen: logo in the middle, A–Z ring around it, no app icons until a letter is tapped. */
 @Composable

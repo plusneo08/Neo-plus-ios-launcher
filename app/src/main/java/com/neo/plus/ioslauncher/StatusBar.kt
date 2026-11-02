@@ -233,9 +233,9 @@ private fun SignalBars(levels: List<Int>) {
 @Composable
 private fun AndroidBattery(pct: Int, charging: Boolean, lowPower: Boolean) {
     val fill = when {
-        charging -> Color(0xFF34C759)
-        lowPower -> Color(0xFFFFD60A)
-        pct <= 15 -> Color(0xFFFF453A)
+        charging -> Color(0xFF2BFF88)
+        lowPower -> Color(0xFFFFE600)
+        pct <= 15 -> Color(0xFFFF3D6E)
         else -> Color.White
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -274,7 +274,7 @@ fun expandAndroidPanel(ctx: Context, quickSettings: Boolean) {
 
 /** A frosted capsule behind a group of status icons. */
 private fun Modifier.glass(): Modifier =
-    this.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.14f)).border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(50))
+    this.clip(RoundedCornerShape(50)).background(Color(0xFF9D5CFF).copy(alpha = 0.16f)).border(1.dp, Color(0xFF00F0FF).copy(alpha = 0.65f), RoundedCornerShape(50))
 
 /** A status icon that grows in when its switch is turned on and shrinks away when it is turned off. */
 @Composable
@@ -292,9 +292,9 @@ private fun RowScope.Indicator(on: Boolean, icon: ImageVector, tint: Color = Col
 @Composable
 private fun BatteryRing(pct: Int, charging: Boolean, lowPower: Boolean) {
     val color = when {
-        charging -> Color(0xFF34C759)
-        lowPower -> Color(0xFFFFD60A)
-        pct <= 15 -> Color(0xFFFF453A)
+        charging -> Color(0xFF2BFF88)
+        lowPower -> Color(0xFFFFE600)
+        pct <= 15 -> Color(0xFFFF3D6E)
         else -> Color.White
     }
     val pulse = if (charging) rememberInfiniteTransition(label = "charging").animateFloat(
@@ -422,7 +422,7 @@ fun IosStatusBar(modifier: Modifier = Modifier) {
             Indicator(info.hotspot, Icons.Filled.WifiTethering)
             Indicator(info.bt, Icons.Filled.Bluetooth)
             Indicator(info.location, Icons.Filled.LocationOn)
-            Indicator(torchOn, Icons.Filled.FlashlightOn, tint = Color(0xFFFFD60A))
+            Indicator(torchOn, Icons.Filled.FlashlightOn, tint = Color(0xFFFFE600))
             Spacer(Modifier.width(8.dp))
             BatteryRing(pct, charging, lowPower)
         }

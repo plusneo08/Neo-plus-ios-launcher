@@ -132,12 +132,12 @@ private enum class DialTab(val label: String, val icon: ImageVector) {
 private class DialTheme(val name: String, val base: List<Color>, val blue: Color, val cyan: Color, val glowA: Color, val glowB: Color)
 
 private val DialThemes = listOf(
-    DialTheme("Neo Blue", listOf(Color(0xFF040A16), Color(0xFF040A16)), Color(0xFF0A84FF), Color(0xFF38BDF8), Color(0xFF0A84FF), Color(0xFF7C3AED)),
-    DialTheme("Aurora", listOf(Color(0xFF04130E), Color(0xFF061C20)), Color(0xFF10B981), Color(0xFF34D399), Color(0xFF10B981), Color(0xFF6366F1)),
+    DialTheme("Neo Blue", listOf(Color(0xFF040A16), Color(0xFF040A16)), Color(0xFF2E9BFF), Color(0xFF00E5FF), Color(0xFF2E9BFF), Color(0xFF7C3AED)),
+    DialTheme("Aurora", listOf(Color(0xFF04130E), Color(0xFF061C20)), Color(0xFF10B981), Color(0xFF34D399), Color(0xFF10B981), Color(0xFF8B5CFF)),
     DialTheme("Sunset", listOf(Color(0xFF1A0B14), Color(0xFF1A0A05)), Color(0xFFF97316), Color(0xFFFB923C), Color(0xFFE11D48), Color(0xFFF97316)),
-    DialTheme("Violet", listOf(Color(0xFF0E0820), Color(0xFF080414)), Color(0xFF8B5CF6), Color(0xFFC084FC), Color(0xFFD946EF), Color(0xFF6366F1)),
+    DialTheme("Violet", listOf(Color(0xFF0E0820), Color(0xFF080414)), Color(0xFF9D5CFF), Color(0xFFC084FC), Color(0xFFFF3DDC), Color(0xFF8B5CFF)),
     DialTheme("Crimson", listOf(Color(0xFF16060A), Color(0xFF0C0306)), Color(0xFFE11D48), Color(0xFFFB7185), Color(0xFFE11D48), Color(0xFFF97316)),
-    DialTheme("Midnight", listOf(Color.Black, Color(0xFF05060A)), Color(0xFF2563EB), Color(0xFF60A5FA), Color(0xFF2563EB), Color(0xFF1E293B))
+    DialTheme("Midnight", listOf(Color.Black, Color(0xFF05060A)), Color(0xFF3D7BFF), Color(0xFF60A5FA), Color(0xFF3D7BFF), Color(0xFF1E293B))
 )
 
 /** The theme in use; read by every tab of the Phone app. */
@@ -313,8 +313,8 @@ private fun whenText(ms: Long): String {
 }
 
 private val AvatarColors = listOf(
-    Color(0xFF0A84FF) to Color(0xFF5E5CE6), Color(0xFF30D158) to Color(0xFF0A9F6E), Color(0xFFFF9F0A) to Color(0xFFFF6A00),
-    Color(0xFFBF5AF2) to Color(0xFF7D3CFF), Color(0xFF38BDF8) to Color(0xFF0369A1), Color(0xFFFF453A) to Color(0xFFB91C1C)
+    Color(0xFF2E9BFF) to Color(0xFF5E5CE6), Color(0xFF2BFF88) to Color(0xFF0A9F6E), Color(0xFFFF9A1F) to Color(0xFFFF6A00),
+    Color(0xFFC45CFF) to Color(0xFF7D3CFF), Color(0xFF00E5FF) to Color(0xFF0369A1), Color(0xFFFF3D6E) to Color(0xFFB91C1C)
 )
 
 @Composable
@@ -876,7 +876,7 @@ private fun ContactsTab(contacts: List<ContactEntry>, allowed: Boolean, onAllow:
                 Text(if (allOn) "Clear" else "Select all", color = DialLook.cyan, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { picked.clear(); if (!allOn) picked.addAll(shown.map { it.number }) }.padding(horizontal = 8.dp, vertical = 6.dp))
                 Text("Edit", color = if (picked.isEmpty()) Dim else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(if (picked.isEmpty()) Color.White.copy(alpha = 0.08f) else Color(0xFF0A84FF))
+                    modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(if (picked.isEmpty()) Color.White.copy(alpha = 0.08f) else Color(0xFF2E9BFF))
                         .clickable(enabled = picked.isNotEmpty()) {
                             val list = shown.filter { it.number in picked }.map { it.number to it.name }
                             selecting = false; picked.clear(); onEditAll(list)

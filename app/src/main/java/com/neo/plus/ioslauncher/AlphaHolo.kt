@@ -93,7 +93,7 @@ import kotlin.math.min
 import kotlin.math.cos
 import kotlin.math.sin
 
-private val HoloPurple = Color(0xFF8B5CF6)
+private val HoloPurple = Color(0xFF9D5CFF)
 
 /** One full turn (milliseconds). Raise a number to spin that part slower. */
 private const val GLOBE_MS = 22000   // the globe
@@ -102,9 +102,12 @@ private const val ORBIT_MS = 40000   // the app rings
 private const val PER_RING = 12      // apps on one orbit ring
 
 private val NeonColors = listOf(
-    Color(0xFF00F0FF), Color(0xFF1AA7FF), Color(0xFFA855F7), Color(0xFFFF2BD6),
-    Color(0xFFFF6A00), Color(0xFFFFE600), Color(0xFF39FF14), Color(0xFF00F0FF)
+    Color(0xFF00F0FF), Color(0xFF2E9BFF), Color(0xFF9D5CFF), Color(0xFFFF3DDC),
+    Color(0xFF9D5CFF), Color(0xFF2E9BFF), Color(0xFF00F0FF), Color(0xFF00F0FF)
 )
+private val NeonCyan = Color(0xFF00F0FF)
+private val NeonMagenta = Color(0xFFFF3DDC)
+private val NeonGold = Color(0xFFFFC857)
 
 /** Very rough continent outlines, (longitude, latitude) in degrees: enough to read as a world map on a small globe. */
 private val Continents: List<FloatArray> = listOf(
@@ -153,7 +156,7 @@ private fun LogoGlobe(
             drawCircle(Brush.radialGradient(listOf(glow.copy(alpha = 0.50f * pulse.value), NeonColors[2].copy(alpha = 0.16f), Color.Transparent), c, rOuter * 1.3f), rOuter * 1.3f, c)
 
             // ---- the sphere ----
-            drawCircle(Brush.radialGradient(listOf(Color(0xFF0B2A6B), Color(0xFF041033), Color(0xFF01030D)), c - Offset(r * 0.3f, r * 0.3f), r * 1.5f), r, c)
+            drawCircle(Brush.radialGradient(listOf(Color(0xFF1A2A8C), Color(0xFF0A0A3A), Color(0xFF02020F)), c - Offset(r * 0.3f, r * 0.3f), r * 1.5f), r, c)
             val tilt = 18f * PI.toFloat() / 180f
             val lam0 = spin.value * PI.toFloat() / 180f
             // projects lon/lat (deg) -> screen point + depth (z > 0 means the front side)
@@ -170,7 +173,7 @@ private fun LogoGlobe(
             val clip = Path().apply { addOval(Rect(c.x - r, c.y - r, c.x + r, c.y + r)) }
             clipPath(clip) {
                 // grid: meridians and parallels
-                val gridCol = NeonColors[0].copy(alpha = 0.28f)
+                val gridCol = NeonColors[2].copy(alpha = 0.55f)
                 for (lon in -180 until 180 step 30) {
                     val p = Path(); var pen = false
                     for (lat in -90..90 step 6) {
@@ -205,12 +208,12 @@ private fun LogoGlobe(
                     }
                     path.close()
                     if (any) {
-                        drawPath(path, Brush.linearGradient(listOf(Color(0xFF1AE6A0).copy(alpha = 0.85f), Color(0xFF1AA7FF).copy(alpha = 0.75f)), c - Offset(r, r), c + Offset(r, r)))
-                        drawPath(path, Color.White.copy(alpha = 0.55f), style = Stroke(0.9.dp.toPx()))
+                        drawPath(path, Brush.linearGradient(listOf(Color(0xFF1AE6A0).copy(alpha = 0.85f), Color(0xFF1FB6FF).copy(alpha = 0.75f)), c - Offset(r, r), c + Offset(r, r)))
+                        drawPath(path, NeonCyan, style = Stroke(1.6.dp.toPx()))
                     }
                 }
                 // light from the upper left, shade on the lower right
-                drawCircle(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.20f), Color.Transparent), c - Offset(r * 0.45f, r * 0.5f), r * 0.9f), r, c)
+                drawCircle(Brush.radialGradient(listOf(NeonCyan.copy(alpha = 0.28f), Color.Transparent), c - Offset(r * 0.45f, r * 0.5f), r * 0.9f), r, c)
                 drawCircle(Brush.radialGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)), c, r * 1.05f), r, c)
             }
             // atmosphere
@@ -324,8 +327,13 @@ fun AlphaHoloHome(
 
         // space background
         Canvas(Modifier.fillMaxSize()) {
-            drawRect(Brush.verticalGradient(listOf(Color(0xFF00020F), Color(0xFF05103A), Color(0xFF000308))))
-            stars.forEach { s -> drawCircle(Color.White.copy(alpha = s[3]), s[2], Offset(s[0] * size.width, s[1] * size.height)) }
+            drawRect(Brush.verticalGradient(listOf(Color(0xFF01020C), Color(0xFF0A0B3A), Color(0xFF1A0B4A), Color(0xFF01020A))))
+            drawCircle(Brush.radialGradient(listOf(NeonCyan.copy(alpha = 0.16f), Color.Transparent), Offset(size.width * 0.15f, size.height * 0.55f), size.width * 0.7f), size.width * 0.7f, Offset(size.width * 0.15f, size.height * 0.55f))
+            drawCircle(Brush.radialGradient(listOf(HoloPurple.copy(alpha = 0.22f), Color.Transparent), Offset(size.width * 0.9f, size.height * 0.7f), size.width * 0.8f), size.width * 0.8f, Offset(size.width * 0.9f, size.height * 0.7f))
+            stars.forEachIndexed { i, s ->
+                val col = when (i % 7) { 0 -> NeonCyan; 1 -> HoloPurple; 2 -> NeonGold; 3 -> NeonMagenta; else -> Color.White }
+                drawCircle(col.copy(alpha = s[3]), s[2], Offset(s[0] * size.width, s[1] * size.height))
+            }
         }
 
         Box(Modifier.align(Alignment.TopStart).offset(y = stageTop).fillMaxWidth().height(stageH).then(swipeMod)) {
@@ -454,12 +462,13 @@ fun AlphaHoloHome(
                         ) {
                             Image(
                                 app.icon, app.shownLabel,
-                                Modifier.size(48.dp).clip(RoundedCornerShape(13.dp)).border(1.dp, NeoBlue.copy(alpha = 0.85f), RoundedCornerShape(13.dp))
+                                Modifier.size(48.dp).clip(RoundedCornerShape(13.dp)).border(1.6.dp, Brush.linearGradient(listOf(NeonCyan, HoloPurple, NeonMagenta)), RoundedCornerShape(13.dp))
                             )
                         }
                         Text(
-                            app.shownLabel, color = Color.White, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center, modifier = Modifier.padding(top = 2.dp)
+                            app.shownLabel, color = Color(0xFFBFFBFF), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center, modifier = Modifier.padding(top = 2.dp),
+                            style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(NeonCyan, Offset.Zero, 14f))
                         )
                     }
                 }

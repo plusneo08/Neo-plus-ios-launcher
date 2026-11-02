@@ -248,17 +248,17 @@ fun NotificationPanel(onClose: () -> Unit) {
                                 val tkey = NotifChats.keyOf(n.pkg, n.title)
                                 val typingNow = if (NotifChats.version.intValue >= 0) TypingWatch.statusFor(tkey) else null
                                 Row(Modifier.padding(start = 62.dp, bottom = 10.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(if (sentOk) "Sent" else "Reply", color = Color(0xFF7DD3FC), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                                    Text(if (sentOk) "Sent" else "Reply", color = Color(0xFF7DF3FF), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                                         modifier = Modifier.clickable { replying = true; sentOk = false })
                                     Spacer(Modifier.width(18.dp))
-                                    Text("Open chat", color = Color(0xFF7DD3FC), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                                    Text("Open chat", color = Color(0xFF7DF3FF), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                                         modifier = Modifier.clickable {
                                             ctx.safeStart(Intent(ctx, NotifChatActivity::class.java).putExtra("thread", tkey))
                                             onClose()
                                         })
                                     if (typingNow != null) {
                                         Spacer(Modifier.width(14.dp))
-                                        Text(typingNow, color = Color(0xFF30D158), fontSize = 13.sp)
+                                        Text(typingNow, color = Color(0xFF2BFF88), fontSize = 13.sp)
                                     }
                                 }
                             } else {
@@ -269,7 +269,7 @@ fun NotificationPanel(onClose: () -> Unit) {
                                             cursorBrush = SolidColor(Color.White), modifier = Modifier.fillMaxWidth())
                                     }
                                     Spacer(Modifier.width(8.dp))
-                                    Text("Send", color = Color(0xFF7DD3FC), fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                                    Text("Send", color = Color(0xFF7DF3FF), fontSize = 15.sp, fontWeight = FontWeight.Bold,
                                         modifier = Modifier.clickable {
                                             val t = draft.trim()
                                             if (t.isNotEmpty() && NotifStore.sendAction(ctx, n.reply, t)) { draft = ""; replying = false; sentOk = true }

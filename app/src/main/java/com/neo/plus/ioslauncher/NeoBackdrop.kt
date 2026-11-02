@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.IntSize
  * Value "" (and "-" in Messages) = this wallpaper, "n:" = plain theme colours.
  */
 @Composable
-fun NeoLogoBackdrop(accent: Color = Color(0xFF38BDF8)) {
+fun NeoLogoBackdrop(accent: Color = Color(0xFF00E5FF)) {
     val art = ImageBitmap.imageResource(R.drawable.neo_wall_gold)
     Box(Modifier.fillMaxSize()) {
         Canvas(Modifier.fillMaxSize()) {

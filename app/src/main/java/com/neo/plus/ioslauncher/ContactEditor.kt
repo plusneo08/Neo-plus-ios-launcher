@@ -287,7 +287,7 @@ fun ContactEditorForm(number: String, name: String, onClose: (saved: Boolean) ->
         Field(if (simSelected) "Email (SIM cards keep name and number only)" else "Email", mailF, KeyboardType.Email, enabled = !simSelected) { mailF = it }
 
         Spacer(Modifier.height(12.dp))
-        Text("Save to", color = Color(0xFF38BDF8), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Text("Save to", color = Color(0xFF00E5FF), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         val groups = listOf(
             TargetKind.PHONE to "On the phone",
             TargetKind.SIM to "SIM card",
@@ -304,13 +304,13 @@ fun ContactEditorForm(number: String, name: String, onClose: (saved: Boolean) ->
                 val on = sel?.id == t.id
                 Row(
                     Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(14.dp))
-                        .background(if (on) Color(0xFF0A84FF).copy(alpha = 0.28f) else Color.White.copy(alpha = 0.07f))
-                        .border(1.dp, if (on) Color(0xFF38BDF8) else Color.Transparent, RoundedCornerShape(14.dp))
+                        .background(if (on) Color(0xFF2E9BFF).copy(alpha = 0.28f) else Color.White.copy(alpha = 0.07f))
+                        .border(1.dp, if (on) Color(0xFF00E5FF) else Color.Transparent, RoundedCornerShape(14.dp))
                         .clickable { chosen = t.id }.padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(Modifier.size(18.dp).clip(CircleShape).border(2.dp, if (on) Color(0xFF38BDF8) else Color.White.copy(alpha = 0.4f), CircleShape), contentAlignment = Alignment.Center) {
-                        if (on) Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF38BDF8)))
+                    Box(Modifier.size(18.dp).clip(CircleShape).border(2.dp, if (on) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.4f), CircleShape), contentAlignment = Alignment.Center) {
+                        if (on) Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF00E5FF)))
                     }
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
@@ -321,16 +321,16 @@ fun ContactEditorForm(number: String, name: String, onClose: (saved: Boolean) ->
             }
         }
         if (ex != null && sel != null && (ex.accountType.orEmpty() != sel.accountType.orEmpty() || ex.accountName.orEmpty() != sel.accountName.orEmpty()) && !sel.rawSim) {
-            Text("This contact will also be saved as a copy in ${sel.label}.", color = Color(0xFFFFD60A), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+            Text("This contact will also be saved as a copy in ${sel.label}.", color = Color(0xFFFFE600), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
         }
-        if (msg.isNotBlank()) Text(msg, color = Color(0xFFFF9F0A), fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+        if (msg.isNotBlank()) Text(msg, color = Color(0xFFFF9A1F), fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
 
         Spacer(Modifier.height(14.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.10f)).clickable { onClose(false) }.padding(vertical = 13.dp), contentAlignment = Alignment.Center) {
                 Text("Cancel", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             }
-            Box(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(Color(0xFF0A84FF)).clickable {
+            Box(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(Color(0xFF2E9BFF)).clickable {
                 if (ContactStore.canWrite(app)) doSave()
                 else { wantSave = true; ask.launch(arrayOf(Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS, Manifest.permission.GET_ACCOUNTS)) }
             }.padding(vertical = 13.dp), contentAlignment = Alignment.Center) {

@@ -63,10 +63,14 @@ fun Modifier.glass(shape: Shape, alpha: Float = 0.26f): Modifier {
     val a = (alpha * k).coerceIn(0.05f, 0.62f)
     return this
         .clip(shape)
-        .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = a + 0.10f), Color.White.copy(alpha = (a - 0.05f).coerceAtLeast(0.02f)))))
+        .background(Brush.linearGradient(listOf(
+            Color(0xFF00E5FF).copy(alpha = a * 0.55f + 0.05f),
+            Color(0xFF9D5CFF).copy(alpha = a * 0.55f + 0.05f),
+            Color(0xFF1FB6FF).copy(alpha = a * 0.40f + 0.03f)
+        )))
         .border(
-            0.9.dp,
-            Brush.linearGradient(listOf(Color.White.copy(alpha = 0.60f), Color.White.copy(alpha = 0.08f), Color.White.copy(alpha = 0.32f))),
+            1.2.dp,
+            Brush.linearGradient(listOf(Color(0xFF00F0FF).copy(alpha = 0.95f), Color(0xFF9D5CFF).copy(alpha = 0.85f), Color(0xFFFF3DDC).copy(alpha = 0.80f))),
             shape
         )
 }

@@ -129,7 +129,7 @@ fun AssistantOrb(size: Dp, modifier: Modifier = Modifier) {
                 Brush.sweepGradient(
                     listOf(
                         Color(0xFF3B82FF), Color(0xFFA855F7), Color(0xFFFF5CA8),
-                        Color(0xFFFFB347), Color(0xFF34D5C9), Color(0xFF3B82FF)
+                        Color(0xFFFFC857), Color(0xFF34D5C9), Color(0xFF3B82FF)
                     )
                 )
             )
@@ -208,7 +208,7 @@ private fun AttachmentCard(name: String, loading: Boolean = false, onRemove: (()
 }
 
 private val NotifPalette = listOf(
-    Color(0xFF30D158), Color(0xFF0A84FF), Color(0xFFFF9F0A), Color(0xFFBF5AF2), Color(0xFFFF375F), Color(0xFF64D2FF), Color(0xFFFFD60A)
+    Color(0xFF2BFF88), Color(0xFF2E9BFF), Color(0xFFFF9A1F), Color(0xFFC45CFF), Color(0xFFFF375F), Color(0xFF4FE0FF), Color(0xFFFFE600)
 )
 
 /** The notifications as a glass card: one row per notification with a coloured app badge, app name, time, title and text. */
@@ -433,8 +433,8 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(
                                 st?.text ?: if (k.isBlank()) "Empty" else "New key",
-                                color = if (st?.text?.startsWith("Limit") == true || st?.text?.startsWith("Rejected") == true) Color(0xFFFFB347)
-                                else if (st?.active == true) Color(0xFF7DE08A) else Color.White.copy(alpha = 0.6f),
+                                color = if (st?.text?.startsWith("Limit") == true || st?.text?.startsWith("Rejected") == true) Color(0xFFFFC857)
+                                else if (st?.active == true) Color(0xFF7DFFB0) else Color.White.copy(alpha = 0.6f),
                                 fontSize = 12.sp
                             )
                             if (keys.size > 1) Text(
@@ -453,7 +453,7 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                         color = note, fontSize = 13.sp, lineHeight = 18.sp
                     )
                     Text(
-                        "Get a ${provider.label} key", color = Color(0xFF7DB8FF), fontSize = 14.sp,
+                        "Get a ${provider.label} key", color = Color(0xFF8AA8FF), fontSize = 14.sp,
                         modifier = Modifier.clickable { ctx.safeStart(Intent(Intent.ACTION_VIEW, Uri.parse(provider.keyUrl))) }
                     )
                     Footer("Save keys")
@@ -560,7 +560,7 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                     val hasAt = emailFrom.contains("@") && emailFrom.substringAfter("@").contains(".")
                     Text("1. Your email address", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     GlassField(emailFrom, { emailFrom = it.trim().take(120); emailMsg = "" }, "you@gmail.com", email = true)
-                    if (provider.isNotBlank()) Text("✓ $provider recognised, the mail server is set up for you.", color = Color(0xFF7DE08A), fontSize = 13.sp, lineHeight = 18.sp)
+                    if (provider.isNotBlank()) Text("✓ $provider recognised, the mail server is set up for you.", color = Color(0xFF7DFFB0), fontSize = 13.sp, lineHeight = 18.sp)
                     else if (hasAt) {
                         Text("This provider is not one I know, so add its outgoing (SMTP) mail server, e.g. smtp.yourdomain.com or smtp.yourdomain.com:587.", color = note, fontSize = 13.sp, lineHeight = 18.sp)
                         GlassField(emailHost, { emailHost = it.trim().take(100); emailMsg = "" }, "Mail server (leave empty to try smtp.yourdomain)")
@@ -597,7 +597,7 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                         GlassField(emailTo, { emailTo = it.trim().take(120); emailMsg = "" }, "Send reports to this email", email = true)
                         EmailPill("Use the same email instead", modifier = Modifier.fillMaxWidth()) { emailOther = false; emailTo = ""; emailMsg = "" }
                     }
-                    if (emailMsg.isNotBlank()) Text(emailMsg, color = if (emailMsg.startsWith("Couldn") || emailMsg.startsWith("Last")) Color(0xFFFFB347) else Color(0xFF7DE08A), fontSize = 13.sp, lineHeight = 18.sp)
+                    if (emailMsg.isNotBlank()) Text(emailMsg, color = if (emailMsg.startsWith("Couldn") || emailMsg.startsWith("Last")) Color(0xFFFFC857) else Color(0xFF7DFFB0), fontSize = 13.sp, lineHeight = 18.sp)
                     EmailPill(if (emailBusy) "Connecting…" else if (EmailReport.configured(ctx)) "Save & send test" else "Connect & send test", strong = true, modifier = Modifier.fillMaxWidth()) {
                         if (emailBusy) return@EmailPill
                         if (emailFrom.isBlank()) { emailMsg = "Couldn’t connect: type your email address first."; return@EmailPill }
@@ -623,10 +623,10 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                         color = note, fontSize = 13.sp, lineHeight = 18.sp
                     )
                     GlassField(reportNumber, { reportNumber = it.filter { c -> c.isDigit() || c == '+' }.take(20); reportMsg = "" }, "Phone number to text, e.g. +265…", phone = true)
-                    if (reportMsg.isNotBlank()) Text(reportMsg, color = Color(0xFF7DE08A), fontSize = 13.sp, lineHeight = 18.sp)
+                    if (reportMsg.isNotBlank()) Text(reportMsg, color = Color(0xFF7DFFB0), fontSize = 13.sp, lineHeight = 18.sp)
                     if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, Manifest.permission.SEND_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                         Text(
-                            "Allow SMS for Neo Plus, or the texts can’t be sent.", color = Color(0xFFFFB347), fontSize = 13.sp,
+                            "Allow SMS for Neo Plus, or the texts can’t be sent.", color = Color(0xFFFFC857), fontSize = 13.sp,
                             modifier = Modifier.clickable { smsPermission.launch(Manifest.permission.SEND_SMS) }
                         )
                     }
@@ -696,10 +696,10 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(
                             WebUsage.summary() + " · " + WebUsage.saved + " step(s) saved by offline replay",
-                            color = if (WebUsage.limit > 0 && WebUsage.used >= WebUsage.limit) Color(0xFFFFB347) else note,
+                            color = if (WebUsage.limit > 0 && WebUsage.used >= WebUsage.limit) Color(0xFFFFC857) else note,
                             fontSize = 12.sp, lineHeight = 16.sp, modifier = Modifier.weight(1f)
                         )
-                        Text("Reset", color = Color(0xFF7DB8FF), fontSize = 12.sp, modifier = Modifier.clickable { WebUsage.resetToday(ctx) }.padding(start = 8.dp))
+                        Text("Reset", color = Color(0xFF8AA8FF), fontSize = 12.sp, modifier = Modifier.clickable { WebUsage.resetToday(ctx) }.padding(start = 8.dp))
                     }
                     Text(
                         "When the limit is reached, website tasks stop and say so. In an Excel batch the first row is done by Gemini and recorded; the other rows replay those steps on the phone with no request, and Gemini is asked again only if a step does not match the page.",
@@ -786,18 +786,18 @@ private fun SitesSheet(onDone: () -> Unit) {
 @Composable
 private fun TaskBubble(l: TaskLine) {
     val c = when (l.kind) {
-        TaskLine.Kind.OK -> Color(0xFF30D158)
-        TaskLine.Kind.WARN -> Color(0xFFFFD60A)
+        TaskLine.Kind.OK -> Color(0xFF2BFF88)
+        TaskLine.Kind.WARN -> Color(0xFFFFE600)
         TaskLine.Kind.ERROR -> Color(0xFFFF6B60)
-        TaskLine.Kind.FIX -> Color(0xFF64D2FF)
+        TaskLine.Kind.FIX -> Color(0xFF4FE0FF)
         TaskLine.Kind.STEP -> Color.White
         TaskLine.Kind.INFO -> Color.White.copy(alpha = 0.7f)
     }
     val bg = when (l.kind) {
-        TaskLine.Kind.OK -> Color(0xFF30D158).copy(alpha = 0.16f)
-        TaskLine.Kind.WARN -> Color(0xFFFFD60A).copy(alpha = 0.16f)
-        TaskLine.Kind.ERROR -> Color(0xFFFF453A).copy(alpha = 0.22f)
-        TaskLine.Kind.FIX -> Color(0xFF64D2FF).copy(alpha = 0.16f)
+        TaskLine.Kind.OK -> Color(0xFF2BFF88).copy(alpha = 0.16f)
+        TaskLine.Kind.WARN -> Color(0xFFFFE600).copy(alpha = 0.16f)
+        TaskLine.Kind.ERROR -> Color(0xFFFF3D6E).copy(alpha = 0.22f)
+        TaskLine.Kind.FIX -> Color(0xFF4FE0FF).copy(alpha = 0.16f)
         TaskLine.Kind.STEP -> Color.White.copy(alpha = 0.14f)
         TaskLine.Kind.INFO -> Color.White.copy(alpha = 0.08f)
     }
@@ -833,7 +833,7 @@ private fun TaskScreen() {
                     val progress = if (TaskLog.total > 0) " · ${TaskLog.done + TaskLog.failed}/${TaskLog.total} rows" + (if (TaskLog.failed > 0) " · ${TaskLog.failed} problem(s)" else "") else ""
                     Text(
                         (if (TaskLog.waiting) "Waiting for you" else TaskLog.status) + progress,
-                        color = if (TaskLog.waiting) Color(0xFFFFD60A) else Color.White.copy(alpha = 0.65f), fontSize = 12.sp, maxLines = 1
+                        color = if (TaskLog.waiting) Color(0xFFFFE600) else Color.White.copy(alpha = 0.65f), fontSize = 12.sp, maxLines = 1
                     )
                 }
                 RoundIconButton(Icons.Filled.Close, "Minimise") { TaskLog.fullView = false }
@@ -841,12 +841,12 @@ private fun TaskScreen() {
             if (TaskLog.total > 0) {
                 val frac = ((TaskLog.done + TaskLog.failed).toFloat() / TaskLog.total).coerceIn(0f, 1f)
                 Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(Color.White.copy(alpha = 0.18f))) {
-                    Box(Modifier.fillMaxWidth(frac).height(6.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFF30D158)))
+                    Box(Modifier.fillMaxWidth(frac).height(6.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFF2BFF88)))
                 }
             }
             Text(
                 WebUsage.summary() + " · " + WebUsage.saved + " step(s) done offline",
-                color = if (WebUsage.limit > 0 && WebUsage.used >= WebUsage.limit) Color(0xFFFFB347) else Color.White.copy(alpha = 0.55f), fontSize = 11.sp
+                color = if (WebUsage.limit > 0 && WebUsage.used >= WebUsage.limit) Color(0xFFFFC857) else Color.White.copy(alpha = 0.55f), fontSize = 11.sp
             )
             LazyColumn(state = state, modifier = Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item(key = "goal") {
@@ -861,7 +861,7 @@ private fun TaskScreen() {
             }
             if (TaskLog.waiting) {
                 Box(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(50)).background(Color(0xFF30D158)).clickable { TaskLog.focus?.resume() }.padding(vertical = 14.dp),
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(50)).background(Color(0xFF2BFF88)).clickable { TaskLog.focus?.resume() }.padding(vertical = 14.dp),
                     contentAlignment = Alignment.Center
                 ) { Text("Continue — I did the CAPTCHA / code", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold) }
             }
@@ -872,7 +872,7 @@ private fun TaskScreen() {
                     contentAlignment = Alignment.Center
                 ) { Text(if (TaskLog.showBrowser) "Hide page" else "Watch page", color = Color.White, fontSize = 15.sp) }
                 if (TaskLog.active) Box(
-                    Modifier.weight(1f).clip(RoundedCornerShape(50)).background(Color(0xFFFF453A).copy(alpha = 0.85f))
+                    Modifier.weight(1f).clip(RoundedCornerShape(50)).background(Color(0xFFFF3D6E).copy(alpha = 0.85f))
                         .clickable { TaskLog.stop() }.padding(vertical = 12.dp),
                     contentAlignment = Alignment.Center
                 ) { Text("Stop", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
@@ -1278,7 +1278,7 @@ private fun PinsPanel(onBack: () -> Unit) {
     Text("Add or change a PIN", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
     GlassField(name, { name = it.take(30); msg = "" }, "Name: Airtel Money, Mpamba, or an app name")
     GlassField(pin, { pin = it.filter { c -> c.isDigit() }.take(10); msg = "" }, "PIN (digits only)", password = true)
-    if (msg.isNotBlank()) Text(msg, color = if (msg.startsWith("Saved")) Color(0xFF7DE08A) else Color(0xFFFFB347), fontSize = 13.sp)
+    if (msg.isNotBlank()) Text(msg, color = if (msg.startsWith("Saved")) Color(0xFF7DFFB0) else Color(0xFFFFC857), fontSize = 13.sp)
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
         Box(
             Modifier.weight(1f).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.16f)).clickable { onBack() }.padding(vertical = 12.dp),
@@ -1318,7 +1318,7 @@ private fun AwarenessPanel(onBack: () -> Unit) {
                 Text(title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 Text(sub, color = Color.White.copy(alpha = 0.65f), fontSize = 12.sp)
             }
-            if (ok) Text("✓ Allowed", color = Color(0xFF7DE08A), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            if (ok) Text("✓ Allowed", color = Color(0xFF7DFFB0), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             else Box(Modifier.clip(RoundedCornerShape(50)).background(UserBlueBottom).clickable { onClick() }.padding(horizontal = 14.dp, vertical = 8.dp)) {
                 Text(action, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             }

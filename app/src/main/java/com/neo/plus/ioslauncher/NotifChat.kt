@@ -445,13 +445,13 @@ fun NotifChatScreen(key: String?, onClose: () -> Unit) {
             .windowInsetsPadding(safeInsets()).imePadding()
     ) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("‹", color = Color(0xFF38BDF8), fontSize = 32.sp, modifier = Modifier.clickable { onClose() }.padding(end = 12.dp))
+            Text("‹", color = Color(0xFF00E5FF), fontSize = 32.sp, modifier = Modifier.clickable { onClose() }.padding(end = 12.dp))
             Column(Modifier.weight(1f)) {
                 Text(t?.title ?: "Chat", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                 val sub = typing?.let { "$it" } ?: t?.app.orEmpty()
-                Text(sub, color = if (typing != null) Color(0xFF30D158) else Color.White.copy(alpha = 0.55f), fontSize = 12.sp, maxLines = 1)
+                Text(sub, color = if (typing != null) Color(0xFF2BFF88) else Color.White.copy(alpha = 0.55f), fontSize = 12.sp, maxLines = 1)
             }
-            Text("Open app", color = Color(0xFF38BDF8), fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+            Text("Open app", color = Color(0xFF00E5FF), fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.10f)).clickable {
                     try { t?.open?.send() } catch (e: Exception) { ctx.packageManager.getLaunchIntentForPackage(t?.pkg ?: "")?.let { ctx.safeStart(it) } }
                 }.padding(horizontal = 12.dp, vertical = 6.dp))
@@ -467,7 +467,7 @@ fun NotifChatScreen(key: String?, onClose: () -> Unit) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (m.fromMe) Arrangement.End else Arrangement.Start) {
                         Column(
                             Modifier.widthIn(max = 290.dp).clip(RoundedCornerShape(18.dp))
-                                .background(if (m.fromMe) Brush.linearGradient(listOf(Color(0xFF0A84FF), Color(0xFF1D4ED8))) else Brush.linearGradient(listOf(Color(0xFF14233D), Color(0xFF14233D))))
+                                .background(if (m.fromMe) Brush.linearGradient(listOf(Color(0xFF2E9BFF), Color(0xFF5B5CFF))) else Brush.linearGradient(listOf(Color(0xFF14233D), Color(0xFF14233D))))
                                 .padding(horizontal = 13.dp, vertical = 8.dp)
                         ) {
                             Text(m.text, color = Color.White, fontSize = 15.sp)
@@ -479,10 +479,10 @@ fun NotifChatScreen(key: String?, onClose: () -> Unit) {
                     }
                 }
                 if (typing != null) item {
-                    Text("${t.title} is $typing", color = Color(0xFF30D158), fontSize = 13.sp, modifier = Modifier.padding(start = 6.dp, top = 2.dp))
+                    Text("${t.title} is $typing", color = Color(0xFF2BFF88), fontSize = 13.sp, modifier = Modifier.padding(start = 6.dp, top = 2.dp))
                 }
             }
-            if (t.reply == null) Text("This app has no quick reply right now. Tap Open app to answer there.", color = Color(0xFFFFD60A), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+            if (t.reply == null) Text("This app has no quick reply right now. Tap Open app to answer there.", color = Color(0xFFFFE600), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
             Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).padding(horizontal = 16.dp, vertical = 11.dp)) {
                     if (draft.isEmpty()) Text("Reply to ${t.title}", color = Color.White.copy(alpha = 0.45f), fontSize = 15.sp, maxLines = 1)
@@ -490,7 +490,7 @@ fun NotifChatScreen(key: String?, onClose: () -> Unit) {
                 }
                 Spacer(Modifier.width(8.dp))
                 Text("Send", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFF0A84FF)).clickable {
+                    modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFF2E9BFF)).clickable {
                         val msg = draft.trim()
                         if (msg.isNotEmpty()) { NotifChats.send(ctx, t, msg); draft = "" }
                     }.padding(horizontal = 18.dp, vertical = 11.dp))

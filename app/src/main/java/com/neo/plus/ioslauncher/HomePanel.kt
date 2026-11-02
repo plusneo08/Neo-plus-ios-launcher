@@ -73,7 +73,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
 
 /* ---- NEO PLUS look for the clock and weather cards: deep navy glass, glowing neon edge, light streaks / mountain horizon ---- */
-private val NeoCyanC = Color(0xFF38BDF8)
+private val NeoCyanC = Color(0xFF00E5FF)
 private val NeoBlueC = Color(0xFF1D6BFF)
 private val GlowText = TextStyle(shadow = Shadow(color = NeoCyanC.copy(alpha = 0.55f), offset = Offset.Zero, blurRadius = 24f))
 
@@ -201,7 +201,7 @@ fun HomePanel(modifier: Modifier = Modifier) {
                             targetState = minutes,
                             transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
                             label = "clockMinutes"
-                        ) { m -> Text(m, color = Color(0xFF7DD3FC), fontSize = 46.sp, fontWeight = FontWeight.Thin, style = GlowText, maxLines = 1, softWrap = false) }
+                        ) { m -> Text(m, color = Color(0xFF7DF3FF), fontSize = 46.sp, fontWeight = FontWeight.Thin, style = GlowText, maxLines = 1, softWrap = false) }
                         if (ampm.isNotEmpty()) {
                             Text(ampm, color = NeoCyanC, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 4.dp, bottom = 9.dp))
                         }
@@ -338,7 +338,7 @@ private fun StepsCard(modifier: Modifier) {
             Text(
                 if (!StepCounter.working.value && steps == 0) "Carry your phone to start"
                 else String.format(Locale.US, "%.1f %s · %d kcal", dist, if (miles) "mi" else "km", StepCounter.kcal(steps)),
-                color = Color(0xFF7DD3FC), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp)
+                color = Color(0xFF7DF3FF), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp)
             )
             Canvas(Modifier.fillMaxWidth().height(16.dp).padding(top = 5.dp)) {
                 val top = maxOf(goal, week.maxOrNull() ?: 0).toFloat()
@@ -372,7 +372,7 @@ private fun LiveSeconds() {
         transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
         label = "clockSeconds"
     ) { v ->
-        Text(String.format(Locale.US, "%02d", v), color = Color(0xFF7DD3FC), fontSize = 20.sp, fontWeight = FontWeight.Medium)
+        Text(String.format(Locale.US, "%02d", v), color = Color(0xFF7DF3FF), fontSize = 20.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -574,7 +574,7 @@ fun NeoTopStrip(modifier: Modifier = Modifier) {
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(hours, color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Thin, style = GlowText, maxLines = 1, softWrap = false)
                     PulsingColon(32.sp)
-                    Text(minutes, color = Color(0xFF7DD3FC), fontSize = 36.sp, fontWeight = FontWeight.Thin, style = GlowText, maxLines = 1, softWrap = false)
+                    Text(minutes, color = Color(0xFF7DF3FF), fontSize = 36.sp, fontWeight = FontWeight.Thin, style = GlowText, maxLines = 1, softWrap = false)
                     if (ampm.isNotEmpty()) {
                         Text(ampm, color = NeoCyanC, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 3.dp, bottom = 6.dp))
                     }

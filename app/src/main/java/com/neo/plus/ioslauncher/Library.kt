@@ -73,7 +73,7 @@ fun GlassSearchField(
         modifier.neonGlass(RoundedCornerShape(18.dp), 6.dp).padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(Icons.Filled.Search, contentDescription = null, tint = Color(0xFF7DD3FC),
+        Icon(Icons.Filled.Search, contentDescription = null, tint = Color(0xFF7DF3FF),
             modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(8.dp))
         BasicTextField(
@@ -136,8 +136,8 @@ private fun CategoryCard(group: AppGroup, onOpen: (String) -> Unit, modifier: Mo
                             } else {
                                 Box(
                                     Modifier.size(50.dp).clip(RoundedCornerShape(15.dp))
-                                        .background(Color(0xFF38BDF8).copy(alpha = 0.16f))
-                                        .border(1.dp, Color(0xFF38BDF8).copy(alpha = 0.6f), RoundedCornerShape(15.dp))
+                                        .background(Color(0xFF00E5FF).copy(alpha = 0.16f))
+                                        .border(1.dp, Color(0xFF00E5FF).copy(alpha = 0.6f), RoundedCornerShape(15.dp))
                                         .clickable { onOpen(group.name) },
                                     contentAlignment = Alignment.Center
                                 ) { Text("+$extra", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
@@ -150,7 +150,7 @@ private fun CategoryCard(group: AppGroup, onOpen: (String) -> Unit, modifier: Mo
         }
         Row(Modifier.fillMaxWidth().padding(top = 7.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             Text(group.name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, style = ShadowStyle)
-            Text("  ${group.apps.size}", color = Color(0xFF7DD3FC), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text("  ${group.apps.size}", color = Color(0xFF7DF3FF), fontSize = 12.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -161,7 +161,7 @@ fun LibraryPage(apps: List<AppEntry>, groups: List<AppGroup>, onOpenCategory: (S
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Column(Modifier.padding(vertical = 8.dp)) {
             Text("App Library", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold, style = ShadowStyle)
-            Text("${apps.size} apps · ${groups.size} groups", color = Color(0xFF7DD3FC), fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Text("${apps.size} apps · ${groups.size} groups", color = Color(0xFF7DF3FF), fontSize = 14.sp, fontWeight = FontWeight.Medium)
         }
         GlassSearchField(q, { q = it }, "App Library", Modifier.fillMaxWidth())
         Spacer(Modifier.height(14.dp))
@@ -227,7 +227,7 @@ fun SearchOverlay(apps: List<AppEntry>, onClose: () -> Unit) {
                 val first = results.firstOrNull()
                 if (first != null) { ctx.launchApp(first); onClose() } else if (q.isNotBlank()) webSearch()
             }
-            Text("Cancel", color = Color(0xFF7DB8FF), fontSize = 16.sp,
+            Text("Cancel", color = Color(0xFF8AA8FF), fontSize = 16.sp,
                 modifier = Modifier.clickable { onClose() }.padding(start = 12.dp, top = 8.dp, bottom = 8.dp))
         }
         Spacer(Modifier.height(10.dp))

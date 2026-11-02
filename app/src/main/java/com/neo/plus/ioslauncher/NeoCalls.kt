@@ -349,7 +349,7 @@ fun NeoDialButton(size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifi
         }
         androidx.compose.foundation.Canvas(
             Modifier.size(size).clip(CircleShape)
-                .background(Brush.linearGradient(listOf(NeoCallColors.Cyan, NeoCallColors.Blue, Color(0xFF1D4ED8))))
+                .background(Brush.linearGradient(listOf(NeoCallColors.Cyan, NeoCallColors.Blue, Color(0xFF5B5CFF))))
                 .border(0.9.dp, Color.White.copy(alpha = 0.55f), CircleShape)
                 .semantics { contentDescription = "Neo Plus Dialer" }
         ) {
@@ -369,7 +369,7 @@ fun NeoDialButton(size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifi
 @Composable
 fun NeoCallButton(size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
     val t = rememberFrameSeconds()
-    val green = Color(0xFF30D158)
+    val green = Color(0xFF2BFF88)
     Box(modifier.size(size), contentAlignment = Alignment.Center) {
         androidx.compose.foundation.Canvas(Modifier.requiredSize(size * 1.5f)) {
             val p = (t.value * 0.5f) % 1f

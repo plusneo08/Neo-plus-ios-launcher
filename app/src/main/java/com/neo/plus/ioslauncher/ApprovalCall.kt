@@ -522,8 +522,8 @@ private fun ApprovalCallScreen(s: ApprovalSession) {
                     Text(item.summary, color = Color.White, fontSize = 14.sp, lineHeight = 19.sp)
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        NeoCallPill("Send", Color(0xFF34C759)) { s.tap(item.id, true) }
-                        NeoCallPill("Skip", Color(0xFFFF3B30)) { s.tap(item.id, false) }
+                        NeoCallPill("Send", Color(0xFF2BFF88)) { s.tap(item.id, true) }
+                        NeoCallPill("Skip", Color(0xFFFF3D6E)) { s.tap(item.id, false) }
                     }
                 }
             }

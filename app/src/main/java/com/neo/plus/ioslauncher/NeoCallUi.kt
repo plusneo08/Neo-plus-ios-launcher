@@ -77,10 +77,10 @@ import kotlin.math.sin
  * Used by the wake-up call and the approval call.
  */
 object NeoCallColors {
-    val Blue = Color(0xFF0A84FF)
-    val Cyan = Color(0xFF38BDF8)
+    val Blue = Color(0xFF2E9BFF)
+    val Cyan = Color(0xFF00E5FF)
     val Red = Color(0xFFE5322D)
-    val Green = Color(0xFF22C55E)
+    val Green = Color(0xFF2BFF88)
     val Panel = Color(0xFF05101F)
 }
 
@@ -148,7 +148,7 @@ private fun IncomingScreen(m: NeoCallModel) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Spacer(Modifier.height(18.dp))
-        SpacedTitle(if (m.urgent) "URGENT CALL" else "INCOMING CALL", if (m.urgent) Color(0xFFFF9F0A) else Color.White)
+        SpacedTitle(if (m.urgent) "URGENT CALL" else "INCOMING CALL", if (m.urgent) Color(0xFFFF9A1F) else Color.White)
         Art(R.drawable.neo_art_incoming, Modifier.weight(1f).fillMaxWidth())
         CallerCard(true, m.callerName, m.callerSub, m.callerPhoto)
         Spacer(Modifier.height(18.dp))
@@ -238,7 +238,7 @@ private fun ConnectedScreen(m: NeoCallModel, ctx: Context, extra: @Composable ()
         Spacer(Modifier.height(4.dp))
         Text(clock, color = NeoCallColors.Blue, fontSize = 26.sp, fontWeight = FontWeight.Medium)
         Text(status, color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, letterSpacing = 3.sp)
-        if (m.waitingText.isNotBlank()) Text(m.waitingText, color = Color(0xFFFFD60A), fontSize = 13.sp)
+        if (m.waitingText.isNotBlank()) Text(m.waitingText, color = Color(0xFFFFE600), fontSize = 13.sp)
         Art(R.drawable.neo_art_connected, Modifier.height(150.dp).fillMaxWidth())
 
         if (!m.showTranscript) {
@@ -264,7 +264,7 @@ private fun ConnectedScreen(m: NeoCallModel, ctx: Context, extra: @Composable ()
                     Text(
                         line, color = Color.White, fontSize = 16.sp, lineHeight = 22.sp,
                         modifier = Modifier.clip(RoundedCornerShape(16.dp))
-                            .background(if (me) Color(0xFF2563EB) else Color.White.copy(alpha = 0.12f))
+                            .background(if (me) Color(0xFF3D7BFF) else Color.White.copy(alpha = 0.12f))
                             .padding(horizontal = 14.dp, vertical = 9.dp)
                     )
                 }
@@ -280,7 +280,7 @@ private fun ConnectedScreen(m: NeoCallModel, ctx: Context, extra: @Composable ()
                 ) { ok -> if (ok) m.onMicGranted() }
                 Text(
                     "Tap here and allow the microphone so I can hear you.",
-                    color = Color(0xFFFFD60A), fontSize = 15.sp,
+                    color = Color(0xFFFFE600), fontSize = 15.sp,
                     modifier = Modifier.clickable { permission.launch(Manifest.permission.RECORD_AUDIO) }
                 )
             }

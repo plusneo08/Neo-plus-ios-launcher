@@ -255,7 +255,7 @@ private val IosOrange = Color(0xFFE9692C)
 private val IosBlue = Color(0xFF2EA8FF)
 private val IosCream = Color(0xFFBFE9FF)
 private val IosIndigo = Color(0xFF6C6CFF)
-private val IosYellow = Color(0xFFFFD60A)
+private val IosYellow = Color(0xFFFFE600)
 private val Ink = Color(0xFF1C1C1E)
 
 @Composable
@@ -327,7 +327,7 @@ private fun BatteryGlyph(pct: Int, charging: Boolean, width: Dp, tint: Color = C
             Box(
                 Modifier.fillMaxHeight().fillMaxWidth(pct.coerceIn(5, 100) / 100f)
                     .clip(RoundedCornerShape(h * 0.2f))
-                    .background(fill ?: if (charging) Color(0xFF30D158) else tint)
+                    .background(fill ?: if (charging) Color(0xFF2BFF88) else tint)
             )
         }
         Box(

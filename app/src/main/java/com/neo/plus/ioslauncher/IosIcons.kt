@@ -80,7 +80,7 @@ fun IosArt(kind: IosKind, modifier: Modifier = Modifier) {
             drawCircle(Color(0xFF48484A), w * 0.175f, c)
             drawCircle(Color(0xFF0A0A0C), w * 0.13f, c)
             drawCircle(Color(0xFF3B5B9A).copy(alpha = 0.75f), w * 0.045f, Offset(w * 0.46f, h * 0.49f))
-            drawCircle(Color(0xFFFFD60A), w * 0.025f, Offset(w * 0.77f, h * 0.39f))
+            drawCircle(Color(0xFFFFE600), w * 0.025f, Offset(w * 0.77f, h * 0.39f))
         }
 
         IosKind.SAFARI -> Canvas(modifier.background(Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFDCE5F2))))) {
@@ -106,7 +106,7 @@ fun IosArt(kind: IosKind, modifier: Modifier = Modifier) {
                 val half = r * 0.17f
                 drawPath(Path().apply {
                     moveTo(c.x, c.y - needle); lineTo(c.x - half, c.y); lineTo(c.x + half, c.y); close()
-                }, Color(0xFFFF3B30))
+                }, Color(0xFFFF3D6E))
                 drawPath(Path().apply {
                     moveTo(c.x, c.y + needle); lineTo(c.x - half, c.y); lineTo(c.x + half, c.y); close()
                 }, Color(0xFFF2F2F7))
@@ -157,7 +157,7 @@ fun IosArt(kind: IosKind, modifier: Modifier = Modifier) {
             bars.forEachIndexed { i, f ->
                 val x = start + step * i
                 if (i == 4) {
-                    drawRoundRect(Color(0xFFFF453A), Offset(x - bw / 2, h * 0.18f), Size(bw, h * 0.64f), CornerRadius(bw / 2))
+                    drawRoundRect(Color(0xFFFF3D6E), Offset(x - bw / 2, h * 0.18f), Size(bw, h * 0.64f), CornerRadius(bw / 2))
                 } else {
                     val bh = h * f
                     drawRoundRect(Color.White.copy(alpha = 0.92f), Offset(x - bw / 2, h * 0.5f - bh / 2), Size(bw, bh), CornerRadius(bw / 2))
@@ -167,8 +167,8 @@ fun IosArt(kind: IosKind, modifier: Modifier = Modifier) {
     }
 }
 
-private val IconNeoBlue = Color(0xFF0A84FF)
-private val NeoCyan = Color(0xFF38BDF8)
+private val IconNeoBlue = Color(0xFF2E9BFF)
+private val NeoCyan = Color(0xFF00E5FF)
 
 /** Dark translucent glass with a glowing neon-blue edge (widgets, dock, icon tiles). */
 fun Modifier.neonGlass(shape: Shape, glow: Dp = 8.dp): Modifier = this

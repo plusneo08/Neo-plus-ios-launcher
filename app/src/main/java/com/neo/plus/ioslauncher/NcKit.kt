@@ -52,9 +52,9 @@ import kotlin.math.sin
  * Small building blocks for the "AI answers your call" screen (AiCallScreen.kt).
  * The extra colors are extension properties, so they sit next to NeoCallColors (NeoCallUi.kt) without editing it.
  */
-val NeoCallColors.Ai: Color get() = Color(0xFFBF5AF2)
+val NeoCallColors.Ai: Color get() = Color(0xFFC45CFF)
 val NeoCallColors.Muted: Color get() = Color(0xFF8E9AAB)
-val NeoCallColors.Accept: Color get() = Color(0xFF22C55E)
+val NeoCallColors.Accept: Color get() = Color(0xFF2BFF88)
 val NeoCallColors.Ink: Color get() = Color(0xFF05101F)
 val NeoCallColors.Surface: Color get() = Color(0xFF0E1A2B)
 val NeoCallColors.Text: Color get() = Color.White

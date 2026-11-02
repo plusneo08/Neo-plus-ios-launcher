@@ -156,10 +156,10 @@ fun ContactEditDialog(number: String, name: String, progress: String? = null, on
                 .background(androidx.compose.ui.graphics.Color(0xFF111A2B)).padding(22.dp),
             horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
         ) {
-            if (progress != null) androidx.compose.material3.Text(progress, color = androidx.compose.ui.graphics.Color(0xFF38BDF8), fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, modifier = androidx.compose.ui.Modifier.padding(bottom = 10.dp))
+            if (progress != null) androidx.compose.material3.Text(progress, color = androidx.compose.ui.graphics.Color(0xFF00E5FF), fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, modifier = androidx.compose.ui.Modifier.padding(bottom = 10.dp))
             androidx.compose.foundation.layout.Box(
                 androidx.compose.ui.Modifier.size(120.dp).clip(androidx.compose.foundation.shape.CircleShape)
-                    .background(androidx.compose.ui.graphics.Color(0xFF1D4ED8)).clickable { pick.launch("image/*") },
+                    .background(androidx.compose.ui.graphics.Color(0xFF5B5CFF)).clickable { pick.launch("image/*") },
                 contentAlignment = androidx.compose.ui.Alignment.Center
             ) {
                 if (photo != null) androidx.compose.foundation.Image(photo, null, androidx.compose.ui.Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
@@ -185,7 +185,7 @@ fun ContactEditDialog(number: String, name: String, progress: String? = null, on
 private fun DialogButton(text: String, primary: Boolean, onClick: () -> Unit) {
     androidx.compose.foundation.layout.Box(
         androidx.compose.ui.Modifier.fillMaxWidth().padding(top = 8.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
-            .background(if (primary) androidx.compose.ui.graphics.Color(0xFF0A84FF) else androidx.compose.ui.graphics.Color.White.copy(alpha = 0.10f))
+            .background(if (primary) androidx.compose.ui.graphics.Color(0xFF2E9BFF) else androidx.compose.ui.graphics.Color.White.copy(alpha = 0.10f))
             .clickable(onClick = onClick).padding(vertical = 13.dp),
         contentAlignment = androidx.compose.ui.Alignment.Center
     ) { androidx.compose.material3.Text(text, color = androidx.compose.ui.graphics.Color.White, fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) }

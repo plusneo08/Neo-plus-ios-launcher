@@ -95,7 +95,7 @@ import java.util.Locale
 /*  Built-in iOS-style widgets                                         */
 /* ------------------------------------------------------------------ */
 
-private val TdCyan = Color(0xFF38BDF8)
+private val TdCyan = Color(0xFF00E5FF)
 private val TdGlow = TextStyle(shadow = androidx.compose.ui.graphics.Shadow(color = TdCyan.copy(alpha = 0.5f), offset = Offset.Zero, blurRadius = 22f))
 
 @Composable
@@ -386,7 +386,7 @@ fun HostedWidgets(wc: WidgetController, editing: Boolean) {
                 // iOS: a red "−" badge on the corner removes the widget
                 Box(
                     Modifier.align(Alignment.TopStart).padding(8.dp).size(26.dp).clip(CircleShape)
-                        .background(Color(0xFFFF3B30)).clickable { wc.remove(id) },
+                        .background(Color(0xFFFF3D6E)).clickable { wc.remove(id) },
                     contentAlignment = Alignment.Center
                 ) {
                     Box(Modifier.size(width = 12.dp, height = 2.5.dp).clip(RoundedCornerShape(50)).background(Color.White))
@@ -413,7 +413,7 @@ private class WidgetApp(val pkg: String, val name: String, val providers: List<A
 
 private val SheetBg = Color(0xFF1C1C1E)
 private val FieldBg = Color(0xFF2C2C2E)
-private val IosBlue = Color(0xFF0A84FF)
+private val IosBlue = Color(0xFF2E9BFF)
 
 /** iOS-style widget gallery: a sheet with search, apps that have widgets, then a swipeable preview with "Add Widget". */
 @Composable

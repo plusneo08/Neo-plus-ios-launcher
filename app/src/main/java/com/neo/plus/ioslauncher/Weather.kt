@@ -320,7 +320,7 @@ fun WeatherGlyph(kind: WKind, modifier: Modifier = Modifier) {
                     lineTo(w * 0.45f, w * 0.96f); lineTo(w * 0.67f, w * 0.69f); lineTo(w * 0.56f, w * 0.69f)
                     lineTo(w * 0.62f, w * 0.56f); close()
                 }
-                drawPath(bolt, Color(0xFFFFD60A).copy(alpha = on))
+                drawPath(bolt, Color(0xFFFFE600).copy(alpha = on))
             }
         }
     }

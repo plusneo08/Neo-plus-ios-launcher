@@ -205,21 +205,21 @@ fun TaskPanel(onStop: () -> Unit, modifier: Modifier = Modifier, maxListHeight: 
                 val progress = if (TaskLog.total > 0) "  ·  ${TaskLog.done + TaskLog.failed}/${TaskLog.total}" + (if (TaskLog.failed > 0) "  ·  ${TaskLog.failed} problem(s)" else "") else ""
                 Text((if (TaskLog.waiting) "Waiting for you: do the CAPTCHA on the page, then Continue" else TaskLog.status) + progress, color = Color.White.copy(alpha = 0.65f), fontSize = 11.sp, maxLines = 1)
             }
-            if (TaskLog.waiting) { PanelButton("Continue", Color(0xFF30D158)) { WebTask.resume() }; Spacer(Modifier.padding(horizontal = 3.dp)) }
+            if (TaskLog.waiting) { PanelButton("Continue", Color(0xFF2BFF88)) { WebTask.resume() }; Spacer(Modifier.padding(horizontal = 3.dp)) }
             PanelButton("Full view") { TaskLog.fullView = true }
             Spacer(Modifier.padding(horizontal = 3.dp))
             PanelButton(if (TaskLog.showBrowser) "Hide page" else "Watch page") { TaskLog.showBrowser = !TaskLog.showBrowser }
             Spacer(Modifier.padding(horizontal = 3.dp))
             PanelButton(if (expanded) "Collapse" else "Expand") { expanded = !expanded }
             Spacer(Modifier.padding(horizontal = 3.dp))
-            if (TaskLog.active) PanelButton("Stop", Color(0xFFFF453A)) { onStop() }
+            if (TaskLog.active) PanelButton("Stop", Color(0xFFFF3D6E)) { onStop() }
             else PanelButton("Close") { TaskLog.dismissed = true }
         }
         if (TaskLog.total > 0) {
             Spacer(Modifier.height(8.dp))
             val frac = ((TaskLog.done + TaskLog.failed).toFloat() / TaskLog.total).coerceIn(0f, 1f)
             Box(Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)).background(Color.White.copy(alpha = 0.18f))) {
-                Box(Modifier.fillMaxWidth(frac).height(5.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFF30D158)))
+                Box(Modifier.fillMaxWidth(frac).height(5.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFF2BFF88)))
             }
         }
         if (expanded) {
@@ -227,10 +227,10 @@ fun TaskPanel(onStop: () -> Unit, modifier: Modifier = Modifier, maxListHeight: 
             LazyColumn(state = state, modifier = Modifier.fillMaxWidth().heightIn(max = maxListHeight), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 items(TaskLog.lines.toList(), key = { it.id }) { l ->
                     val c = when (l.kind) {
-                        TaskLine.Kind.OK -> Color(0xFF30D158)
-                        TaskLine.Kind.WARN -> Color(0xFFFFD60A)
-                        TaskLine.Kind.ERROR -> Color(0xFFFF453A)
-                        TaskLine.Kind.FIX -> Color(0xFF64D2FF)
+                        TaskLine.Kind.OK -> Color(0xFF2BFF88)
+                        TaskLine.Kind.WARN -> Color(0xFFFFE600)
+                        TaskLine.Kind.ERROR -> Color(0xFFFF3D6E)
+                        TaskLine.Kind.FIX -> Color(0xFF4FE0FF)
                         TaskLine.Kind.STEP -> Color.White.copy(alpha = 0.85f)
                         TaskLine.Kind.INFO -> Color.White.copy(alpha = 0.6f)
                     }

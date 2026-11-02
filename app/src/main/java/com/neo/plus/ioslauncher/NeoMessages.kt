@@ -171,12 +171,12 @@ class MsgTheme(
 )
 
 val MsgThemes = listOf(
-    MsgTheme("Neo Blue", listOf(Color(0xFF040A16), Color(0xFF061830), Color(0xFF020712)), Color(0xFF38BDF8), listOf(Color(0xFF0A84FF), Color(0xFF1D4ED8)), Color(0xFF14233D), Color.White, Color.White.copy(alpha = 0.62f), Color.White.copy(alpha = 0.07f)),
-    MsgTheme("Aurora", listOf(Color(0xFF07140F), Color(0xFF0B2A2A), Color(0xFF120A2A)), Color(0xFF34D399), listOf(Color(0xFF10B981), Color(0xFF6366F1)), Color(0xFF16282B), Color.White, Color.White.copy(alpha = 0.62f), Color.White.copy(alpha = 0.07f)),
+    MsgTheme("Neo Blue", listOf(Color(0xFF040A16), Color(0xFF061830), Color(0xFF020712)), Color(0xFF00E5FF), listOf(Color(0xFF2E9BFF), Color(0xFF5B5CFF)), Color(0xFF14233D), Color.White, Color.White.copy(alpha = 0.62f), Color.White.copy(alpha = 0.07f)),
+    MsgTheme("Aurora", listOf(Color(0xFF07140F), Color(0xFF0B2A2A), Color(0xFF120A2A)), Color(0xFF34D399), listOf(Color(0xFF10B981), Color(0xFF8B5CFF)), Color(0xFF16282B), Color.White, Color.White.copy(alpha = 0.62f), Color.White.copy(alpha = 0.07f)),
     MsgTheme("Sunset", listOf(Color(0xFF1A0B14), Color(0xFF3B1226), Color(0xFF1A0A05)), Color(0xFFFB923C), listOf(Color(0xFFF97316), Color(0xFFE11D48)), Color(0xFF2A1520), Color.White, Color.White.copy(alpha = 0.62f), Color.White.copy(alpha = 0.07f)),
-    MsgTheme("Violet", listOf(Color(0xFF0E0820), Color(0xFF1E1048), Color(0xFF080414)), Color(0xFFC084FC), listOf(Color(0xFF8B5CF6), Color(0xFFD946EF)), Color(0xFF21163F), Color.White, Color.White.copy(alpha = 0.62f), Color.White.copy(alpha = 0.07f)),
-    MsgTheme("Midnight", listOf(Color.Black, Color(0xFF05060A), Color.Black), Color(0xFF60A5FA), listOf(Color(0xFF2563EB), Color(0xFF2563EB)), Color(0xFF16181D), Color.White, Color.White.copy(alpha = 0.55f), Color.White.copy(alpha = 0.06f)),
-    MsgTheme("Daylight", listOf(Color(0xFFF4F7FC), Color(0xFFE8EFFA), Color.White), Color(0xFF0A84FF), listOf(Color(0xFF0A84FF), Color(0xFF2F9BFF)), Color.White, Color(0xFF0B1220), Color(0xFF5B6475), Color.Black.copy(alpha = 0.05f))
+    MsgTheme("Violet", listOf(Color(0xFF0E0820), Color(0xFF1E1048), Color(0xFF080414)), Color(0xFFC084FC), listOf(Color(0xFF9D5CFF), Color(0xFFFF3DDC)), Color(0xFF21163F), Color.White, Color.White.copy(alpha = 0.62f), Color.White.copy(alpha = 0.07f)),
+    MsgTheme("Midnight", listOf(Color.Black, Color(0xFF05060A), Color.Black), Color(0xFF60A5FA), listOf(Color(0xFF3D7BFF), Color(0xFF3D7BFF)), Color(0xFF16181D), Color.White, Color.White.copy(alpha = 0.55f), Color.White.copy(alpha = 0.06f)),
+    MsgTheme("Daylight", listOf(Color(0xFFF4F7FC), Color(0xFFE8EFFA), Color.White), Color(0xFF2E9BFF), listOf(Color(0xFF2E9BFF), Color(0xFF2F9BFF)), Color.White, Color(0xFF0B1220), Color(0xFF5B6475), Color.Black.copy(alpha = 0.05f))
 )
 
 /* ------------------------------------------------------------------ */
@@ -264,7 +264,7 @@ private val ChatBgs = listOf(
     ChatBg("berry", "Berry", listOf(Color(0xFF2A0A3B), Color(0xFF7E22CE), Color(0xFFDB2777))),
     ChatBg("slate", "Slate", listOf(Color(0xFF111827), Color(0xFF1F2937), Color(0xFF374151))),
     ChatBg("black", "Black", listOf(Color.Black, Color.Black)),
-    ChatBg("sky", "Sky", listOf(Color(0xFF7DD3FC), Color(0xFFBAE6FD), Color(0xFFE0F2FE)), true),
+    ChatBg("sky", "Sky", listOf(Color(0xFF7DF3FF), Color(0xFFBAE6FD), Color(0xFFE0F2FE)), true),
     ChatBg("paper", "Paper", listOf(Color(0xFFF5F1E8), Color(0xFFE9E2D0)), true)
 )
 
@@ -1059,7 +1059,7 @@ private fun BgTile(label: String, brush: Brush, selected: Boolean, accent: Color
 
 /** The picture or colours behind the chat (drawn under the bubbles). */
 @Composable
-private fun ChatBackdrop(v: String, dark: Boolean = true, accent: Color = Color(0xFF38BDF8)) {
+private fun ChatBackdrop(v: String, dark: Boolean = true, accent: Color = Color(0xFF00E5FF)) {
     val ctx = LocalContext.current
     // "" / "-" = the Neo Plus logo wallpaper (default; only on the dark themes), "n:" = plain theme colours
     if (v.isEmpty() || v == "-") { if (dark) NeoLogoBackdrop(accent); return }
@@ -1229,7 +1229,7 @@ private fun ChatScreen(
                                     if (r.sent) {
                                         // 👌 = the network says it reached the other phone. Plain texts cannot report that it was opened.
                                         if (r.state == 1) Text("  ·  👌 Delivered", color = ui.sub, fontSize = 10.sp)
-                                        else if (r.state == 2) Text("  ·  Not sent", color = Color(0xFFFFB347), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                                        else if (r.state == 2) Text("  ·  Not sent", color = Color(0xFFFFC857), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                                         else if (r.id == lastSentId) Text("  ·  Sent", color = ui.sub, fontSize = 10.sp)
                                     }
                                 }
@@ -1335,7 +1335,7 @@ private fun BoxScope.BackgroundSheet(
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var showColor by remember { mutableStateOf(false) }
-    val start = remember { FloatArray(3).also { android.graphics.Color.colorToHSV((customColor(current) ?: Color(0xFF2563EB)).toArgb(), it) } }
+    val start = remember { FloatArray(3).also { android.graphics.Color.colorToHSV((customColor(current) ?: Color(0xFF3D7BFF)).toArgb(), it) } }
     var hue by remember { mutableStateOf(start[0]) }
     var sat by remember { mutableStateOf(start[1].coerceIn(0.15f, 1f)) }
     var bri by remember { mutableStateOf(start[2].coerceIn(0.15f, 1f)) }
@@ -1369,7 +1369,7 @@ private fun BoxScope.BackgroundSheet(
                 val cc = customColor(current)
                 BgTile(
                     "Any colour",
-                    if (cc != null) Brush.verticalGradient(listOf(cc, cc)) else Brush.horizontalGradient(listOf(Color(0xFFEF4444), Color(0xFFF59E0B), Color(0xFF22C55E), Color(0xFF06B6D4), Color(0xFF6366F1), Color(0xFFD946EF))),
+                    if (cc != null) Brush.verticalGradient(listOf(cc, cc)) else Brush.horizontalGradient(listOf(Color(0xFFEF4444), Color(0xFFF59E0B), Color(0xFF2BFF88), Color(0xFF06B6D4), Color(0xFF8B5CFF), Color(0xFFFF3DDC))),
                     cc != null, th.accent
                 ) { showColor = !showColor; if (showColor) emit() }
                 Column(Modifier.width(72.dp).clickable { pick.launch("image/*") }, horizontalAlignment = Alignment.CenterHorizontally) {
