@@ -103,3 +103,10 @@ CHANGED  AlphaHolo.kt   the disc is now the NEO PLUS logo: it turns like a coin 
                         Speed: SPIN_MS (logo) and RING_MS (neon ring) at the top of the file.
 CHANGED  HomePanel.kt   NEW NeoTopPanels(): steps + calendar on the first row, time + weather on the second (all on top).
 NOT compiled here (no Gradle/Kotlin in my sandbox); brackets balance in both files. Send me the first build error if there is one.
+
+HOME SCREEN: PLATFORM LOOK (matches the hologram picture)
+CHANGED  AlphaHolo.kt   tilted platform with concentric neon rings (dotted rings crawl round), glass rim wall with colour-cycling edge,
+                        four small data panels on the rim, swirling neon dust and a bright core. The NEO PLUS logo spins above the
+                        middle of the platform like the hologram hand. Pick a letter / swipe: the logo melts away and the apps float
+                        in an oval above the platform with their light shadows on it. Swipe, tap, double tap, long press unchanged.
+NOT compiled here; send me the first build error if there is one.
