@@ -98,6 +98,9 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Message
+import androidx.compose.material.icons.filled.Voicemail
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.CheckCircle
@@ -108,6 +111,7 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -115,6 +119,7 @@ import kotlinx.coroutines.launch
 
 private enum class DialTab(val label: String, val icon: ImageVector) {
     Keypad("Keypad", Icons.Filled.Dialpad),
+    Favorites("Favorites", Icons.Filled.Star),
     Recents("Recents", Icons.Filled.History),
     Missed("Missed", Icons.Filled.PhoneMissed),
     Contacts("Contacts", Icons.Filled.Contacts)
@@ -255,6 +260,43 @@ private fun loadContacts(ctx: Context): List<ContactEntry> = try {
     out
 } catch (e: Exception) { emptyList() }
 
+private fun openMessage(ctx: Context, number: String) {
+    try { ctx.startActivity(android.content.Intent(ctx, NeoMessagesActivity::class.java).setData(Uri.fromParts("sms", number, null))) } catch (e: Exception) { }
+}
+
+/** Start a text to this number in the Messages app. */
+@Composable
+private fun MessageBtn(number: String) {
+    val c = LocalContext.current
+    Icon(Icons.Filled.Message, "Message", tint = DialLook.cyan, modifier = Modifier.size(34.dp).clip(CircleShape).clickable { openMessage(c, number) }.padding(7.dp))
+}
+
+/** Starred contacts (star them in the Contacts app). */
+private fun loadFavorites(ctx: Context): List<ContactEntry> = try {
+    val out = ArrayList<ContactEntry>()
+    val seen = HashSet<String>()
+    ctx.contentResolver.query(
+        ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+        arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER),
+        ContactsContract.CommonDataKinds.Phone.STARRED + "=1", null,
+        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " COLLATE NOCASE ASC"
+    )?.use { c ->
+        while (c.moveToNext()) {
+            val n = c.getString(0).orEmpty()
+            val num = c.getString(1).orEmpty()
+            if (n.isBlank() || num.isBlank()) continue
+            if (seen.add(n.lowercase())) out.add(ContactEntry(n, num))
+        }
+    }
+    out
+} catch (e: Exception) { emptyList() }
+
+/** Adds the number to the phone's block list (works when Neo Plus is the default Phone app). */
+private fun blockNumber(ctx: Context, number: String): Boolean = try {
+    val v = android.content.ContentValues().apply { put(android.provider.BlockedNumberContract.BlockedNumbers.COLUMN_ORIGINAL_NUMBER, number) }
+    ctx.contentResolver.insert(android.provider.BlockedNumberContract.BlockedNumbers.CONTENT_URI, v) != null
+} catch (e: Exception) { false }
+
 private fun dayStart(ms: Long): Long = Calendar.getInstance().apply {
     timeInMillis = ms; set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
 }.timeInMillis
@@ -377,6 +419,7 @@ fun DialerScreen(initial: String, onClose: () -> Unit) {
     var hasContacts by remember { mutableStateOf(has(ctx, Manifest.permission.READ_CONTACTS)) }
     var log by remember { mutableStateOf(emptyList<LogEntry>()) }
     var contacts by remember { mutableStateOf(emptyList<ContactEntry>()) }
+    var favs by remember { mutableStateOf(emptyList<ContactEntry>()) }
 
     val readPerms = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         hasLog = has(ctx, Manifest.permission.READ_CALL_LOG)
@@ -411,6 +454,7 @@ fun DialerScreen(initial: String, onClose: () -> Unit) {
         withContext(Dispatchers.IO) {
             if (hasLog) log = loadLog(ctx)
             if (hasContacts && (contacts.isEmpty() || tab == DialTab.Contacts)) contacts = loadContacts(ctx)
+            if (hasContacts && tab == DialTab.Favorites) favs = loadFavorites(ctx)
         }
     }
 
@@ -442,6 +486,15 @@ fun DialerScreen(initial: String, onClose: () -> Unit) {
                     Text(tab.label, color = DialLook.cyan, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 }
                 Box(
+                    Modifier.size(40.dp).clip(CircleShape).background(CardFill).clickable {
+                        if (!has(ctx, Manifest.permission.CALL_PHONE)) callPerm.launch(Manifest.permission.CALL_PHONE)
+                        else try { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_CALL, Uri.fromParts("voicemail", "", null))) }
+                        catch (e: Exception) { android.widget.Toast.makeText(ctx, "Voicemail isn’t set up on this SIM", android.widget.Toast.LENGTH_SHORT).show() }
+                    }.semantics { contentDescription = "Voicemail" },
+                    contentAlignment = Alignment.Center
+                ) { Icon(Icons.Filled.Voicemail, null, tint = Color.White, modifier = Modifier.size(22.dp)) }
+                Spacer(Modifier.width(8.dp))
+                Box(
                     Modifier.size(40.dp).clip(CircleShape).background(CardFill).clickable { sheet = true }.semantics { contentDescription = "Themes and background" },
                     contentAlignment = Alignment.Center
                 ) { Icon(Icons.Filled.Palette, null, tint = Color.White, modifier = Modifier.size(22.dp)) }
@@ -471,6 +524,7 @@ fun DialerScreen(initial: String, onClose: () -> Unit) {
                     DialTab.Keypad -> KeypadTab(number, contacts, { number += it }, { if (number.isNotEmpty()) number = number.dropLast(1) }, { number = "" }, { number = it }, { dial(number) })
                     DialTab.Recents -> LogTab(log, false, hasLog, { readPerms.launch(arrayOf(Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS)) }, { n, nm -> editTarget = n to nm }) { dial(it) }
                     DialTab.Missed -> LogTab(log.filter { it.type == CallLog.Calls.MISSED_TYPE }, true, hasLog, { readPerms.launch(arrayOf(Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS)) }, { n, nm -> editTarget = n to nm }) { dial(it) }
+                    DialTab.Favorites -> FavoritesTab(favs, hasContacts, { readPerms.launch(arrayOf(Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS)) }) { dial(it) }
                     DialTab.Contacts -> ContactsTab(contacts, hasContacts, { readPerms.launch(arrayOf(Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS)) }, { n, nm -> editTarget = n to nm }, { list -> editIdx = 0; editQueue = list }) { dial(it) }
                 }
             }
@@ -638,6 +692,18 @@ private fun KeypadTab(
                     contentAlignment = Alignment.Center
                 ) { if (ready) Icon(Icons.Filled.Backspace, "Delete", tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(26.dp)) }
             }
+            if (ready) {
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    Modifier.clip(RoundedCornerShape(22.dp)).background(DialLook.blue.copy(alpha = 0.22f)).border(1.dp, DialLook.cyan.copy(alpha = 0.45f), RoundedCornerShape(22.dp))
+                        .clickable { openMessage(sctx, number) }.padding(horizontal = 18.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Message, null, tint = DialLook.cyan, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Message", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
             Spacer(Modifier.weight(0.3f))
         }
     }
@@ -672,13 +738,28 @@ private fun EmptyState(icon: ImageVector, text: String) {
 
 @Composable
 private fun LogTab(entries: List<LogEntry>, missedOnly: Boolean, allowed: Boolean, onAllow: () -> Unit, onEdit: (String, String) -> Unit, onCall: (String) -> Unit) {
+    val lctx = LocalContext.current
+    val hidden = remember { mutableStateListOf<Long>() }
+    var menuFor by remember { mutableStateOf<Long?>(null) }
+    var pendingDelete by remember { mutableStateOf<LogEntry?>(null) }
+    fun toast(t: String) = android.widget.Toast.makeText(lctx, t, android.widget.Toast.LENGTH_SHORT).show()
+    fun doDelete(e: LogEntry) {
+        val ok = try { lctx.contentResolver.delete(CallLog.Calls.CONTENT_URI, CallLog.Calls._ID + "=?", arrayOf(e.id.toString())) > 0 } catch (x: Exception) { false }
+        if (ok) hidden.add(e.id) else toast("Couldn’t delete this call. Make Neo Plus your default Phone app.")
+    }
+    val writePerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        val e = pendingDelete
+        pendingDelete = null
+        if (e != null) { if (ok) doDelete(e) else toast("Allow call-log changes to delete calls") }
+    }
+    val list = entries.filter { it.id !in hidden }
     if (!allowed) { NeedAccess("See your calls", "Allow Neo Plus to read your call history and contacts so recent and missed calls show here.", onAllow); return }
     if (entries.isEmpty()) {
         EmptyState(if (missedOnly) Icons.Filled.PhoneMissed else Icons.Filled.History, if (missedOnly) "No missed calls" else "No recent calls")
         return
     }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        items(entries, key = { it.id }) { e ->
+        items(list, key = { it.id }) { e ->
             val missed = e.type == CallLog.Calls.MISSED_TYPE || e.type == CallLog.Calls.REJECTED_TYPE || e.type == CallLog.Calls.BLOCKED_TYPE
             val shown = e.name.ifBlank { e.number.ifBlank { "Private number" } }
             val (icon, tint) = when (e.type) {
@@ -688,9 +769,35 @@ private fun LogTab(entries: List<LogEntry>, missedOnly: Boolean, allowed: Boolea
             }
             Row(
                 Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(RoundedCornerShape(18.dp)).background(CardFill)
-                    .clickable { onCall(e.number) }.padding(horizontal = 12.dp, vertical = 10.dp),
+                    .pointerInput(e.id) { detectTapGestures(onTap = { onCall(e.number) }, onLongPress = { menuFor = e.id }) }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // press and hold a call: message, copy, block, delete
+                androidx.compose.material3.DropdownMenu(expanded = menuFor == e.id, onDismissRequest = { menuFor = null }) {
+                    if (e.number.isNotBlank()) {
+                        androidx.compose.material3.DropdownMenuItem(text = { Text("Message") }, onClick = {
+                            menuFor = null
+                            try { lctx.startActivity(android.content.Intent(lctx, NeoMessagesActivity::class.java).setData(Uri.fromParts("sms", e.number, null))) } catch (x: Exception) { }
+                        })
+                        androidx.compose.material3.DropdownMenuItem(text = { Text("Copy number") }, onClick = {
+                            menuFor = null
+                            try {
+                                (lctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                                    .setPrimaryClip(android.content.ClipData.newPlainText("number", e.number))
+                                toast("Number copied")
+                            } catch (x: Exception) { }
+                        })
+                        androidx.compose.material3.DropdownMenuItem(text = { Text("Block number") }, onClick = {
+                            menuFor = null
+                            if (blockNumber(lctx, e.number)) toast("Number blocked") else toast("Couldn’t block it. Make Neo Plus your default Phone app.")
+                        })
+                    }
+                    androidx.compose.material3.DropdownMenuItem(text = { Text("Delete from history") }, onClick = {
+                        menuFor = null
+                        if (has(lctx, Manifest.permission.WRITE_CALL_LOG)) doDelete(e) else { pendingDelete = e; writePerm.launch(Manifest.permission.WRITE_CALL_LOG) }
+                    })
+                }
                 Avatar(e.name, 46.dp, e.number)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
@@ -705,8 +812,37 @@ private fun LogTab(entries: List<LogEntry>, missedOnly: Boolean, allowed: Boolea
                 Text(whenText(e.date), color = Dim, fontSize = 12.sp)
                 Spacer(Modifier.width(6.dp))
                 if (e.number.isNotBlank()) {
+                    MessageBtn(e.number)
                     Icon(Icons.Filled.Edit, "Edit contact", tint = Dim, modifier = Modifier.size(32.dp).clip(CircleShape).clickable { onEdit(e.number, e.name) }.padding(7.dp))
                 }
+                Spacer(Modifier.width(4.dp))
+                Box(Modifier.size(36.dp).clip(CircleShape).background(NeoCallColors.Green.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Call, null, tint = NeoCallColors.Green, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+        item { Spacer(Modifier.height(8.dp)) }
+    }
+}
+
+@Composable
+private fun FavoritesTab(favs: List<ContactEntry>, allowed: Boolean, onAllow: () -> Unit, onCall: (String) -> Unit) {
+    if (!allowed) { NeedAccess("See your favorites", "Allow Neo Plus to read your contacts so starred contacts show here.", onAllow); return }
+    if (favs.isEmpty()) { EmptyState(Icons.Filled.Star, "No favorites yet. Star a contact in your Contacts app."); return }
+    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+        items(favs, key = { it.name + "|" + it.number }) { c ->
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(RoundedCornerShape(18.dp)).background(CardFill)
+                    .clickable { onCall(c.number) }.padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Avatar(c.name, 46.dp, c.number)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(c.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(c.number, color = Dim, fontSize = 13.sp, maxLines = 1)
+                }
+                MessageBtn(c.number)
                 Spacer(Modifier.width(4.dp))
                 Box(Modifier.size(36.dp).clip(CircleShape).background(NeoCallColors.Green.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
                     Icon(Icons.Filled.Call, null, tint = NeoCallColors.Green, modifier = Modifier.size(18.dp))
@@ -787,6 +923,7 @@ private fun ContactsTab(contacts: List<ContactEntry>, allowed: Boolean, onAllow:
                         Text(c.number, color = Dim, fontSize = 13.sp, maxLines = 1)
                     }
                     if (!selecting) {
+                        MessageBtn(c.number)
                         Icon(Icons.Filled.Edit, "Edit contact", tint = Dim, modifier = Modifier.size(34.dp).clip(CircleShape).clickable { onEdit(c.number, c.name) }.padding(8.dp))
                         Spacer(Modifier.width(4.dp))
                         Icon(Icons.Filled.Call, null, tint = NeoCallColors.Green, modifier = Modifier.size(20.dp))

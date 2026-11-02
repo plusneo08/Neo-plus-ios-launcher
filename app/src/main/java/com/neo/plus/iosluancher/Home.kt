@@ -186,7 +186,7 @@ fun LauncherRoot(
                     alphaLetter != null -> alphaLetter = null
                 }
             }
-            AlphaRingHome(
+            AlphaHoloHome(
                 vm.apps, alphaLetter, { alphaLetter = it }, { overlay = Overlay.Search }, { alphaLetter = null; overlay = Overlay.Assistant },
                 Modifier.then(if (blurDp > 0.dp) Modifier.blur(blurDp) else Modifier).windowInsetsPadding(safeInsets())
             )

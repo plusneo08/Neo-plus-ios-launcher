@@ -195,6 +195,29 @@ private fun keyOf(a: String): String {
 private fun prefs(ctx: Context) = ctx.applicationContext.getSharedPreferences("neo_messages", Context.MODE_PRIVATE)
 
 /** Messages this app sent: Android only lets the default SMS app write to the phone's message store, so they are kept here. */
+/** Urgent texts: sent with this tag in front. Neo Messages on the other phone shows them in red and alerts loudly; any other app just shows the tag. */
+private const val URGENT_TAG = "[URGENT] "
+private fun isUrgent(body: String) = body.startsWith("[URGENT]", ignoreCase = true)
+private fun stripUrgent(body: String) = if (isUrgent(body)) body.drop(8).trimStart() else body
+private val UrgentRed = Color(0xFFE5383B)
+
+/** Chats pinned to the top / blocked senders (their texts still arrive but don't notify and sit under "Blocked"). */
+/** Places a call right away (or opens the dialer with the number when calling isn't allowed yet). */
+private fun startCall(ctx: Context, number: String) {
+    try {
+        if (number.isNotBlank() && has(ctx, Manifest.permission.CALL_PHONE) && NeoDialer.place(ctx, number)) return
+        ctx.startActivity(Intent(ctx, NeoDialerActivity::class.java).setData(Uri.fromParts("tel", number, null)))
+    } catch (e: Exception) { }
+}
+
+private fun pinnedKeys(ctx: Context): Set<String> = prefs(ctx).getStringSet("pinned", emptySet()) ?: emptySet()
+private fun blockedKeys(ctx: Context): Set<String> = prefs(ctx).getStringSet("blocked", emptySet()) ?: emptySet()
+private fun toggleKey(ctx: Context, name: String, key: String, on: Boolean) {
+    val s = HashSet(prefs(ctx).getStringSet(name, emptySet()) ?: emptySet())
+    if (on) s.add(key) else s.remove(key)
+    prefs(ctx).edit().putStringSet(name, s).apply()
+}
+
 private fun outbox(ctx: Context): List<MsgItem> = try {
     val a = JSONArray(prefs(ctx).getString("outbox", "[]"))
     (0 until a.length()).map { val o = a.getJSONObject(it); MsgItem(-o.getLong("d"), o.getString("a"), o.getString("b"), o.getLong("d"), true, true, o.optInt("s", 0)) }
@@ -372,7 +395,21 @@ private fun notifyIncoming(ctx: Context, from: String, body: String) {
             nm.createNotificationChannel(android.app.NotificationChannel("neo_msgs_in", "Messages", android.app.NotificationManager.IMPORTANCE_HIGH))
             // no system pop-up on this one: the reply card is the pop-up, so a text never shows twice
             nm.createNotificationChannel(android.app.NotificationChannel("neo_msgs_card", "Messages (reply card)", android.app.NotificationManager.IMPORTANCE_DEFAULT))
+            // urgent texts: alarm sound, long vibration, tries to get past Do Not Disturb (only if you allowed it for Neo Plus)
+            nm.createNotificationChannel(android.app.NotificationChannel("neo_msgs_urgent", "Urgent messages", android.app.NotificationManager.IMPORTANCE_HIGH).apply {
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 600, 200, 600, 200, 900)
+                setSound(
+                    android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM),
+                    android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+                )
+                setBypassDnd(true)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+            })
         }
+        val urgent = isUrgent(body)
+        val shownBody = stripUrgent(body)
         val cardOn = try { ReplyCard.enabled(ctx) && android.provider.Settings.canDrawOverlays(ctx) && NeoNotificationService.instance != null } catch (e: Throwable) { false }
         val id = from.hashCode()
         val who = displayNameFor(ctx, from)
@@ -390,9 +427,10 @@ private fun notifyIncoming(ctx: Context, from: String, body: String) {
         val readAction = android.app.Notification.Action.Builder(
             android.graphics.drawable.Icon.createWithResource(ctx, android.R.drawable.ic_menu_view), "Mark as read", action(NOTIF_READ, 2, false)
         ).build()
-        val b = android.app.Notification.Builder(ctx, if (cardOn) "neo_msgs_card" else "neo_msgs_in")
-            .setSmallIcon(android.R.drawable.stat_notify_chat).setContentTitle(who).setContentText(body)
-            .setStyle(android.app.Notification.BigTextStyle().bigText(body)).setAutoCancel(true).setContentIntent(pi)
+        val b = android.app.Notification.Builder(ctx, if (urgent) "neo_msgs_urgent" else if (cardOn) "neo_msgs_card" else "neo_msgs_in")
+            .setSmallIcon(android.R.drawable.stat_notify_chat).setContentTitle(if (urgent) "URGENT · $who" else who).setContentText(shownBody)
+            .setStyle(android.app.Notification.BigTextStyle().bigText(shownBody)).setAutoCancel(true).setContentIntent(pi)
+            .also { if (urgent) it.setColor(0xFFE5383B.toInt()).setCategory(android.app.Notification.CATEGORY_MESSAGE) }
             .addAction(replyAction).addAction(readAction)
         try { ContactPhotos.thumb(ctx, from)?.let { b.setLargeIcon(it) } } catch (e: Throwable) { }
         nm.notify(id, b.build())
@@ -439,7 +477,7 @@ class SmsDeliverReceiver : BroadcastReceiver() {
             }
             app.contentResolver.insert(Telephony.Sms.Inbox.CONTENT_URI, v)
         } catch (e: Exception) { }
-        notifyIncoming(app, from, body)
+        if (keyOf(from) !in blockedKeys(app)) notifyIncoming(app, from, body)
     }
 }
 
@@ -717,7 +755,8 @@ private fun MessagesApp(initialTo: String, onClose: () -> Unit) {
                     catch (e: Exception) { android.widget.Toast.makeText(ctx, "Couldn’t open the setting. Choose Neo Messages under Settings, Apps, Default apps, SMS app.", android.widget.Toast.LENGTH_LONG).show() }
                 },
                 { picker = true }, { screen = Screen.New },
-                { t, read -> scope.launch { withContext(Dispatchers.IO) { setReadState(ctx, t.address, read, t.msgs.lastOrNull { !it.sent && it.id > 0 }?.id ?: 0L) }; tick++ } }
+                { t, read -> scope.launch { withContext(Dispatchers.IO) { setReadState(ctx, t.address, read, t.msgs.lastOrNull { !it.sent && it.id > 0 }?.id ?: 0L) }; tick++ } },
+                { t -> scope.launch { withContext(Dispatchers.IO) { deleteMessages(ctx, t.msgs) }; tick++ } }
             ) { screen = Screen.Chat(it) }
             is Screen.New -> NewScreen(names, th, { screen = Screen.List }) { screen = Screen.Chat(it) }
             is Screen.Chat -> {
@@ -787,19 +826,23 @@ private fun MessagesApp(initialTo: String, onClose: () -> Unit) {
 @Composable
 private fun ListScreen(
     threads: List<MsgThread>, th0: MsgTheme, bg: String, isDefault: Boolean, onBg: () -> Unit, onMakeDefault: () -> Unit,
-    onTheme: () -> Unit, onNew: () -> Unit, onSetRead: (MsgThread, Boolean) -> Unit, onOpen: (String) -> Unit
+    onTheme: () -> Unit, onNew: () -> Unit, onSetRead: (MsgThread, Boolean) -> Unit, onDeleteThread: (MsgThread) -> Unit, onOpen: (String) -> Unit
 ) {
     val th = chromeTheme(th0, bgIsLight(bg))
     var q by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf(0) }   // 0 All, 1 Unread, 2 Unknown numbers, 3 Alerts (senders with a name, not a number)
     val fctx = LocalContext.current
-    val shown = remember(q, threads, filter) {
+    var prefTick by remember { mutableStateOf(0) }
+    val pinnedNow = remember(prefTick) { pinnedKeys(fctx) }
+    val shown = remember(q, threads, filter, prefTick) {
+        val blocked = blockedKeys(fctx)
         val base = when (filter) {
             1 -> threads.filter { unreadFor(fctx, it) > 0 }
             2 -> threads.filter { t -> t.name == t.address && t.address.none { c -> c.isLetter() } }
             3 -> threads.filter { t -> t.address.any { c -> c.isLetter() } }
+            4 -> threads.filter { it.key in blocked }
             else -> threads
-        }
+        }.let { l -> (if (filter == 4) l else l.filter { it.key !in blocked }).sortedByDescending { it.key in pinnedNow } }
         if (q.isBlank()) base else base.filter { it.name.contains(q, true) || it.address.contains(q) || it.msgs.last().body.contains(q, true) }
     }
     var menuFor by remember { mutableStateOf<String?>(null) }
@@ -858,7 +901,7 @@ private fun ListScreen(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                listOf("All", "Unread", "Unknown", "Alerts").forEachIndexed { i, label ->
+                listOf("All", "Unread", "Unknown", "Alerts", "Blocked").forEachIndexed { i, label ->
                     val on = filter == i
                     Box(
                         Modifier.clip(RoundedCornerShape(50))
@@ -910,6 +953,32 @@ private fun ListScreen(
                                 leadingIcon = { Icon(Icons.Filled.Edit, null) },
                                 onClick = { menuFor = null; editFor = t.address to t.name }
                             )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("Call") },
+                                leadingIcon = { Icon(Icons.Filled.Call, null) },
+                                onClick = {
+                                    menuFor = null
+                                    startCall(lctx, t.address)
+                                }
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(if (t.key in pinnedNow) "Unpin" else "Pin to top") },
+                                onClick = { menuFor = null; toggleKey(lctx, "pinned", t.key, t.key !in pinnedNow); prefTick++ }
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(if (t.key in blockedKeys(lctx)) "Unblock" else "Block") },
+                                onClick = {
+                                    menuFor = null
+                                    val nowBlocked = t.key !in blockedKeys(lctx)
+                                    toggleKey(lctx, "blocked", t.key, nowBlocked); prefTick++
+                                    android.widget.Toast.makeText(lctx, if (nowBlocked) "Blocked: its texts won’t notify you" else "Unblocked", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("Delete conversation") },
+                                leadingIcon = { Icon(Icons.Filled.Delete, null) },
+                                onClick = { menuFor = null; onDeleteThread(t) }
+                            )
                         }
                         Avatar(t.name, th, 50.dp, t.address)
                         Spacer(Modifier.width(12.dp))
@@ -919,8 +988,11 @@ private fun ListScreen(
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text(timeText(last.date), color = if (unread > 0) th.accent else th.sub, fontSize = 12.sp)
+                            if (t.key in pinnedNow) Text("PINNED", color = th.accent, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 3.dp))
                             if (unread > 0) Box(Modifier.padding(top = 5.dp).size(10.dp).clip(CircleShape).background(th.accent))
                         }
+                        Spacer(Modifier.width(6.dp))
+                        Icon(Icons.Filled.Call, "Call", tint = th.accent, modifier = Modifier.size(38.dp).clip(CircleShape).clickable { startCall(lctx, t.address) }.padding(9.dp))
                     }
                 }
                 item { Spacer(Modifier.height(96.dp)) }
@@ -937,6 +1009,8 @@ private fun ListScreen(
 @Composable
 private fun NewScreen(names: Map<String, Pair<String, String>>, th: MsgTheme, onBack: () -> Unit, title: String = "New message", onPick: (String) -> Unit) {
     var to by remember { mutableStateOf("") }
+    val nctx = androidx.compose.ui.platform.LocalContext.current
+    val canCall = title == "New message"
     val matches = remember(to, names) {
         if (to.isBlank()) names.values.take(30) else names.values.filter { it.first.contains(to, true) || it.second.filter { c -> c.isDigit() }.contains(to.filter { c -> c.isDigit() }.ifEmpty { "\u0000" }) }.take(30)
     }
@@ -955,13 +1029,15 @@ private fun NewScreen(names: Map<String, Pair<String, String>>, th: MsgTheme, on
             if (to.isNotBlank()) item {
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onPick(to.trim()) }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Avatar("", th, 44.dp); Spacer(Modifier.width(12.dp))
-                    Text("Send to “${to.trim()}”", color = th.accent, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Send to “${to.trim()}”", color = th.accent, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    if (canCall && to.any { it.isDigit() }) Icon(Icons.Filled.Call, "Call", tint = th.accent, modifier = Modifier.size(38.dp).clip(CircleShape).clickable { startCall(nctx, to.trim()) }.padding(9.dp))
                 }
             }
             items(matches) { (n, num) ->
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onPick(num) }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Avatar(n, th, 44.dp, num); Spacer(Modifier.width(12.dp))
-                    Column { Text(n, color = th.text, fontSize = 16.sp, fontWeight = FontWeight.Medium); Text(num, color = th.sub, fontSize = 13.sp) }
+                    Column(Modifier.weight(1f)) { Text(n, color = th.text, fontSize = 16.sp, fontWeight = FontWeight.Medium); Text(num, color = th.sub, fontSize = 13.sp) }
+                    if (canCall) Icon(Icons.Filled.Call, "Call", tint = th.accent, modifier = Modifier.size(38.dp).clip(CircleShape).clickable { startCall(nctx, num) }.padding(9.dp))
                 }
             }
         }
@@ -1140,8 +1216,14 @@ private fun ChatScreen(
                                 Box(
                                     Modifier.clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = if (r.sent) 20.dp else 5.dp, bottomEnd = if (r.sent) 5.dp else 20.dp))
                                         .then(if (r.sent) Modifier.background(Brush.linearGradient(th.sent)) else Modifier.background(th.recv))
+                                        .then(if (isUrgent(r.body)) Modifier.border(2.dp, UrgentRed, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = if (r.sent) 20.dp else 5.dp, bottomEnd = if (r.sent) 5.dp else 20.dp)) else Modifier)
                                         .padding(horizontal = 14.dp, vertical = 9.dp)
-                                ) { Text(r.body, color = if (r.sent) th.sentText else th.text, fontSize = 16.sp) }
+                                ) {
+                                    Column {
+                                        if (isUrgent(r.body)) Text("URGENT", color = if (r.sent) Color.White else UrgentRed, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                                        Text(stripUrgent(r.body), color = if (r.sent) th.sentText else th.text, fontSize = 16.sp)
+                                    }
+                                }
                                 Row(Modifier.padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(r.date)), color = ui.sub, fontSize = 10.sp)
                                     if (r.sent) {
@@ -1156,9 +1238,10 @@ private fun ChatScreen(
                     }
                 }
             }
+            var urgent by remember(address) { mutableStateOf(false) }
             Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.Bottom) {
                 Box(Modifier.weight(1f).clip(RoundedCornerShape(24.dp)).background(ui.card).padding(horizontal = 16.dp, vertical = 12.dp)) {
-                    if (text.isEmpty()) Text("Text message", color = ui.sub, fontSize = 16.sp)
+                    if (text.isEmpty()) Text(if (urgent) "Urgent text: alerts them loudly" else "Text message", color = if (urgent) UrgentRed else ui.sub, fontSize = 16.sp)
                     BasicTextField(text, { text = it }, textStyle = TextStyle(color = ui.text, fontSize = 16.sp), cursorBrush = SolidColor(th.accent), maxLines = 5, modifier = Modifier.fillMaxWidth())
                 }
                 Spacer(Modifier.width(10.dp))
@@ -1189,16 +1272,25 @@ private fun ChatScreen(
                     }
                     Spacer(Modifier.width(8.dp))
                 }
+                // urgent mode: the next text goes out marked urgent
+                Box(
+                    Modifier.size(48.dp).clip(CircleShape).background(if (urgent) UrgentRed else ui.card)
+                        .border(1.dp, UrgentRed, CircleShape).clickable { urgent = !urgent },
+                    contentAlignment = Alignment.Center
+                ) { Text("!", color = if (urgent) Color.White else UrgentRed, fontSize = 24.sp, fontWeight = FontWeight.Black) }
+                Spacer(Modifier.width(8.dp))
                 val ready = text.isNotBlank()
                 Box(
                     Modifier.size(48.dp).clip(CircleShape).background(if (ready) Brush.linearGradient(th.sent) else SolidColor(ui.card))
                         .clickable(enabled = ready) {
-                            val t = text.trim()
+                            val t0 = text.trim()
+                            val t = if (urgent && !isUrgent(t0)) URGENT_TAG + t0 else t0
                             if (onSend(t)) {
                                 if (orbs.size >= 4) orbs.removeAt(0)
                                 orbs.add(SentOrb(System.nanoTime(), t, orbSeq++))
                             }
                             simSlot = SimChoice.current(ctx)
+                            urgent = false
                             text = ""
                         },
                     contentAlignment = Alignment.Center

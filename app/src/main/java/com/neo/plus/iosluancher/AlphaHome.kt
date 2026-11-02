@@ -119,9 +119,9 @@ fun Context.launchAlphaApp(app: AppEntry) {
     Toast.makeText(this, "${app.shownLabel} can't be opened", Toast.LENGTH_SHORT).show()
 }
 
-private val NeoBlue = Color(0xFF1AA7FF)
-private val NeoBlueDeep = Color(0xFF0B3C9E)
-private val NeoSilver = Color(0xFFE8EEF8)
+internal val NeoBlue = Color(0xFF1AA7FF)
+internal val NeoBlueDeep = Color(0xFF0B3C9E)
+internal val NeoSilver = Color(0xFFE8EEF8)
 
 /** The default NEO PLUS home screen: logo in the middle, A–Z ring around it, no app icons until a letter is tapped. */
 @Composable
@@ -159,9 +159,12 @@ fun AlphaRingHome(
         if (rippleKey > 0) { ripple.snapTo(0f); ripple.animateTo(1f, tween(750, easing = FastOutSlowInEasing)) }
     }
 
-    fun micOn() {
-        val r = PhoneActions.run(ctx, "listen", org.json.JSONObject().put("on", true).put("now", true), apps)
-        if (!r.ok) Toast.makeText(ctx, r.note, Toast.LENGTH_LONG).show()
+    // one tap: microphone on when it is off, off when it is on (the floating assistant is the microphone listener)
+    fun micToggle() {
+        val turnOn = OrbService.instance == null
+        val r = PhoneActions.run(ctx, "listen", org.json.JSONObject().put("on", turnOn).put("now", true), apps)
+        val msg = if (!turnOn) "Microphone off" else if (r.ok) "Microphone on" else r.note
+        Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show()
     }
 
     fun pick(ch: Char) {
@@ -248,7 +251,7 @@ fun AlphaRingHome(
                         Modifier.fillMaxSize().scale(0.985f + 0.015f * pulse),
                         contentScale = ContentScale.Fit
                     )
-                    // Assistant button in the middle of the logo: one tap = microphone on, two taps = assistant chat, hold = search
+                    // Assistant button in the middle of the logo: one tap = microphone on/off, quick double tap = assistant chat, hold = search
                     Box(
                         Modifier.size(inner * 0.2f)
                             .drawBehind {
@@ -260,7 +263,7 @@ fun AlphaRingHome(
                                 detectTapGestures(
                                     onTap = {
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        micOn()
+                                        micToggle()
                                     },
                                     onDoubleTap = {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -310,7 +313,7 @@ fun AlphaRingHome(
 }
 
 @Composable
-private fun LetterButton(ch: Char, size: Dp, isSelected: Boolean, count: Int, pulse: Float, onClick: () -> Unit) {
+internal fun LetterButton(ch: Char, size: Dp, isSelected: Boolean, count: Int, pulse: Float, onClick: () -> Unit) {
     val scale by animateFloatAsState(
         if (isSelected) 1.24f else 1f, spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMedium), label = "letterScale"
     )
