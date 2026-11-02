@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -170,7 +171,10 @@ fun AlphaRingHome(
     }
 
     BoxWithConstraints(modifier.fillMaxSize()) {
-        val side = minOf(maxWidth - 12.dp, maxHeight * 0.76f)
+        val topH = 92.dp      // clock + weather strip
+        val botH = 112.dp     // steps tile
+        val ringTop = topH + 14.dp
+        val side = maxOf(minOf(maxWidth - 12.dp, maxHeight - topH - botH - 44.dp), 200.dp)
         val btn = side * 0.094f
         val rc = side / 2 - btn / 2 - 3.dp
         val inner = (rc - btn / 2) * 2 - 10.dp
@@ -179,7 +183,7 @@ fun AlphaRingHome(
         Canvas(Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
-            val center = Offset(w / 2f, h / 2f)
+            val center = Offset(w / 2f, (ringTop + side / 2).toPx())
             drawRect(Brush.verticalGradient(listOf(Color(0xFF00020F), Color(0xFF031038), Color(0xFF000308))))
             drawCircle(
                 Brush.radialGradient(listOf(NeoBlue.copy(alpha = 0.30f * pulse + 0.10f), Color.Transparent), center, side.toPx() * 0.95f),
@@ -215,7 +219,7 @@ fun AlphaRingHome(
         }
 
         // the ring + logo / app panel
-        Box(Modifier.size(side).align(Alignment.Center), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(side).align(Alignment.TopCenter).offset(y = ringTop), contentAlignment = Alignment.Center) {
             Canvas(Modifier.fillMaxSize()) {
                 val c = Offset(size.width / 2f, size.height / 2f)
                 val outer = size.minDimension / 2f
@@ -292,9 +296,13 @@ fun AlphaRingHome(
             }
         }
 
+        // clock + weather on top, steps at the bottom
+        NeoTopStrip(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(topH).padding(horizontal = 8.dp))
+        NeoStepsTile(Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp).size(botH))
+
         // apps starting with a digit or symbol
         if (buckets['#'].orEmpty().isNotEmpty()) {
-            Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp)) {
+            Box(Modifier.align(Alignment.BottomStart).padding(start = 18.dp, bottom = 8.dp + (botH - btn * 1.15f) / 2)) {
                 LetterButton('#', btn * 1.15f, selected == '#', buckets['#']?.size ?: 0, pulse) { pick('#') }
             }
         }

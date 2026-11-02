@@ -519,3 +519,116 @@ private fun CalendarTile(modifier: Modifier, now: Long) {
         }
     }
 }
+
+
+/** Compact clock + weather strip for the NEO PLUS A-Z home screen (same data and look as the classic panel). */
+@Composable
+fun NeoTopStrip(modifier: Modifier = Modifier) {
+    val ctx = LocalContext.current
+    val appCtx = ctx.applicationContext
+    val use24 = DateFormat.is24HourFormat(ctx)
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) {
+            value = System.currentTimeMillis()
+            delay(60_000L - value % 60_000L + 30L)
+        }
+    }
+    var weather by remember { mutableStateOf(WeatherRepo.cached(appCtx)) }
+    var permitted by remember { mutableStateOf(WeatherRepo.hasPermission(appCtx)) }
+    var tick by remember { mutableIntStateOf(0) }
+    val askLocation = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        permitted = ok
+        if (ok) tick++
+    }
+    LaunchedEffect(tick, permitted) {
+        while (permitted) {
+            val c = weather
+            val stale = c == null || System.currentTimeMillis() - c.time > 20 * 60_000L
+            var failed = false
+            if (stale) {
+                val fresh = WeatherRepo.refresh(appCtx)
+                if (fresh != null) weather = fresh else failed = true
+            }
+            delay(if (failed && weather == null) 45_000L else 10 * 60_000L)
+        }
+    }
+    val date = Date(now)
+    val loc = Locale.getDefault()
+    val hours = SimpleDateFormat(if (use24) "HH" else "h", loc).format(date)
+    val minutes = SimpleDateFormat("mm", loc).format(date)
+    val ampm = if (use24) "" else SimpleDateFormat("a", loc).format(date).uppercase(loc)
+    val weekdayS = SimpleDateFormat("EEE", loc).format(date)
+    val dayMonthS = SimpleDateFormat("d MMM", loc).format(date)
+    val w = weather
+    val card = RoundedCornerShape(22.dp)
+    val sky = rememberSkyKind()
+    val kind = if (w != null) weatherKind(w.code, w.isDay) else sky
+
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(
+            Modifier.weight(1.3f).fillMaxHeight().neoCard(card)
+                .clickable { ctx.safeStart(Intent(AlarmClock.ACTION_SHOW_ALARMS)) }
+        ) {
+            Canvas(Modifier.matchParentSize()) { clockStreaks() }
+            Column(Modifier.fillMaxSize().padding(start = 12.dp, end = 8.dp), verticalArrangement = Arrangement.Center) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(hours, color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Thin, style = GlowText, maxLines = 1, softWrap = false)
+                    PulsingColon(32.sp)
+                    Text(minutes, color = Color(0xFF7DD3FC), fontSize = 36.sp, fontWeight = FontWeight.Thin, style = GlowText, maxLines = 1, softWrap = false)
+                    if (ampm.isNotEmpty()) {
+                        Text(ampm, color = NeoCyanC, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 3.dp, bottom = 6.dp))
+                    }
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    modifier = Modifier.padding(top = 2.dp).clickable {
+                        val uri = CalendarContract.CONTENT_URI.buildUpon().appendPath("time").appendPath(System.currentTimeMillis().toString()).build()
+                        ctx.safeStart(Intent(Intent.ACTION_VIEW, uri))
+                    }
+                ) {
+                    Chip(weekdayS.uppercase(loc), NeoCyanC.copy(alpha = 0.22f), NeoCyanC)
+                    Chip(dayMonthS.uppercase(loc), Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.9f))
+                }
+            }
+        }
+        Box(
+            Modifier.weight(1f).fillMaxHeight().neoCard(card)
+                .clickable {
+                    when {
+                        w != null -> ctx.safeStart(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=" + Uri.encode("weather"))))
+                        !permitted -> askLocation.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+                        else -> tick++
+                    }
+                }
+        ) {
+            WeatherScene(kind, Modifier.matchParentSize())
+            Canvas(Modifier.matchParentSize()) { mountains() }
+            WeatherEmojis(kind, Modifier.matchParentSize())
+            Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.25f), Color.Transparent, Color.Black.copy(alpha = 0.35f)))))
+            if (w != null) {
+                Row(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                        Text("${w.temp}°", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Thin, style = GlowText, maxLines = 1)
+                        Text(weatherText(w.code), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (w.place.isNotBlank()) Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.LocationOn, null, tint = NeoCyanC, modifier = Modifier.size(11.dp))
+                            Text(w.place, color = NeoCyanC, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    WeatherGlyph(kind, Modifier.size(36.dp))
+                }
+            } else {
+                Column(Modifier.fillMaxSize().padding(10.dp), verticalArrangement = Arrangement.Center) {
+                    Text("Weather", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (!permitted) "Tap to allow location" else "Getting forecast…", color = Color.White.copy(alpha = 0.7f), fontSize = 10.sp, maxLines = 2)
+                }
+            }
+        }
+    }
+}
+
+/** The footsteps tile (ring, distance, 7-day bars) as a stand-alone glass tile for the NEO PLUS A-Z home screen. */
+@Composable
+fun NeoStepsTile(modifier: Modifier = Modifier) {
+    StepsCard(modifier.neoCard(RoundedCornerShape(22.dp)))
+}
