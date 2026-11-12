@@ -1,0 +1,12 @@
+BLACK CROWN HOME SCREEN - what changed
+======================================
+NEW      CrownHome.kt                      black glass clock + weather/steps panels, then ONE list of every app (white logo on a black glass tile + name tab)
+NEW      res/drawable-nodpi/neo_crown_scene.webp   the crown / water scene (cropped from your screenshot, so it is only 501x1400 px)
+CHANGED  Home.kt                           crown home is the default; Edit bubble (touch and hold) switches between "Black Crown Home" and the older home screens
+
+No app drawer and no drawer button on this screen: every installed app is on the list, which scrolls.
+Long-press an app: shortcuts, App Info, Hide from Home Screen, Uninstall. Hidden apps still show in Search (swipe down in the middle).
+Swipe up from the bottom: Control Center (middle) / Notifications (sides) - on the left part of the list the swipe scrolls the list instead.
+A small assistant orb sits bottom right (tap = assistant).
+Copy the 3 files over the same paths and build. NOT compiled here (no Gradle/Kotlin in my sandbox); brackets balance in both Kotlin files.
+Send me the first build error if there is one. For a sharper crown, replace neo_crown_scene.webp with a bigger version of the same picture (same name).

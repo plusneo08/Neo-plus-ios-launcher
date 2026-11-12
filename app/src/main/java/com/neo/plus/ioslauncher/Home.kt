@@ -111,6 +111,7 @@ fun LauncherRoot(
     var goLibrary by remember { mutableStateOf(0) }
     val rootCtx = LocalContext.current
     var alphaMode by remember { mutableStateOf(AlphaPrefs.enabled(rootCtx)) }
+    var crownMode by remember { mutableStateOf(CrownPrefs.enabled(rootCtx)) }
     var alphaLetter by remember { mutableStateOf<Char?>(null) }
     // Home button pressed again: back to the plain NEO PLUS logo
     LaunchedEffect(homeTick) { if (homeTick > 0) alphaLetter = null }
@@ -172,8 +173,23 @@ fun LauncherRoot(
                 )
             }
     ) {
-        if (!alphaMode) WeatherScene(rememberSkyKind(), Modifier.then(if (blurDp > 0.dp) Modifier.blur(blurDp) else Modifier))
-        if (alphaMode) {
+        if (!alphaMode && !crownMode) WeatherScene(rememberSkyKind(), Modifier.then(if (blurDp > 0.dp) Modifier.blur(blurDp) else Modifier))
+        if (crownMode) {
+            // Black crown home screen: panels + one list of every app, no app drawer, no drawer button
+            BackHandler(enabled = true) {
+                when {
+                    showGlass -> showGlass = false
+                    menuOpen -> menuOpen = false
+                    overlay != Overlay.None -> overlay = Overlay.None
+                    category != null -> category = null
+                    showPicker -> showPicker = false
+                }
+            }
+            CrownHome(
+                vm, { overlay = Overlay.Assistant },
+                Modifier.then(if (blurDp > 0.dp) Modifier.blur(blurDp) else Modifier).windowInsetsPadding(safeInsets())
+            )
+        } else if (alphaMode) {
             // NEO PLUS globe home screen: rotating globe, all apps on rotating rings, no A-Z chain
             BackHandler(enabled = true) {
                 when {
@@ -325,11 +341,15 @@ fun LauncherRoot(
                     Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 14.dp, top = 40.dp).width(230.dp)
                         .glass(RoundedCornerShape(26.dp), 0.34f).padding(vertical = 8.dp)
                 ) {
-                    BubbleItem(if (alphaMode) "Classic Home Screen" else "NEO A–Z Ring Home", true) {
+                    BubbleItem(if (crownMode) "Other Home Screens" else "Black Crown Home", true) {
+                        menuOpen = false; alphaLetter = null
+                        crownMode = !crownMode; CrownPrefs.set(rootCtx, crownMode)
+                    }
+                    if (!crownMode) BubbleItem(if (alphaMode) "Classic Home Screen" else "NEO A–Z Ring Home", true) {
                         menuOpen = false; alphaLetter = null
                         alphaMode = !alphaMode; AlphaPrefs.set(rootCtx, alphaMode)
                     }
-                    if (!alphaMode) BubbleItem("Edit Home Screen", true) { menuOpen = false; editing = true }
+                    if (!alphaMode && !crownMode) BubbleItem("Edit Home Screen", true) { menuOpen = false; editing = true }
                     BubbleItem("Add Widget", true) { menuOpen = false; showPicker = true }
                     BubbleItem("Customize", true) { menuOpen = false; showGlass = true }
                     BubbleItem("Neo Space Wallpaper", true) { menuOpen = false; NeoWallpaper.applyWithToast(rootCtx, NeoWallpaper.SPACE) }
