@@ -39,7 +39,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sms
-import androidx.compose.material.icons.filled.Image as ImageIcon
+import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -179,7 +179,7 @@ private fun crownVector(a: AppEntry): ImageVector? {
         l == "contacts" -> Icons.Filled.Person
         l == "settings" -> Icons.Filled.Settings
         l == "files" || l == "my files" || l == "file manager" -> Icons.Filled.Folder
-        l == "gallery" || l == "photos" -> ImageIcon
+        l == "gallery" || l == "photos" -> Icons.Filled.Photo
         else -> null
     }
 }
