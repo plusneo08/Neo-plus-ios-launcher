@@ -219,7 +219,7 @@ fun LauncherRoot(
                 val rows = ((maxHeight - 72.dp) / rowH).toInt().coerceIn(3, 7)
                 val perPage = rows * 4
                 val taskRoom = 0.dp
-                val firstCap = ((maxHeight - 72.dp - 120.dp - 366.dp - taskRoom) / rowH).toInt().coerceIn(1, 3) * 4
+                val firstCap = ((maxHeight - 72.dp - 120.dp - 366.dp - 112.dp - taskRoom) / rowH).toInt().coerceIn(1, 3) * 4
                 val homeList = vm.homeApps
                 val homePages = remember(homeList, perPage, firstCap) {
                     listOf(homeList.take(firstCap)) + homeList.drop(firstCap).chunked(perPage)
@@ -467,6 +467,7 @@ fun HomeGrid(apps: List<AppEntry>, vm: LauncherViewModel, iconSize: Dp, rowH: Dp
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp)) {
         if (withWidgets) {
             HomePanel(Modifier.fillMaxWidth().height(302.dp).padding(horizontal = 4.dp, vertical = 4.dp))
+            NeoQuoteCard(Modifier.fillMaxWidth().height(104.dp).padding(horizontal = 4.dp, vertical = 4.dp))
             Spacer(Modifier.weight(1f))   // the wallpaper's logo shows here
         }
         apps.chunked(4).forEach { row ->

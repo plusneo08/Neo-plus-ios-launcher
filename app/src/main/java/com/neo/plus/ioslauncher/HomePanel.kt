@@ -1,6 +1,9 @@
 package com.neo.plus.ioslauncher
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -264,6 +267,41 @@ fun HomePanel(modifier: Modifier = Modifier) {
                 }
             }
             StepsCard(Modifier.weight(1f).fillMaxHeight().neoCard(card))
+        }
+    }
+}
+
+/**
+ * Verse / mood quote card for the wallpaper home screen, same navy glass, neon edge and glow as the clock and weather cards.
+ * One item at a time, a new one every 30 minutes by itself (tap = next now). The mood comes from the morning call (see MoodQuotes).
+ */
+@Composable
+fun NeoQuoteCard(modifier: Modifier = Modifier) {
+    val app = LocalContext.current.applicationContext
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) { value = System.currentTimeMillis(); delay(30_000L) }
+    }
+    var bump by remember { mutableIntStateOf(0) }
+    val ver = MoodQuotes.version
+    LaunchedEffect(now / MoodQuotes.SLOT_MS, ver) { withContext(Dispatchers.IO) { MoodQuotes.refillIfNeeded(app) } }
+    val q = remember(now, ver, bump) { MoodQuotes.current(app, now, bump) }
+    val mood = remember(now, ver) { MoodQuotes.mood(app) }
+    Box(modifier.neoCard(RoundedCornerShape(26.dp)).noRipple { bump++ }) {
+        Canvas(Modifier.matchParentSize()) { clockStreaks() }
+        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.Center) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Chip(if (q.kind == "verse") "VERSE" else "MOOD", NeoCyanC.copy(alpha = 0.22f), NeoCyanC)
+                if (mood.isNotBlank()) {
+                    Spacer(Modifier.width(5.dp))
+                    Chip(mood.uppercase().take(16), Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.9f))
+                }
+                Spacer(Modifier.weight(1f))
+                if (q.ref.isNotBlank()) Text("— " + q.ref, color = NeoCyanC, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 150.dp))
+            }
+            Spacer(Modifier.height(6.dp))
+            Crossfade(q, label = "neoQuote") { item ->
+                Text("“" + item.text + "”", color = Color.White, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, maxLines = 3, overflow = TextOverflow.Ellipsis, style = GlowText)
+            }
         }
     }
 }

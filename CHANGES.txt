@@ -125,3 +125,8 @@ MOOD QUOTES UNDER THE CROWN
 - Unanswered for a minute = "Missed call" note; tapping it starts the same mood chat.
 - Say to the assistant any time: "I'm feeling anxious today" (set_mood) or "call me about my mood at 6:30" / "stop the mood call" (mood_call).
 - WakeCallActivity.kt: EXTRA_MOOD call mode. SleepExtras.kt: WakeRinger.start takes an optional missed-call handler. Manifest: MoodCallReceiver, MoodBootReceiver.
+
+QUOTE CARD MATCHES CLOCK + WEATHER, AND SHOWS ON THE WALLPAPER HOME
+- HomePanel.kt: new NeoQuoteCard, the same navy glass, neon edge, glow text and light streaks as the clock and weather cards.
+- Home.kt: the card sits right under the clock/weather panel on the wallpaper home screen (first page); one fewer app row is reserved to make room.
+- CrownHome.kt: the quote card now uses the same cut corners, rim and white glow text as the Crown clock and weather panels.

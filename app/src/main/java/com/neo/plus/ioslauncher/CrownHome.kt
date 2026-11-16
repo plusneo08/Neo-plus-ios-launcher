@@ -499,7 +499,7 @@ private fun CrownQuoteCard(modifier: Modifier) {
     val q = remember(now, ver, bump) { MoodQuotes.current(app, now, bump) }
     val mood = remember(now, ver) { MoodQuotes.mood(app) }
     Column(
-        modifier.blackGlass(ChamferShape(10f, bothSides = true)).noRipple { bump++ }.padding(horizontal = 12.dp, vertical = 10.dp)
+        modifier.blackGlass(ChamferShape(14f, bothSides = true), 1.5f).noRipple { bump++ }.padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(if (q.kind == "verse") "VERSE" else "MOOD", color = CrownDim, fontSize = 10.sp, letterSpacing = 1.6.sp, maxLines = 1)
@@ -509,7 +509,7 @@ private fun CrownQuoteCard(modifier: Modifier) {
         Spacer(Modifier.height(6.dp))
         Crossfade(q, label = "crown_quote") { item ->
             Column {
-                Text("“" + item.text + "”", color = CrownWhite, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 7, overflow = TextOverflow.Ellipsis, style = CrownGlow)
+                Text("“" + item.text + "”", color = Color.White, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 7, overflow = TextOverflow.Ellipsis, style = CrownGlow)
                 if (item.ref.isNotBlank()) {
                     Spacer(Modifier.height(4.dp))
                     Text("— " + item.ref, color = CrownDim, fontSize = 11.sp, maxLines = 1)
