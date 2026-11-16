@@ -147,3 +147,14 @@ CHANGED  WakeCallActivity.kt after the summary the assistant keeps a real conver
 CHANGED  SleepMode.kt        start() clears the "auto" flag; OrbService.kt / IosControlService.kt tell AutoSleep about screen off / on / unlock;
          Assistant.kt        action "auto_sleep" + voice command; AndroidManifest.xml AutoSleepReceiver.
 NOT compiled here (no Gradle/Kotlin in my sandbox); brackets balance. Send me the first build error if there is one.
+
+WALLPAPER CHANGE + TORCH BRIGHTNESS (added)
+NEW      TorchLevel.kt     Torch helper: on at a chosen brightness level (Android 13+ torch strength API), off, level remembered
+CHANGED  ControlCenter.kt  bottom row: new  [-]  Torch xx%  [+]  control; each tap lowers/raises the torch brightness (about 10 % per tap)
+                           and turns the torch on at that level; the flashlight tile turns it on at the last chosen level.
+                           Phones whose flash has no brightness steps (or Android 12 and older) show a short message instead.
+CHANGED  Assistant.kt      flashlight action takes an optional "percent" (1-100) for the brightness
+CHANGED  NeoWallpaper.kt   buildFromUri/applyUri: any gallery photo is centre-cropped to the full screen, turned upright (EXIF) and set as
+                           the home wallpaper; every wallpaper set on purpose also stops the automatic first-start wallpaper from coming back
+CHANGED  Home.kt           Edit bubble: new "Choose Photo Wallpaper" (gallery picker, no permission needed) next to Space / Gold / Edit Wallpaper
+NOT compiled here (no Gradle in the sandbox); brackets balance in every changed file. Send me the first build error if there is one.

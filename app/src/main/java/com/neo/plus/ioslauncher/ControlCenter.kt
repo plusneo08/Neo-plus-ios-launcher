@@ -71,7 +71,9 @@ import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FlashlightOn
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.FlipToFront
 import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.NoteAdd
@@ -421,6 +423,7 @@ fun ControlCenter(onClose: () -> Unit) {
     // Flashlight (Camera2 torch, no permission needed)
     val cm = remember { ctx.getSystemService(CameraManager::class.java) }
     var torchOn by remember { mutableStateOf(false) }
+    var torchLevel by remember { mutableStateOf(Torch.level(ctx)) }
     DisposableEffect(Unit) {
         val cb = object : CameraManager.TorchCallback() {
             override fun onTorchModeChanged(cameraId: String, enabled: Boolean) { torchOn = enabled }
@@ -476,12 +479,18 @@ fun ControlCenter(onClose: () -> Unit) {
     }
 
     fun toggleTorch() {
-        try {
-            val id = cm.cameraIdList.first {
-                cm.getCameraCharacteristics(it).get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
-            }
-            cm.setTorchMode(id, !torchOn)
-        } catch (e: Exception) { }
+        if (torchOn) Torch.off(ctx) else Torch.on(ctx, torchLevel)
+    }
+
+    // Torch brightness: + / - buttons (Android 13+ phones whose flashlight has brightness steps)
+    fun changeTorch(dir: Int) {
+        if (!Torch.adjustable(ctx)) {
+            Toast.makeText(ctx.applicationContext, "This phone's flashlight has no brightness levels (needs Android 13+ and a supporting flash)", Toast.LENGTH_LONG).show()
+            return
+        }
+        val n = (torchLevel + dir * Torch.stepSize(ctx)).coerceIn(1, Torch.steps(ctx))
+        torchLevel = n
+        Torch.on(ctx, n)
     }
 
     fun toggleScreenRecording() {
@@ -704,13 +713,32 @@ fun ControlCenter(onClose: () -> Unit) {
                     Tile(Icons.Filled.Contrast, sys.dark, Modifier.size(cell), rTile) { Toggles.setDarkMode(ctx, !sys.dark) }
                 }
 
-                // Row 5: low power mode
-                Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(gap)) {
+                // Row 5: low power mode + flashlight brightness (- / level / +)
+                Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
                     TileBox(Modifier.size(cell), rTile, sys.lowPower, IosYellow, { Toggles.setLowPower(ctx, !sys.lowPower) }) {
                         BatteryGlyph(
                             pct = 40, charging = false, width = 30.dp,
                             tint = if (sys.lowPower) Ink else Color.White
                         )
+                    }
+                    val pct = Torch.percent(ctx, torchLevel)
+                    Row(
+                        Modifier.weight(1f).height(cell).clip(RoundedCornerShape(rModule))
+                            .background(TileBg).background(GlassSheen)
+                            .border(1.dp, GlassEdge, RoundedCornerShape(rModule)).padding(horizontal = cell * 0.12f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircleBtn(Icons.Filled.Remove, false, IosYellow, cell * 0.62f) { changeTorch(-1) }
+                        Column(Modifier.weight(1f).padding(horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(if (torchOn) "Torch $pct%" else "Torch", color = Color.White.copy(alpha = 0.9f), fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            Spacer(Modifier.height(5.dp))
+                            Box(Modifier.fillMaxWidth().height(5.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.22f))) {
+                                Box(Modifier.fillMaxHeight().fillMaxWidth(pct / 100f).clip(CircleShape)
+                                    .background(if (torchOn) IosYellow else Color.White.copy(alpha = 0.6f)))
+                            }
+                        }
+                        CircleBtn(Icons.Filled.Add, false, IosYellow, cell * 0.62f) { changeTorch(1) }
                     }
                 }
             }

@@ -328,12 +328,12 @@ object PhoneActions {
 
             "flashlight" -> {
                 val on = onOff(a)
-                val cm = ctx.getSystemService(CameraManager::class.java)
-                val id = cm.cameraIdList.firstOrNull {
-                    cm.getCameraCharacteristics(it).get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
-                } ?: return "No flashlight on this phone"
-                cm.setTorchMode(id, on)
-                return if (on) "Flashlight on" else "Flashlight off"
+                if (Torch.id(ctx) == null) return "No flashlight on this phone"
+                if (!on) { Torch.off(ctx); return "Flashlight off" }
+                val pct = a.optInt("percent", 0)
+                if (pct > 0 && Torch.adjustable(ctx)) { Torch.onPercent(ctx, pct); return "Flashlight on at ${Torch.percent(ctx)}%" }
+                Torch.on(ctx)
+                return "Flashlight on"
             }
 
             "wifi" -> { Toggles.setWifi(ctx, onOff(a)); return "Wi‑Fi ${if (onOff(a)) "on" else "off"}" }
@@ -1469,7 +1469,7 @@ wake_call {"hour":8,"minute":30}   (24-hour clock; the user wants to be woken up
 timer {"seconds":300,"label":""}
 set_mood {"text":"how the user says they feel, in their words"}   (the user states how they feel or what mood they are in, e.g. "I'm anxious today", "I feel great": the crown home screen then shows Bible verses and quotes for that feeling and changes them every 30 minutes. Do not ask questions first)
 mood_call {"hour":7,"minute":0,"on":true}   (the daily morning call that asks how the user feels; "on":false stops it; change the time with hour and minute, 24-hour clock)
-flashlight {"on":true}
+flashlight {"on":true,"percent":60}   (percent 1-100 is optional: the brightness of the torch on phones that support it)
 wifi / bluetooth / airplane / mobile_data / dark_mode / low_power (battery saver) / dnd  {"on":true}
 page_source {"url":"optional address","max":6000}   (the raw HTML source of a web page: the address given, or the page open in the phone's browser; the full file is saved in the Neo Plus folder)
 read_app {"app":"messages|whatsapp|whatsapp business|messenger|facebook|tiktok|instagram|gmail|email|gemini","from":"optional name"}   (reads the messages inside that app itself: opens it and reads the chat list, or the chat with "from")

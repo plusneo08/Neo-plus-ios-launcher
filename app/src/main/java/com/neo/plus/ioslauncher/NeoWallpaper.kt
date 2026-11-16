@@ -5,6 +5,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.Matrix
+import android.media.ExifInterface
+import android.net.Uri
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Rect
@@ -87,9 +90,69 @@ object NeoWallpaper {
                 WallpaperManager.getInstance(app).setBitmap(bmp, null, true, WallpaperManager.FLAG_SYSTEM)
                 bmp.recycle()
                 ok = true
+                // any wallpaper that was set on purpose: the automatic first-start one must never replace it later
+                app.getSharedPreferences("neo_launcher", Context.MODE_PRIVATE).edit().putBoolean(FLAG, true).apply()
             } catch (e: Throwable) { }
             Handler(Looper.getMainLooper()).post { done?.invoke(ok) }
         }.start()
+    }
+
+    /** A photo of the user's own: scaled and centre-cropped to fill the whole screen, turned upright by its EXIF tag. */
+    fun buildFromUri(ctx: Context, uri: Uri): Bitmap? {
+        val dm = ctx.resources.displayMetrics
+        val wm = WallpaperManager.getInstance(ctx)
+        val w = maxOf(dm.widthPixels, wm.desiredMinimumWidth, 720)
+        val h = maxOf(dm.heightPixels, wm.desiredMinimumHeight, 1280)
+        val cr = ctx.contentResolver
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        cr.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= w && bounds.outHeight / (sample * 2) >= h) sample *= 2
+        val raw = cr.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample }) } ?: return null
+        val deg = try {
+            cr.openInputStream(uri)?.use {
+                when (ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+                    ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                    ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                    ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                    else -> 0f
+                }
+            } ?: 0f
+        } catch (e: Exception) { 0f }
+        val src = if (deg != 0f) Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, Matrix().apply { postRotate(deg) }, true).also { if (it !== raw) raw.recycle() } else raw
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val scale = maxOf(w.toFloat() / src.width, h.toFloat() / src.height)
+        val sw = (w / scale).coerceAtMost(src.width.toFloat())
+        val sh = (h / scale).coerceAtMost(src.height.toFloat())
+        val left = ((src.width - sw) / 2f).toInt()
+        val top = ((src.height - sh) / 2f).toInt()
+        val p = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
+        Canvas(out).drawBitmap(src, Rect(left, top, left + sw.toInt(), top + sh.toInt()), RectF(0f, 0f, w.toFloat(), h.toFloat()), p)
+        src.recycle()
+        return out
+    }
+
+    /** Sets the picked photo as the home-screen wallpaper (background thread), then reports on the main thread. */
+    fun applyUri(ctx: Context, uri: Uri, done: ((Boolean) -> Unit)? = null) {
+        val app = ctx.applicationContext
+        Thread {
+            var ok = false
+            try {
+                val bmp = buildFromUri(app, uri)
+                if (bmp != null) {
+                    WallpaperManager.getInstance(app).setBitmap(bmp, null, true, WallpaperManager.FLAG_SYSTEM)
+                    bmp.recycle()
+                    app.getSharedPreferences("neo_launcher", Context.MODE_PRIVATE).edit().putBoolean(FLAG, true).apply()
+                    ok = true
+                }
+            } catch (e: Throwable) { }
+            Handler(Looper.getMainLooper()).post { done?.invoke(ok) }
+        }.start()
+    }
+
+    fun applyUriWithToast(ctx: Context, uri: Uri) = applyUri(ctx, uri) { ok ->
+        Toast.makeText(ctx, if (ok) "Wallpaper changed" else "Couldn’t set that picture as wallpaper", Toast.LENGTH_SHORT).show()
     }
 
     @Volatile private var running = false

@@ -116,6 +116,10 @@ fun LauncherRoot(
     // Home button pressed again: back to the plain NEO PLUS logo
     LaunchedEffect(homeTick) { if (homeTick > 0) alphaLetter = null }
     val roleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
+    // Any picture from the gallery becomes the home-screen wallpaper (no permission needed)
+    val wallPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) NeoWallpaper.applyUriWithToast(rootCtx, uri)
+    }
     LaunchedEffect(Unit) { GlassPrefs.load(rootCtx) }
     // First start: ask once to make Neo Plus the phone's default Phone app (also in the touch-and-hold menu and the dialer)
     LaunchedEffect(Unit) {
@@ -354,6 +358,10 @@ fun LauncherRoot(
                     BubbleItem("Customize", true) { menuOpen = false; showGlass = true }
                     BubbleItem("Neo Space Wallpaper", true) { menuOpen = false; NeoWallpaper.applyWithToast(rootCtx, NeoWallpaper.SPACE) }
                     BubbleItem("Neo Gold Wallpaper", true) { menuOpen = false; NeoWallpaper.applyWithToast(rootCtx, NeoWallpaper.GOLD) }
+                    BubbleItem("Choose Photo Wallpaper", true) {
+                        menuOpen = false
+                        try { wallPicker.launch("image/*") } catch (e: Exception) { }
+                    }
                     BubbleItem("Edit Wallpaper", true) {
                         menuOpen = false
                         rootCtx.safeStart(Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Wallpaper"))
