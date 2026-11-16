@@ -30,6 +30,7 @@ class TaskService : Service() {
         private const val ID_DONE = 4721
         private val active = AtomicInteger(0)
         @Volatile private var label = "Working on your request"
+        @Volatile private var beganAt = 0L
 
         /** True from begin() until the matching end(): the on-screen HUD stays up for exactly this long. */
         fun running(): Boolean = active.get() > 0
@@ -37,14 +38,20 @@ class TaskService : Service() {
 
         fun begin(ctx: Context, what: String) {
             label = what.trim().replace("\n", " ").take(70).ifBlank { "Working on your request" }
-            active.incrementAndGet()
+            if (active.incrementAndGet() == 1) beganAt = System.currentTimeMillis()
             try { HudOverlay.start(ctx) } catch (e: Throwable) { }
             try { ContextCompat.startForegroundService(ctx.applicationContext, Intent(ctx.applicationContext, TaskService::class.java)) } catch (e: Exception) { }
         }
 
+        /** Runs [block] as a task: the HUD and the keep-alive service are up from the first line until the block ends, however it ends. */
+        inline fun <T> track(ctx: Context, what: String, block: () -> T): T {
+            begin(ctx, what)
+            try { return block() } finally { end(ctx) }
+        }
+
         fun end(ctx: Context) {
             if (active.updateAndGet { maxOf(0, it - 1) } == 0) {
-                try { HudState.event(ctx, "Task finished") } catch (e: Throwable) { }
+                try { if (System.currentTimeMillis() - beganAt > 2_000L) HudState.event(ctx, "Task finished") } catch (e: Throwable) { }
                 try { ctx.applicationContext.stopService(Intent(ctx.applicationContext, TaskService::class.java)) } catch (e: Exception) { }
             }
         }

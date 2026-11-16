@@ -1,5 +1,6 @@
-HUD STAYS UNTIL THE TASK FINISHES
-CHANGED  TaskService.kt  running() / currentLabel(); begin() starts the HUD; end() of the last task shows "Task finished"; wake lock 20 -> 60 min
-CHANGED  HudOverlay.kt   HUD stays while TaskService.running() (any chat/voice request) or a task feed is active; shows the task name + "Working..."
-After the last task ends the HUD shows "Task finished" for ~5 s, then closes. Stop button / Stop command still ends it.
-Copy both files over the same paths and build. NOT compiled here (no Gradle in sandbox).
+HUD SHOWN FROM TASK START UNTIL TASK END
+CHANGED  TaskService.kt  running(), currentLabel(), inline track(ctx, what){...}; begin() brings the HUD up at once; last end() shows "Task finished"
+CHANGED  HudOverlay.kt   HUD stays while TaskService.running() or any task feed is active (shows task name + Working...)
+CHANGED  Assistant.kt    PhoneActions.run wraps every action (chat, orb, agent, scheduler, approvals) in TaskService.track
+CHANGED  OrbService.kt   a voice/orb request is wrapped in TaskService.track for its whole run
+Copy all four files over the same paths and build. NOT compiled here (no Gradle in sandbox).

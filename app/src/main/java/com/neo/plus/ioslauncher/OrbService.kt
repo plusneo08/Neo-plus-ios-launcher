@@ -949,6 +949,7 @@ class OrbService : Service() {
         val executor = io
         try {
             executor.execute {
+                TaskService.track(ctx, text) {
                 var aiReply = false
                 val reply: String = try {
                     val plan = LocalCommands.plan(text, apps, AssistantConfig.load(ctx).configured)
@@ -999,6 +1000,8 @@ class OrbService : Service() {
                     e.message ?: "Something went wrong."
                 }
                 main.post { main.removeCallbacks(slowNotice); if (alive) speakReply(reply, natural = aiReply) }
+            
+                }
             }
         } catch (e: Exception) {
             speakReply("Something went wrong.")

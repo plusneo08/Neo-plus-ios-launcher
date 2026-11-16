@@ -128,7 +128,14 @@ object PhoneActions {
     /** Actions that fetch something to tell the user (the note is the answer). */
     val infoActions = setOf("calendar", "weather", "lookup", "news", "stock", "sports", "read_sms", "call_log", "screen", "read_messages", "read_notifications", "read_app", "last_message", "sleep_mode", "wake_call", "mode", "auto_sleep", "sleep_report", "sleep_voice", "time_lock", "send_money", "money_setup", "web_search", "look", "excel_create", "excel_edit", "excel_read", "compare_files", "word_report", "web_task", "web_batch", "page_source", "file_read", "ui_list", "app_task", "goal", "call_assist", "lock_app", "post_apps", "queue", "approvals", "schedule", "schedules", "report_number")
 
+    /** Every action (chat, orb, agent, scheduler, approvals) shows the HUD from its start until it returns. */
     fun run(ctx: Context, name: String, a: JSONObject, apps: List<AppEntry>): ActionResult {
+        val quick = name in setOf("ui_list", "ui_wait", "lock_app", "listen", "look")
+        if (quick) return runInner(ctx, name, a, apps)
+        return TaskService.track(ctx, HudState.describe(name, a)) { runInner(ctx, name, a, apps) }
+    }
+
+    private fun runInner(ctx: Context, name: String, a: JSONObject, apps: List<AppEntry>): ActionResult {
         if (name !in setOf("ui_list", "ui_wait", "lock_app", "look", "money_setup", "send_money")) try { HudState.event(ctx, HudState.describe(name, a)) } catch (e: Throwable) { }
         // Neo Plus lock: while it is locked nothing is done for whoever is holding the phone (jobs the owner set up to run alone are not blocked)
         if (name != "lock_app" && !PinVault.unattended && AppLock.neoLocked(ctx)) {
