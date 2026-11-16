@@ -31,14 +31,20 @@ class TaskService : Service() {
         private val active = AtomicInteger(0)
         @Volatile private var label = "Working on your request"
 
+        /** True from begin() until the matching end(): the on-screen HUD stays up for exactly this long. */
+        fun running(): Boolean = active.get() > 0
+        fun currentLabel(): String = label
+
         fun begin(ctx: Context, what: String) {
             label = what.trim().replace("\n", " ").take(70).ifBlank { "Working on your request" }
             active.incrementAndGet()
+            try { HudOverlay.start(ctx) } catch (e: Throwable) { }
             try { ContextCompat.startForegroundService(ctx.applicationContext, Intent(ctx.applicationContext, TaskService::class.java)) } catch (e: Exception) { }
         }
 
         fun end(ctx: Context) {
             if (active.updateAndGet { maxOf(0, it - 1) } == 0) {
+                try { HudState.event(ctx, "Task finished") } catch (e: Throwable) { }
                 try { ctx.applicationContext.stopService(Intent(ctx.applicationContext, TaskService::class.java)) } catch (e: Exception) { }
             }
         }
@@ -82,7 +88,7 @@ class TaskService : Service() {
             if (wake == null) {
                 wake = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "neoplus:task").apply {
                     setReferenceCounted(false)
-                    acquire(20 * 60_000L)
+                    acquire(60 * 60_000L)
                 }
             }
         } catch (e: Exception) { }

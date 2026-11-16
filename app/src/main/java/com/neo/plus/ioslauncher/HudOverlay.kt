@@ -81,7 +81,9 @@ object HudOverlay {
         }
     }
 
-    private fun busy(): Boolean = TaskLog.activeCount() > 0 || System.currentTimeMillis() - HudState.lastAt < 5000
+    // Stays up while ANY task is running (a website/app task feed, or a chat request tracked by TaskService);
+    // only after the work is done does the usual 5 second "finished" read-out run out and the HUD close.
+    private fun busy(): Boolean = TaskLog.activeCount() > 0 || TaskService.running() || System.currentTimeMillis() - HudState.lastAt < 5000
 
     private fun sync() {
         val c = ctx ?: return
@@ -104,6 +106,10 @@ object HudOverlay {
                 if (f.status.isNotBlank()) rows += 3 to f.status
             } else {
                 HudState.history.takeLast(6).forEach { rows += 0 to it }
+                if (TaskService.running()) {
+                    title = TaskService.currentLabel().take(48)
+                    rows += 3 to "Working… stays here until it is finished"
+                }
             }
             v.update(title, rows, progress, alert)
         } else {
