@@ -172,8 +172,8 @@ class OrbService : Service() {
     private val clapScreenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
-                Intent.ACTION_SCREEN_OFF -> main.post { startClap() }
-                Intent.ACTION_SCREEN_ON -> main.post { stopClap(true) }
+                Intent.ACTION_SCREEN_OFF -> { AutoSleep.screenOff(context); main.post { startClap() } }
+                Intent.ACTION_SCREEN_ON -> { AutoSleep.screenOn(context); main.post { stopClap(true) } }
             }
         }
     }

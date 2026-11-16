@@ -105,7 +105,7 @@ object SleepMode {
         }
         if (cal.timeInMillis <= System.currentTimeMillis() + 60_000) cal.add(Calendar.DAY_OF_YEAR, 1)
         prefs(app).edit().putBoolean("on", true).putLong("wake_at", cal.timeInMillis).putLong("started", System.currentTimeMillis())
-            .putString("activity", act).putBoolean("calls_only", callOnly).putString("log", "[]").putString("replied", "{}").putString("replied_n", "{}").putInt("retries", 0).putString("report", "").putInt("prep_n", -1).apply()
+            .putString("activity", act).putBoolean("auto", false).putBoolean("calls_only", callOnly).putString("log", "[]").putString("replied", "{}").putString("replied_n", "{}").putInt("retries", 0).putString("report", "").putInt("prep_n", -1).apply()
         synchronized(seen) { seen.clear() }
         NotifStore.convoClear()
         // Capture what is already waiting in the notification shade, so nothing that arrived just before bed is missed

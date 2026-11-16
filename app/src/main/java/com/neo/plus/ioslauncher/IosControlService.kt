@@ -507,13 +507,17 @@ class IosControlService : AccessibilityService() {
                 when (intent.action) {
                     Intent.ACTION_SCREEN_OFF -> {
                         AppLock.onScreenOff(context)
+                        AutoSleep.screenOff(context)
                         // The Neo lock that replaces Android's closes now, and is already on screen when the screen comes back
                         if (NeoLock.replaceOn(context)) { NeoLock.lock(); NeoLock.showIfNeeded(context) }
                     }
-                    Intent.ACTION_SCREEN_ON ->
+                    Intent.ACTION_SCREEN_ON -> {
+                        AutoSleep.screenOn(context)
                         if (NeoLock.needsLock(context)) NeoLock.showIfNeeded(context)
                         else if (NeoLockScreenActivity.shouldShow(context)) NeoLockScreenActivity.start(context)
+                    }
                     Intent.ACTION_USER_PRESENT -> Thread {
+                        AutoSleep.userPresent(context)
                         val front = try { rootInActiveWindow?.packageName?.toString() } catch (e: Exception) { null }
                         main.post { AppLock.onUserPresent(context, front) }
                     }.start()

@@ -408,6 +408,7 @@
         </receiver>
         <receiver android:name=".SleepWakeReceiver" android:exported="false" />
         <receiver android:name=".SleepPrepReceiver" android:exported="false" />
+        <receiver android:name=".AutoSleepReceiver" android:exported="false" />
 
         <!-- Money: the screen where the user must tap Authorise before any transfer -->
         <activity

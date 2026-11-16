@@ -135,3 +135,15 @@ MOOD CARD
 - A second card for the mood, right under the verse card (wallpaper home: NeoMoodCard in HomePanel.kt, placed in Home.kt; crown home: CrownMoodCard in CrownHome.kt).
 - Shows today's mood with an emoji and a mood-only quote (no verses). Tap = next quote, and it changes every 30 minutes like the verse card.
 - MoodQuotes.kt: currentMoodQuote() (quotes only, built-in lines when there is no mood) and emoji(mood).
+
+AUTO SLEEP MODE + MORNING CONVERSATION
+NEW      AutoSleep.kt        Screen off -> 30 min timer (AlarmManager). Screen on / unlock cancels it. When it runs out with the screen still off, at night
+                             (21:00 until the wake-up time), no call going on and no other mode on: sleep mode starts by itself, wake-up call at the saved time
+                             (07:00 default). Without notification access or a Gemini key it starts as wake-up-call-only. Unlocking the phone during sleep mode
+                             is written into the night log. Voice: "auto sleep off / on", "auto sleep wake me at 6:30", "auto sleep after 45 minutes", "auto sleep status".
+CHANGED  SleepReport.kt      summary covers every log line (150 instead of 80), says when sleep mode began, no goodbye, and ends with a question about you
+                             (how did you sleep, how do you feel, plans for the day), also for a quiet night and the wake-up-call-only path.
+CHANGED  WakeCallActivity.kt after the summary the assistant keeps a real conversation going about your life (one question at a time, follows up on answers).
+CHANGED  SleepMode.kt        start() clears the "auto" flag; OrbService.kt / IosControlService.kt tell AutoSleep about screen off / on / unlock;
+         Assistant.kt        action "auto_sleep" + voice command; AndroidManifest.xml AutoSleepReceiver.
+NOT compiled here (no Gradle/Kotlin in my sandbox); brackets balance. Send me the first build error if there is one.
