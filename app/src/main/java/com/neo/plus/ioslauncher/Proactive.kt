@@ -78,12 +78,13 @@ object Proactive {
         try { missedCalls(c) } catch (e: Throwable) { }
         try { messages(c) } catch (e: Throwable) { }
         try { habits(c) } catch (e: Throwable) { }
+        try { Friday.watch(c) } catch (e: Throwable) { }
     }
 
     /* ------------------------------------------------------------------ delivery */
 
     /** "Battery at 14%" + ", sir" + "." / "?" */
-    private fun line(c: Context, body: String, end: Char = '.'): String {
+    fun line(c: Context, body: String, end: Char = '.'): String {
         val a = address(c).trim()
         return body + (if (a.isNotEmpty()) ", $a" else "") + end
     }
@@ -106,7 +107,7 @@ object Proactive {
      * One proactive message: HUD line, spoken line (unless quiet or [speak] is false) and a notification whose tap runs [tap]
      * (the dialer, the app, a settings screen: never something that sends or spends).
      */
-    private fun tell(c: Context, text: String, speak: Boolean = true, tap: Intent? = null, urgent: Boolean = false) {
+    fun tell(c: Context, text: String, speak: Boolean = true, tap: Intent? = null, urgent: Boolean = false) {
         try { HudState.event(c, text) } catch (e: Throwable) { }
         val silent = quiet(c) && !urgent
         if (speak && !silent) try { Announcer.say(c, text) } catch (e: Throwable) { }

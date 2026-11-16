@@ -13,3 +13,11 @@ CHANGED  TaskService.kt      running(), track(), HUD up at begin, "Task finished
 CHANGED  HudOverlay.kt       HUD stays while any task is running
 Needs these permissions granted (all already in your manifest): READ_CALENDAR, READ_CALL_LOG, notification access, POST_NOTIFICATIONS.
 Copy every file over the same path and build. NOT compiled here (no Gradle in sandbox); brackets balance in every file.
+
+FRIDAY ROLES (added)
+NEW      Friday.kt     status report / diagnostics, system scan (with what to do about each problem), briefing (time, weather, next event,
+                       missed calls, unread messages, battery), and automatic watch alerts (hot phone, storage nearly full, internet lost during a task).
+                       Read-only: it reports, it never changes anything.
+                       Voice: "status report", "diagnostics", "system scan" / "Friday, scan", "brief me", "morning briefing", "what did I miss"
+CHANGED  Proactive.kt  tell() and line() are public; the 60 s tick also runs Friday.watch
+CHANGED  Assistant.kt  FridayCmd voice command, action "friday"
