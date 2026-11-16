@@ -9,6 +9,7 @@ import android.provider.AlarmClock
 import android.provider.CalendarContract
 import android.provider.Settings
 import android.text.format.DateFormat
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -84,7 +85,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -480,6 +483,42 @@ private fun CrownPanels(modifier: Modifier) {
 /*  Screen                                                                                          */
 /* ------------------------------------------------------------------------------------------------ */
 
+/**
+ * The quote card under the crown: one Bible verse or mood quote at a time, a new one every 30 minutes by itself (tap = next now).
+ * The mood comes from the morning call (see MoodQuotes); with no mood it shows built-in verses.
+ */
+@Composable
+private fun CrownQuoteCard(modifier: Modifier) {
+    val app = LocalContext.current.applicationContext
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) { value = System.currentTimeMillis(); delay(30_000L) }
+    }
+    var bump by remember { mutableIntStateOf(0) }
+    val ver = MoodQuotes.version
+    LaunchedEffect(now / MoodQuotes.SLOT_MS, ver) { withContext(Dispatchers.IO) { MoodQuotes.refillIfNeeded(app) } }
+    val q = remember(now, ver, bump) { MoodQuotes.current(app, now, bump) }
+    val mood = remember(now, ver) { MoodQuotes.mood(app) }
+    Column(
+        modifier.blackGlass(ChamferShape(10f, bothSides = true)).noRipple { bump++ }.padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(if (q.kind == "verse") "VERSE" else "MOOD", color = CrownDim, fontSize = 10.sp, letterSpacing = 1.6.sp, maxLines = 1)
+            Spacer(Modifier.weight(1f))
+            if (mood.isNotBlank()) Text(mood.uppercase(), color = CrownDim, fontSize = 10.sp, letterSpacing = 1.2.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Spacer(Modifier.height(6.dp))
+        Crossfade(q, label = "crown_quote") { item ->
+            Column {
+                Text("“" + item.text + "”", color = CrownWhite, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 7, overflow = TextOverflow.Ellipsis, style = CrownGlow)
+                if (item.ref.isNotBlank()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text("— " + item.ref, color = CrownDim, fontSize = 11.sp, maxLines = 1)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun CrownHome(vm: LauncherViewModel, onAssistant: () -> Unit, modifier: Modifier = Modifier) {
     val apps = remember(vm.apps, vm.hidden) {
@@ -506,6 +545,8 @@ fun CrownHome(vm: LauncherViewModel, onAssistant: () -> Unit, modifier: Modifier
                     item { Spacer(Modifier.height(24.dp)) }
                 }
             }
+            // verses and mood quotes, just under the crown
+            CrownQuoteCard(Modifier.align(Alignment.TopEnd).padding(top = maxHeight * 0.585f, end = 12.dp).width(maxWidth * 0.5f))
             // the assistant stays one tap away (no drawer button anywhere on this screen)
             AssistantOrb(30.dp, Modifier.align(Alignment.BottomEnd).padding(end = 18.dp, bottom = 22.dp).noRipple { onAssistant() })
         }

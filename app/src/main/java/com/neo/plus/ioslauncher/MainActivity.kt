@@ -95,11 +95,16 @@ class MainActivity : ComponentActivity() {
         // No Shizuku / root: only normal permissions, the settings pages and the default Home app prompt
         val app0 = applicationContext
         Thread { SecureAccess.ensure(app0) }.start()
+        Thread { MoodQuotes.scheduleNext(app0) }.start() // the daily morning mood call (07:00 unless changed)
         // Once after install: ask Android (its own prompt, no root) to make NEO PLUS the Home app
         val hp = getSharedPreferences("neo_launcher", MODE_PRIVATE)
         if (!hp.getBoolean("home_asked_v1", false) && !EnableAssistant.isDefaultHome(this)) {
             hp.edit().putBoolean("home_asked_v1", true).apply()
             window.decorView.postDelayed({ EnableAssistant.requestDefaultHome(this) }, 1500)
+        } else if (!hp.getBoolean("assist_asked_v1", false) && !EnableAssistant.isDefaultAssistant(this)) {
+            // Once: ask Android to make NEO PLUS the default digital assistant (next start after the Home prompt)
+            hp.edit().putBoolean("assist_asked_v1", true).apply()
+            window.decorView.postDelayed({ EnableAssistant.requestDefaultAssistant(this) }, 1500)
         }
     }
 

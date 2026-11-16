@@ -138,6 +138,7 @@ object PhoneActions {
         if (TimeLock.active(ctx) && name !in TimeLock.allowedActions) {
             return ActionResult("Couldn’t do that: the phone is time-locked until ${TimeLock.untilText(ctx)}.", false, false, info = true)
         }
+        TaskOrigin.note(name)
         val note = try {
             if (name in phoneSearches) limited(15_000L, "Couldn’t finish searching your phone within 15 seconds") { exec(ctx, name, a, apps) }
             else exec(ctx, name, a, apps)
@@ -499,6 +500,8 @@ object PhoneActions {
 
             "time_lock" -> return TimeLock.request(ctx, a)
 
+            "set_mood" -> return MoodQuotes.setMood(ctx, a.optString("text"))
+            "mood_call" -> return MoodQuotes.configureCall(ctx, a)
             "wake_call" -> return SleepMode.start(ctx, a.optInt("hour", 7), a.optInt("minute", 0), callOnly = true)
             "sleep_mode" -> return if (onOff(a)) SleepMode.start(ctx, a.optInt("hour", 7), a.optInt("minute", 0)) else SleepMode.stop(ctx)
 
@@ -1462,6 +1465,8 @@ open_app {"app":"Camera"}
 alarm {"hour":7,"minute":30,"label":""}   (24-hour clock; ONLY for a plain alarm the user calls an alarm. If they say wake me up, wake me, or a wake-up call, use wake_call instead)
 wake_call {"hour":8,"minute":30}   (24-hour clock; the user wants to be woken up: at that time the phone rings like an incoming call from you, and when they answer you greet them and tell what happened (missed calls, texts, notifications). It does NOT answer their messages. If the time is not given, ask for it)
 timer {"seconds":300,"label":""}
+set_mood {"text":"how the user says they feel, in their words"}   (the user states how they feel or what mood they are in, e.g. "I'm anxious today", "I feel great": the crown home screen then shows Bible verses and quotes for that feeling and changes them every 30 minutes. Do not ask questions first)
+mood_call {"hour":7,"minute":0,"on":true}   (the daily morning call that asks how the user feels; "on":false stops it; change the time with hour and minute, 24-hour clock)
 flashlight {"on":true}
 wifi / bluetooth / airplane / mobile_data / dark_mode / low_power (battery saver) / dnd  {"on":true}
 page_source {"url":"optional address","max":6000}   (the raw HTML source of a web page: the address given, or the page open in the phone's browser; the full file is saved in the Neo Plus folder)
@@ -1720,8 +1725,9 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
      * If it took a while, the result is also posted as a notification.
      */
     private fun track(what: String, block: suspend () -> Unit) {
-        viewModelScope.launch {
+        viewModelScope.launch(TaskOrigin.chatElement()) {
             val start = System.currentTimeMillis()
+            TaskOrigin.reset()
             TaskService.begin(ctx, what)
             try { block() } finally {
                 TaskService.end(ctx)
@@ -1781,6 +1787,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                 dropLive()
                 busy = false
                 add(ChatMsg(nextId(), false, e.message ?: "Something went wrong.", error = true))
+                if (TaskOrigin.didAppWork()) ChatReturn.bring(ctx)
             }
         }
     }
@@ -1816,7 +1823,10 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         if (at >= 0) { messages[at] = msg; persist() } else add(msg)
         liveMsgId = -1L
         busy = false
-        if (results.any { it.leavesLauncher }) {
+        if (TaskOrigin.didAppWork()) {
+            // The job ran in another app and the request came from the chat: come back and show the result (never closes the panel)
+            ChatReturn.bring(ctx)
+        } else if (results.any { it.leavesLauncher }) {
             delay(120)
             closeSignal++
         }

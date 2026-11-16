@@ -36,7 +36,7 @@ object WakeRinger {
     @Volatile var ringing = false
         private set
 
-    fun start(ctx: Context) {
+    fun start(ctx: Context, onMissed: ((Context) -> Unit)? = null) {
         val app = ctx.applicationContext
         CallAwareness.refreshAsync(app)   // read your situation while it rings, so it is ready when you answer
         stop()
@@ -54,7 +54,7 @@ object WakeRinger {
             }
         } catch (e: Exception) { }
         ringing = true
-        main.postDelayed({ if (ringing) SleepMode.missedCall(app) }, 60_000L)
+        main.postDelayed({ if (ringing) { if (onMissed != null) onMissed(app) else SleepMode.missedCall(app) } }, 60_000L)
     }
 
     fun stop() {

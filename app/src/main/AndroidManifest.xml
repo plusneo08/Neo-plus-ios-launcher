@@ -179,6 +179,23 @@
             android:name=".SleepService"
             android:exported="false" />
 
+        <!-- Default digital assistant: Android lists Neo Plus under Default apps > Digital assistant app -->
+        <service
+            android:name=".NeoVoiceInteractionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <meta-data
+                android:name="android.voice_interaction"
+                android:resource="@xml/voice_interaction_service" />
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+        </service>
+        <service
+            android:name=".NeoVoiceSessionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION" />
+
         <!-- Keeps the assistant working while other apps are open -->
         <service
             android:name=".TaskService"
@@ -398,6 +415,14 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:theme="@style/Theme.Neo.Translucent" />
+
+        <!-- Morning mood call: rings every day, asks how you feel, the answer picks the crown-screen quotes -->
+        <receiver android:name=".MoodCallReceiver" android:exported="false" />
+        <receiver android:name=".MoodBootReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <receiver android:name=".SleepBootReceiver" android:exported="false">
             <intent-filter>

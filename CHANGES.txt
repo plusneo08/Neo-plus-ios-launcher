@@ -110,3 +110,18 @@ CHANGED  AlphaHolo.kt   tilted platform with concentric neon rings (dotted rings
                         middle of the platform like the hologram hand. Pick a letter / swipe: the logo melts away and the apps float
                         in an oval above the platform with their light shadows on it. Swipe, tap, double tap, long press unchanged.
 NOT compiled here; send me the first build error if there is one.
+
+DEFAULT ASSISTANT + RETURN TO CHAT
+- Neo Plus can now be chosen as the phone's default digital assistant (NeoVoiceInteraction.kt, voice_interaction_service.xml, manifest).
+  Android asks once on the start after the Home prompt; "Enable assistant" also walks to it. Assist gesture / long-press Home opens the chat panel.
+- A job done inside another app (app_task and the ui_* taps) that was started FROM THE CHAT brings the chat back with the result when it
+  finishes (ChatReturn.kt). A request started by the wake phrase ("Hey Neo ..." to the orb) never opens the chat: it answers by subtitles / voice.
+
+MOOD QUOTES UNDER THE CROWN
+- CrownHome.kt: a glass card just under the crown shows one Bible verse (KJV) or mood quote at a time. It changes by itself every 30 minutes; a tap shows the next one now.
+- MoodQuotes.kt: every morning (07:00 by default) the phone rings like an incoming call from Neo; answer and it asks how you feel. What you say is the mood:
+  Gemini writes 12 matching items (verses and short quotes, alternating) and the card walks through them, then writes a new batch for the same mood.
+  A mood lasts until the next morning call. With no mood, no key or no network, built-in verses show, so the card is never empty.
+- Unanswered for a minute = "Missed call" note; tapping it starts the same mood chat.
+- Say to the assistant any time: "I'm feeling anxious today" (set_mood) or "call me about my mood at 6:30" / "stop the mood call" (mood_call).
+- WakeCallActivity.kt: EXTRA_MOOD call mode. SleepExtras.kt: WakeRinger.start takes an optional missed-call handler. Manifest: MoodCallReceiver, MoodBootReceiver.
