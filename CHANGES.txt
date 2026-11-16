@@ -1,6 +1,15 @@
-HUD SHOWN FROM TASK START UNTIL TASK END
-CHANGED  TaskService.kt  running(), currentLabel(), inline track(ctx, what){...}; begin() brings the HUD up at once; last end() shows "Task finished"
-CHANGED  HudOverlay.kt   HUD stays while TaskService.running() or any task feed is active (shows task name + Working...)
-CHANGED  Assistant.kt    PhoneActions.run wraps every action (chat, orb, agent, scheduler, approvals) in TaskService.track
-CHANGED  OrbService.kt   a voice/orb request is wrapped in TaskService.track for its whole run
-Copy all four files over the same paths and build. NOT compiled here (no Gradle in sandbox).
+JARVIS-STYLE PROACTIVE ASSISTANT + HUD STAYS UNTIL THE TASK ENDS
+NEW      Proactive.kt        watches battery, calendar, missed calls, unread messages and your habits; speaks / acts without being asked
+                             ACT SILENTLY : battery saver at 15 % (needs WRITE_SECURE_SETTINGS from grant-all.sh), then tells you
+                             TELL YOU     : HUD line + spoken line + notification (calendar 15 min before, missed call, 3+ unread messages, habit offer)
+                             ASK FIRST    : nothing is ever sent, called or paid for here; the notification only opens the dialer / the app
+                             Quiet (no voice, notification only) 22:00-07:00, in sleep mode and during a call
+                             Voice: "proactive off / on / status", "call me sir" (or boss, madam, nothing)
+CHANGED  Util.kt             launchApp records launches for habit learning
+CHANGED  Assistant.kt        ProactiveCmd voice command, action "proactive"; every action runs inside TaskService.track (HUD from start to end)
+CHANGED  OrbService.kt       starts Proactive; a voice request is tracked for its whole run
+CHANGED  IosControlService.kt, MainActivity.kt   start Proactive
+CHANGED  TaskService.kt      running(), track(), HUD up at begin, "Task finished" at end
+CHANGED  HudOverlay.kt       HUD stays while any task is running
+Needs these permissions granted (all already in your manifest): READ_CALENDAR, READ_CALL_LOG, notification access, POST_NOTIFICATIONS.
+Copy every file over the same path and build. NOT compiled here (no Gradle in sandbox); brackets balance in every file.

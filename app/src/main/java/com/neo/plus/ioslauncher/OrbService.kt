@@ -228,6 +228,7 @@ class OrbService : Service() {
         super.onCreate()
         instance = this
         alive = true
+        Proactive.start(applicationContext)
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         goForeground() // must happen right away after startForegroundService
 

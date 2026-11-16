@@ -259,6 +259,7 @@ class IosControlService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        Proactive.start(applicationContext)
         registerLockReceivers()
         BeepMute.recover(this)   // a stream left muted by a killed process
         VolumeBoost.load(this)

@@ -105,6 +105,7 @@ fun Context.safeStart(intent: Intent): Boolean = try {
 fun Context.launchApp(app: AppEntry, options: Bundle? = null) {
     // The launcher's own icon: do not start the launcher again from itself (that left a blank white screen for seconds)
     if (app.realPkg == packageName) { try { MainActivity.current?.goHome() } catch (e: Exception) { }; return }
+    Proactive.noteLaunch(this, app.realPkg)   // habit learning
     val intent = Intent(Intent.ACTION_MAIN)
         .addCategory(Intent.CATEGORY_LAUNCHER)
         .setComponent(ComponentName(app.realPkg, app.activity))
