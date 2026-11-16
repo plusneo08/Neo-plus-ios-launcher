@@ -130,3 +130,8 @@ QUOTE CARD MATCHES CLOCK + WEATHER, AND SHOWS ON THE WALLPAPER HOME
 - HomePanel.kt: new NeoQuoteCard, the same navy glass, neon edge, glow text and light streaks as the clock and weather cards.
 - Home.kt: the card sits right under the clock/weather panel on the wallpaper home screen (first page); one fewer app row is reserved to make room.
 - CrownHome.kt: the quote card now uses the same cut corners, rim and white glow text as the Crown clock and weather panels.
+
+MOOD CARD
+- A second card for the mood, right under the verse card (wallpaper home: NeoMoodCard in HomePanel.kt, placed in Home.kt; crown home: CrownMoodCard in CrownHome.kt).
+- Shows today's mood with an emoji and a mood-only quote (no verses). Tap = next quote, and it changes every 30 minutes like the verse card.
+- MoodQuotes.kt: currentMoodQuote() (quotes only, built-in lines when there is no mood) and emoji(mood).

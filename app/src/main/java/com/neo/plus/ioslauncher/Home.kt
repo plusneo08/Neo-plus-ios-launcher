@@ -468,6 +468,7 @@ fun HomeGrid(apps: List<AppEntry>, vm: LauncherViewModel, iconSize: Dp, rowH: Dp
         if (withWidgets) {
             HomePanel(Modifier.fillMaxWidth().height(302.dp).padding(horizontal = 4.dp, vertical = 4.dp))
             NeoQuoteCard(Modifier.fillMaxWidth().height(104.dp).padding(horizontal = 4.dp, vertical = 4.dp))
+            NeoMoodCard(Modifier.fillMaxWidth().height(88.dp).padding(horizontal = 4.dp, vertical = 4.dp))
             Spacer(Modifier.weight(1f))   // the wallpaper's logo shows here
         }
         apps.chunked(4).forEach { row ->

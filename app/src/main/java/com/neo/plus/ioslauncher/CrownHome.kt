@@ -519,6 +519,36 @@ private fun CrownQuoteCard(modifier: Modifier) {
     }
 }
 
+/** The mood card on the crown screen: today's mood with an emoji and a mood-only quote (tap = next). */
+@Composable
+private fun CrownMoodCard(modifier: Modifier) {
+    val app = LocalContext.current.applicationContext
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) { value = System.currentTimeMillis(); delay(30_000L) }
+    }
+    var bump by remember { mutableIntStateOf(0) }
+    val ver = MoodQuotes.version
+    val q = remember(now, ver, bump) { MoodQuotes.currentMoodQuote(app, now, bump) }
+    val mood = remember(now, ver) { MoodQuotes.mood(app) }
+    Column(
+        modifier.blackGlass(ChamferShape(14f, bothSides = true), 1.5f).noRipple { bump++ }.padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("MOOD", color = CrownDim, fontSize = 10.sp, letterSpacing = 1.6.sp, maxLines = 1)
+            Spacer(Modifier.weight(1f))
+            if (mood.isNotBlank()) Text(mood.uppercase(), color = CrownDim, fontSize = 10.sp, letterSpacing = 1.2.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(MoodQuotes.emoji(mood), fontSize = 22.sp)
+            Spacer(Modifier.width(8.dp))
+            Crossfade(q, label = "crown_mood") { item ->
+                Text(item.text, color = Color.White, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 4, overflow = TextOverflow.Ellipsis, style = CrownGlow)
+            }
+        }
+    }
+}
+
 @Composable
 fun CrownHome(vm: LauncherViewModel, onAssistant: () -> Unit, modifier: Modifier = Modifier) {
     val apps = remember(vm.apps, vm.hidden) {
@@ -547,6 +577,8 @@ fun CrownHome(vm: LauncherViewModel, onAssistant: () -> Unit, modifier: Modifier
             }
             // verses and mood quotes, just under the crown
             CrownQuoteCard(Modifier.align(Alignment.TopEnd).padding(top = maxHeight * 0.585f, end = 12.dp).width(maxWidth * 0.5f))
+            // today's mood, under the verse card
+            CrownMoodCard(Modifier.align(Alignment.TopEnd).padding(top = maxHeight * 0.585f + 150.dp, end = 12.dp).width(maxWidth * 0.5f))
             // the assistant stays one tap away (no drawer button anywhere on this screen)
             AssistantOrb(30.dp, Modifier.align(Alignment.BottomEnd).padding(end = 18.dp, bottom = 22.dp).noRipple { onAssistant() })
         }

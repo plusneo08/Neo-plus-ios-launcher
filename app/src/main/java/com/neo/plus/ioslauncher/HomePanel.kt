@@ -306,6 +306,37 @@ fun NeoQuoteCard(modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * Mood card for the wallpaper home screen: today's mood (from the morning call) with an emoji and a mood-only quote.
+ * Same navy glass as the verse card. A tap shows the next quote now; a new one also comes every 30 minutes.
+ */
+@Composable
+fun NeoMoodCard(modifier: Modifier = Modifier) {
+    val app = LocalContext.current.applicationContext
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) { value = System.currentTimeMillis(); delay(30_000L) }
+    }
+    var bump by remember { mutableIntStateOf(0) }
+    val ver = MoodQuotes.version
+    LaunchedEffect(now / MoodQuotes.SLOT_MS, ver) { withContext(Dispatchers.IO) { MoodQuotes.refillIfNeeded(app) } }
+    val q = remember(now, ver, bump) { MoodQuotes.currentMoodQuote(app, now, bump) }
+    val mood = remember(now, ver) { MoodQuotes.mood(app) }
+    Box(modifier.neoCard(RoundedCornerShape(26.dp)).noRipple { bump++ }) {
+        Canvas(Modifier.matchParentSize()) { clockStreaks() }
+        Row(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(MoodQuotes.emoji(mood), fontSize = 30.sp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                Chip(if (mood.isBlank()) "MOOD" else "MOOD · " + mood.uppercase().take(14), NeoCyanC.copy(alpha = 0.22f), NeoCyanC)
+                Spacer(Modifier.height(6.dp))
+                Crossfade(q, label = "neoMood") { item ->
+                    Text(item.text, color = Color.White, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, maxLines = 3, overflow = TextOverflow.Ellipsis, style = GlowText)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun Chip(text: String, bg: Color, fg: Color) {
     Text(

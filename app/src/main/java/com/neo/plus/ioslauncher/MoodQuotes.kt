@@ -92,6 +92,42 @@ object MoodQuotes {
         return list[((slot + bump) % list.size).toInt()]
     }
 
+    /* ---------------- the mood card (mood quotes only, no verses) ---------------- */
+
+    private val fallbackMood = listOf(
+        Q("quote", "Tell me how you feel and I’ll write something just for it.", ""),
+        Q("quote", "Small steps still move you forward.", ""),
+        Q("quote", "Breathe in slowly. This moment is enough.", ""),
+        Q("quote", "You don’t have to have it all figured out today.", "")
+    )
+
+    /** The mood quote for this moment (kind != verse). Changes every 30 minutes; [bump] = taps on top of that. */
+    fun currentMoodQuote(ctx: Context, now: Long, bump: Int): Q {
+        val list = items(ctx).filter { it.kind != "verse" }.ifEmpty { fallbackMood }
+        val anchor = if (hasFreshMood(ctx)) p(ctx).getLong("anchor", 0L) else 0L
+        val slot = ((now - anchor) / SLOT_MS).coerceAtLeast(0L)
+        return list[((slot + bump) % list.size).toInt()]
+    }
+
+    /** A small emoji for the mood word, so the card reads at a glance. Unknown words get a neutral one. */
+    fun emoji(mood: String): String {
+        val m = mood.lowercase()
+        fun has(vararg w: String) = w.any { m.contains(it) }
+        return when {
+            m.isBlank() -> "🙂"
+            has("anx", "worr", "nerv", "stress", "overwhelm") -> "😰"
+            has("sad", "down", "low", "lonely", "grief", "hurt") -> "😔"
+            has("tired", "exhaust", "sleep", "drain") -> "😴"
+            has("angry", "mad", "frustrat", "annoy") -> "😤"
+            has("happy", "joy", "great", "excit", "good") -> "😄"
+            has("grate", "thank", "bless") -> "🙏"
+            has("calm", "peace", "relax", "content") -> "😌"
+            has("focus", "driven", "motiv", "determin") -> "🎯"
+            has("love") -> "🥰"
+            else -> "🙂"
+        }
+    }
+
     /** When the batch is nearly used up (6 hours), write a new one for the same mood. */
     fun refillIfNeeded(ctx: Context) {
         if (!hasFreshMood(ctx) || generating) return
