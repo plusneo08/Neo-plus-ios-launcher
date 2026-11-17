@@ -129,7 +129,7 @@ object ModeCmd {
     private const val NAMES = "work|working|meeting|journey|chill|travel|travelling|traveling|driving"
     private val onRe = Regex("\\b($NAMES)\\s+mode\\b", I)
     private val offRe = Regex("\\b(?:stop|end|turn off|cancel|switch off|disable|exit)\\b.{0,12}\\b(?:$NAMES)\\s+mode\\b|\\b(?:$NAMES)\\s+mode\\s+off\\b", I)
-    private val untilRe = Regex("\\b(?:until|till|by|to)\\s+(\\d{1,2})(?:[:.](\\d{2}))?\\s*(a\\.?m\\.?|p\\.?m\\.?)?", I)
+    private val untilRe = Regex("\\b(?:until|till|by|to|at)\\s+(\\d{1,2})(?:[:.](\\d{2}))?\\s*(a\\.?m\\.?|p\\.?m\\.?)?", I)
     private val forRe = Regex("\\bfor\\s+(?:(\\d{1,3})|an?|half an?)\\s*(hours?|hrs?|minutes?|mins?)\\b", I)
     private val statusRe = Regex("\\b(?:which|what) mode\\b|\\bmode status\\b", I)
 

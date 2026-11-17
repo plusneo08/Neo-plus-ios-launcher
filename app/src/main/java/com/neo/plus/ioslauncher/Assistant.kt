@@ -1086,6 +1086,7 @@ object LocalCommands {
         WakeCode.plan(text)?.let { return it }
         TimeLockCmd.plan(text)?.let { return it }
         AutoSleepCmd.plan(text)?.let { return it }
+        ModeCmd.plan(text)?.let { return it }   // before SwarmCmd: "turn on journey mode and ..." must not be read as "turn on A and B"
         ProactiveCmd.plan(text)?.let { return it }
         SplitCmd.plan(text)?.let { return it }   // before LabCmd / the "and" splitter: "open A and B side by side"
         LabCmd.plan(text)?.let { return it }
@@ -1094,7 +1095,6 @@ object LocalCommands {
         DiagnoseCmd.plan(text)?.let { return it }
         ConnectCmd.plan(text)?.let { return it }
         FridayCmd.plan(text)?.let { return it }
-        ModeCmd.plan(text)?.let { return it }
         SleepCmd.plan(text)?.let { return it }
         // Sending money: understood by the phone itself, so it starts at once (the Authorise screen and the PIN stay with the user).
         MoneyCmd.plan(text)?.let { return it }
