@@ -1,3 +1,17 @@
+SPLIT SCREEN: a second app or website opens BESIDE the app you are in
+NEW      SplitScreen.kt   automatic split screen + SplitCmd voice commands
+                          - inside an app and you say "open YouTube" / "open example.com": it opens beside that app
+                          - a task that uses two apps: the first opens full screen, the second opens beside it
+                          - from the Neo Plus home screen nothing is split (no app to sit beside)
+                          - "open Chrome and Notes side by side", "split screen Chrome and Notes", "open Notes next to Chrome", "open Gmail in split screen"
+                          - "split screen off / on" (automatic splitting), "split screen status", "exit split screen"
+                          - if the phone refuses, the app opens full screen and the reply says so
+CHANGED  Util.kt          safeStart + openAppVerified add FLAG_ACTIVITY_LAUNCH_ADJACENT when splitting is wanted
+CHANGED  Assistant.kt     open_app/open_url/navigate/connect run through SplitScreen.around; new "split" action; SplitCmd; AI prompt lines
+CHANGED  IosControlService.kt   SplitScreen.prepare() lets the service read on-screen windows (to recognise a split)
+No new permission: it uses the accessibility service already on (Android 7+). NOT compiled here (no Gradle in sandbox); brackets balance.
+Known limit: after a split, taps / typing by the assistant go to the pane that has focus (the newest app); UiDriver / AppTask were not in this zip.
+
 JARVIS-STYLE PROACTIVE ASSISTANT + HUD STAYS UNTIL THE TASK ENDS
 NEW      Proactive.kt        watches battery, calendar, missed calls, unread messages and your habits; speaks / acts without being asked
                              ACT SILENTLY : battery saver at 15 % (needs WRITE_SECURE_SETTINGS from grant-all.sh), then tells you

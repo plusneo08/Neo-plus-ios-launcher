@@ -126,7 +126,7 @@ object PhoneActions {
     )
 
     /** Actions that fetch something to tell the user (the note is the answer). */
-    val infoActions = setOf("calendar", "weather", "lookup", "news", "stock", "sports", "read_sms", "call_log", "screen", "read_messages", "read_notifications", "read_app", "last_message", "sleep_mode", "wake_call", "mode", "auto_sleep", "proactive", "friday", "diagnose", "lab", "swarm", "companion", "connect", "watch", "calendar_edit", "sleep_report", "sleep_voice", "time_lock", "send_money", "money_setup", "web_search", "look", "excel_create", "excel_edit", "excel_read", "compare_files", "word_report", "web_task", "web_batch", "page_source", "file_read", "ui_list", "app_task", "goal", "call_assist", "lock_app", "post_apps", "queue", "approvals", "schedule", "schedules", "report_number")
+    val infoActions = setOf("calendar", "weather", "lookup", "news", "stock", "sports", "read_sms", "call_log", "screen", "read_messages", "read_notifications", "read_app", "last_message", "sleep_mode", "wake_call", "mode", "auto_sleep", "proactive", "friday", "diagnose", "split", "lab", "swarm", "companion", "connect", "watch", "calendar_edit", "sleep_report", "sleep_voice", "time_lock", "send_money", "money_setup", "web_search", "look", "excel_create", "excel_edit", "excel_read", "compare_files", "word_report", "web_task", "web_batch", "page_source", "file_read", "ui_list", "app_task", "goal", "call_assist", "lock_app", "post_apps", "queue", "approvals", "schedule", "schedules", "report_number")
 
     /** Every action (chat, orb, agent, scheduler, approvals) shows the HUD from its start until it returns. */
     fun run(ctx: Context, name: String, a: JSONObject, apps: List<AppEntry>): ActionResult {
@@ -148,7 +148,7 @@ object PhoneActions {
         TaskOrigin.note(name)
         val rawNote = try {
             if (name in phoneSearches) limited(15_000L, "Couldn’t finish searching your phone within 15 seconds") { exec(ctx, name, a, apps) }
-            else exec(ctx, name, a, apps)
+            else SplitScreen.around(ctx, name, a) { exec(ctx, name, a, apps) }   // a 2nd app / website opens beside the one on screen
         } catch (e: Exception) {
             "Couldn’t do that (${e.javaClass.simpleName})"
         }
@@ -526,6 +526,7 @@ object PhoneActions {
             "connect" -> return Connect.handle(ctx, a, apps)
             "watch" -> return Watch.handle(ctx, a)
             "diagnose" -> return Diagnose.handle(ctx, a)
+            "split" -> return SplitScreen.handle(ctx, a)
             "gesture" -> return Gestures.handle(ctx, a)
             "calendar_edit" -> return CalendarWrite.handle(ctx, a)
 
@@ -1086,6 +1087,7 @@ object LocalCommands {
         TimeLockCmd.plan(text)?.let { return it }
         AutoSleepCmd.plan(text)?.let { return it }
         ProactiveCmd.plan(text)?.let { return it }
+        SplitCmd.plan(text)?.let { return it }   // before LabCmd / the "and" splitter: "open A and B side by side"
         LabCmd.plan(text)?.let { return it }
         SwarmCmd.plan(text)?.let { return it }
         CompanionCmd.plan(text)?.let { return it }
@@ -1523,6 +1525,8 @@ money_setup {"ussd":"*123*1*{number}*{amount}#"}   (saves the user's own mobile-
 screen_share {"on":true}   (the floating orb then shows you a fresh screenshot with every request, until switched off)
 remember {"fact":"..."} / forget {"fact":"..."} or {"all":true}   (what you know about the user between chats; never store passwords, card numbers or other secrets)
 open_url {"url":"..."}
+(Split screen: when the user is already inside an app and you open another app or a website, it opens BESIDE that app automatically, so a task on two apps shows both. open_app / open_url accept "split":true to force a split, or "split":"base" for the first app of a pair that must stay full screen until the second opens, e.g. [[do:open_app {"app":"Notes","split":"base"}]] then [[do:open_app {"app":"Chrome","split":true}]]. Do not add "split" otherwise.)
+split {"do":"on|off|status|exit"}   (on/off = the automatic splitting; exit = close the split now)
 navigate {"destination":"..."}
 settings {"page":"wifi|bluetooth|display|sound|battery|apps|location|accessibility|airplane|storage|date|language|security|wallpaper"}
 control_center {}

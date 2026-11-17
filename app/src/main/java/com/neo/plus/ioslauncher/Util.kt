@@ -95,6 +95,7 @@ fun Modifier.noRipple(onClick: () -> Unit): Modifier =
 
 fun Context.safeStart(intent: Intent): Boolean = try {
     if (this !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    SplitScreen.beforeLaunch(this, intent)   // opens beside the app you are in when split screen is wanted (no-op otherwise)
     startActivity(intent)
     true
 } catch (e: Exception) {
@@ -132,6 +133,8 @@ fun Context.openAppVerified(app: AppEntry): String? {
     val explicit = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         .setComponent(ComponentName(app.realPkg, app.activity)).addFlags(flags)
     val std = try { packageManager.getLaunchIntentForPackage(app.realPkg)?.addFlags(flags) } catch (e: Exception) { null }
+    // Split screen: when wanted, the app starts in the other half beside the one you are in (the fallbacks below keep the same flag)
+    if (SplitScreen.beforeLaunch(this, explicit)) std?.addFlags(Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT)
     val tries = ArrayList<Pair<Context, Intent>>()
     tries += this to explicit
     if (svc != null) tries += svc to explicit

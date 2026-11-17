@@ -259,6 +259,7 @@ class IosControlService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        SplitScreen.prepare(this)   // lets the service see on-screen windows, so a split can be recognised
         Proactive.start(applicationContext)
         registerLockReceivers()
         BeepMute.recover(this)   // a stream left muted by a killed process
