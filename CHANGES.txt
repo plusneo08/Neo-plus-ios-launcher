@@ -71,3 +71,33 @@ CHANGED  AndroidManifest.xml  added CHANGE_WIFI_MULTICAST_STATE permission, regi
 On purpose, not built: a silent remote install. Real MDM can do that only because the receiving device is enrolled in
 Google's own Android Enterprise device management, a separate setup this app does not perform; faking a silent install
 without that is what malware does, so every request still needs the other phone's own person to tap Install.
+
+CONNECTED-APP CONTROL + MONITORING (added): phone -> connected apps, with checks, approvals and watchers
+NEW      Connect.kt        connector registry (Spotify, YouTube Music, YouTube, Google Maps, Waze, Uber, Lyft, Bolt, Uber Eats, DoorDash + your own),
+                           control-path chooser: API -> deep link -> open app + taps (App task); after each path the screen is checked and the
+                           next path is tried if it did not land. Provider choice: for ride / music / maps / video / food it never picks for you;
+                           it uses your saved choice or asks. Verify (reads the screen), ConnectCmd (typed / spoken commands for all of this).
+                           Voice: "use Spotify for music", "list my connectors", "connection health", "monitor Uber for arriving",
+                           "watch the Uber app for arriving", "tell me when Uber says arriving", "stop watching Uber", "what are you watching",
+                           "event log", "what happened with Uber", "double tap Like", "pinch out", "add dentist to my calendar tomorrow at 3 pm",
+                           "approve it" / "cancel it" (only while something is waiting for your OK)
+NEW      Watch.kt          EventLog (last 300 events, this phone only; message / money / screen content is logged by name only),
+                           Watch (per-app rules on notifications or on-screen text, checked every 10 s only while a rule exists, crash / "not responding" box
+                           detection for watched apps), health checks (accessibility off, notification access off, app uninstalled, connector needs sign-in:
+                           each warning at most every 6 h, quiet hours still apply because everything goes through Proactive.tell)
+NEW      Guard.kt          prompt-injection defence: "[[action]]" written inside screens, notifications, messages, web pages, files or API replies is
+                           defused, text that gives orders is flagged, and for 2 minutes after reading such text the risky new actions wait for your OK.
+                           Approval works only from your own typed / spoken words (one-time keys the AI model never sees), so a model-written action
+                           cannot approve itself.
+NEW      Gestures.kt       double tap, drag, swipe, pinch in / out, by label or screen position
+NEW      CalendarWrite.kt  calendar add / update / delete, no guests ever added, event read back after saving; delete always waits for your OK
+CHANGED  Assistant.kt      actions "connect", "watch", "gesture", "calendar_edit"; untrusted-text defence + event log in runInner; prompt catalogue
+CHANGED  Proactive.kt      60 s tick also runs Watch.tick
+CHANGED  AndroidManifest.xml  added WRITE_CALENDAR
+Needs: WRITE_CALENDAR granted on the phone (calendar write), notification access (notification watchers), accessibility control (screen reading,
+gestures, checks). Gestures also need android:canPerformGestures="true" in your accessibility service config (res/xml, not in this zip).
+NOT compiled here (no Kotlin compiler in the sandbox); brackets balance in every file. Names used from files that are not in this zip:
+NeoNotificationService.instance, AppEntry (pkg, shownLabel), AppAccess.allowed / blockedMessage, AppTask.run, PhoneActions.run, LocalPlan.
+Not built, on purpose: full OAuth sign-in (a token you give is stored on the phone; a 401 / 403 marks the connector "needs sign-in"),
+sending / paying / ordering for you through a connector (a ride link only opens the app with the address filled in), watching other people's phones.
+Connector links for Uber, Lyft, Spotify etc. are starting points; if an app ignores a link, the taps path takes over.
