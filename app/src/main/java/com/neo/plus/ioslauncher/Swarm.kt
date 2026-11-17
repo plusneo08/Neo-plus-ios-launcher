@@ -9,7 +9,12 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.content.pm.PackageManager
+import android.bluetooth.BluetoothClass
 import android.media.MediaRouter
+import android.net.ConnectivityManager
+import android.net.LinkProperties
+import android.net.NetworkCapabilities
+import android.net.wifi.WifiManager
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
@@ -96,6 +101,73 @@ object Swarm {
         return (if (connect) "Connecting to " else "Disconnecting ") + names + " (" + targets.size + " device" + (if (targets.size > 1) "s" else "") + ")."
     }
 
+    /* ------------------------------------------------------------------ "what do you know about this device" */
+
+    private fun classLabel(cls: BluetoothClass?): String {
+        val m = cls?.majorDeviceClass ?: return "unknown type"
+        return when (m) {
+            BluetoothClass.Device.Major.AUDIO_VIDEO -> "audio/video device"
+            BluetoothClass.Device.Major.PHONE -> "phone"
+            BluetoothClass.Device.Major.COMPUTER -> "computer"
+            BluetoothClass.Device.Major.WEARABLE -> "wearable"
+            BluetoothClass.Device.Major.HEALTH -> "health device"
+            BluetoothClass.Device.Major.PERIPHERAL -> "peripheral (keyboard/mouse/controller)"
+            BluetoothClass.Device.Major.NETWORKING -> "network device"
+            BluetoothClass.Device.Major.TOY -> "toy"
+            BluetoothClass.Device.Major.IMAGING -> "imaging device"
+            else -> "device"
+        }
+    }
+
+    /** Battery level of a connected Bluetooth device, where the phone exposes it (not every device reports this). */
+    @SuppressLint("MissingPermission")
+    private fun bluetoothBattery(d: BluetoothDevice): Int? = try {
+        val m = d.javaClass.getMethod("getBatteryLevel")
+        (m.invoke(d) as? Int)?.takeIf { it in 0..100 }
+    } catch (e: Throwable) { null }
+
+    /** Everything this phone knows about one paired Bluetooth device, by name (partial match) or "this"/blank for the one
+     *  you are currently connected to. Nothing here is requested from the device beyond what Android already cached when pairing. */
+    @SuppressLint("MissingPermission")
+    fun bluetoothInfo(c: Context, who: String): String {
+        if (!btOk(c)) return "Allow Bluetooth (Nearby devices) for Neo Plus first."
+        val all = paired(c)
+        if (all.isEmpty()) return "No Bluetooth devices are paired with this phone."
+        val w = who.trim().lowercase()
+        val d = if (w.isBlank() || w == "this" || w == "it")
+            all.firstOrNull { isConnected(c, it) } ?: return "You are not connected to any Bluetooth device right now. " + bluetoothDevices(c)
+        else all.firstOrNull { (it.name ?: "").lowercase().contains(w) } ?: return "No paired device matches “$who”. " + bluetoothDevices(c)
+        val lines = ArrayList<String>()
+        lines += "Name: " + (d.name ?: "unknown")
+        lines += "Address: " + d.address
+        lines += "Type: " + classLabel(d.bluetoothClass)
+        lines += "Connected: " + (if (isConnected(c, d)) "yes" else "no")
+        lines += "Bond: " + when (d.bondState) { BluetoothDevice.BOND_BONDED -> "paired"; BluetoothDevice.BOND_BONDING -> "pairing"; else -> "not paired" }
+        bluetoothBattery(d)?.let { lines += "Battery: $it%" }
+        return lines.joinToString(". ") + "."
+    }
+
+    /** Everything this phone knows about the Wi-Fi network it is connected to right now. */
+    @SuppressLint("MissingPermission")
+    fun wifiInfo(c: Context): String {
+        val cm = c.getSystemService(ConnectivityManager::class.java)
+        val net = cm.activeNetwork ?: return "This phone is not connected to any network right now."
+        val caps = cm.getNetworkCapabilities(net)
+        if (caps == null || !caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return "This phone is not on Wi-Fi right now (" + (if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true) "it is on mobile data" else "no active network") + ")."
+        val wm = c.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val info = wm.connectionInfo
+        val lp: LinkProperties? = cm.getLinkProperties(net)
+        val lines = ArrayList<String>()
+        val ssid = info.ssid?.trim('"').orEmpty()
+        if (ssid.isNotBlank() && ssid != "<unknown ssid>") lines += "Network: $ssid"
+        if (info.linkSpeed > 0) lines += "Speed: ${info.linkSpeed} Mbps"
+        lines += "Signal: ${android.net.wifi.WifiManager.calculateSignalLevel(info.rssi, 5)}/4 (${info.rssi} dBm)"
+        if (android.os.Build.VERSION.SDK_INT >= 23 && info.frequency > 0) lines += "Band: " + (if (info.frequency > 4900) "5 GHz" else "2.4 GHz")
+        lp?.linkAddresses?.firstOrNull { it.address.hostAddress?.contains(':') == false }?.let { lines += "This phone's IP: " + it.address.hostAddress }
+        lp?.dnsServers?.firstOrNull()?.hostAddress?.let { lines += "DNS: $it" }
+        return if (lines.isEmpty()) "Connected to Wi-Fi, but details aren’t available (check Location is on for Wi-Fi details)." else lines.joinToString(". ") + "."
+    }
+
     /* ------------------------------------------------------------------ Cast: devices on your Wi-Fi */
 
     private fun routes(c: Context): List<MediaRouter.RouteInfo> {
@@ -151,6 +223,8 @@ object Swarm {
         "list_bt" -> bluetoothDevices(c)
         "list_cast" -> castDevices(c)
         "bt" -> bluetoothMany(c, a.optString("who"), a.optBoolean("on", true))
+        "bt_info" -> bluetoothInfo(c, a.optString("who"))
+        "wifi_info" -> wifiInfo(c)
         "cast" -> castMany(c, a.optString("who"), a.optBoolean("on", true))
         "many" -> {
             val arr = a.optJSONArray("names") ?: JSONArray()
@@ -166,6 +240,8 @@ object SwarmCmd {
     private fun r(s: String) = Regex(s, I)
     private val listBt = r("\\blist (?:my )?(?:paired |bluetooth )?(?:bluetooth )?devices\\b|\\bwhat(?:'s| is) (?:paired|connected)\\b")
     private val listCast = r("\\blist (?:cast|chromecast) devices\\b|\\bwhat can i cast to\\b")
+    private val btInfo = r("\\b(?:device info|info(?:rmation)? (?:on|about)|tell me about|what do you know about)\\s+(?:this|it|my\\s+(.+?)|the\\s+(.+?))\\s*$")
+    private val wifiInfo = r("\\b(?:wi-?fi (?:info(?:rmation)?|details)|what network am i on|network info(?:rmation)?)\\b")
     private val btConnect = r("\\bconnect\\s+(?:to\\s+)?(?:my\\s+)?(.+?)(?:\\s+(?:together|at once))?$")
     private val btDisconnect = r("\\bdisconnect\\s+(?:my\\s+)?(.+?)(?:\\s+(?:together|at once))?$")
     private val castTo = r("\\bcast\\s+(?:this|it|music|audio)?\\s*to\\s+(.+)$")
@@ -182,6 +258,8 @@ object SwarmCmd {
         val t = text.trim().trimEnd('.', '!', '?')
         if (listBt.containsMatchIn(t)) return plan("list_bt")
         if (listCast.containsMatchIn(t)) return plan("list_cast")
+        if (wifiInfo.containsMatchIn(t)) return plan("wifi_info")
+        btInfo.find(t)?.let { m -> return plan("bt_info", "who" to (m.groupValues[1].ifBlank { m.groupValues[2] })) }
         stopCast.find(t)?.let { return plan("cast", "who" to (it.groupValues[1].ifBlank { "all" }), "on" to false) }
         castTo.find(t)?.let { return plan("cast", "who" to it.groupValues[1], "on" to true) }
         // Bluetooth connect/disconnect only when it names a device-ish word, so it doesn't swallow "connect to the internet".

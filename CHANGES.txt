@@ -31,3 +31,20 @@ NEW      Lab.kt        simulate (AI what-if), self test, scan object (photo/scre
 CHANGED  CallAwareness.kt bestLocation() / placeName() are public   Proactive.kt saverOn() public, tick also runs Lab.watch + Lab.tripTick
 CHANGED  Friday.kt     problemsNow()   Assistant.kt  LabCmd voice command, action "lab"
 NOT built on purpose: tracking other people.
+
+SWARM (added): special 10D, controlling many systems at once — your own devices only, never a hacked target
+NEW      Swarm.kt   lists your paired Bluetooth devices and the cast devices on your Wi-Fi; connects/disconnects several Bluetooth
+                    devices together (earbuds, car, watch...); routes audio to a cast device (Android sends to one at a time,
+                    so the rest are named and you switch to them the same way); "turn on wifi and bluetooth" across several radios at once.
+                    Voice: "list my bluetooth devices", "connect my earbuds and my car", "disconnect everything",
+                    "cast to the living room", "stop casting", "turn on wifi and bluetooth"
+CHANGED  Assistant.kt  SwarmCmd voice command, action "swarm"
+Needs BLUETOOTH_CONNECT granted on Android 12+ (already in the manifest; grant it on the phone).
+Not built, on purpose: controlling a device you did not pair, sign into, or that did not answer its own cast advertisement — that is hacking, military or otherwise, and is out of scope.
+
+DEVICE INFO (added to Swarm.kt): ask what is known about a device you are connected to
+NEW   bluetoothInfo(): name, address, type, connected state, bond state, and battery level if the device reports it, for a
+      paired Bluetooth device, or whichever one is connected right now if you just say "this"
+NEW   wifiInfo(): the Wi-Fi network name, signal strength, link speed, band, and this phone's own IP and DNS
+      Voice: "tell me about my earbuds", "device info", "what do you know about this", "wifi info", "what network am I on"
+Only reads what Android itself already knows from pairing or connecting; nothing is queried from a device you have not connected to.
