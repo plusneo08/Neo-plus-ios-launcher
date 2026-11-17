@@ -79,6 +79,8 @@ object Proactive {
         try { messages(c) } catch (e: Throwable) { }
         try { habits(c) } catch (e: Throwable) { }
         try { Friday.watch(c) } catch (e: Throwable) { }
+        try { Lab.watch(c) } catch (e: Throwable) { }
+        try { Lab.tripTick(c) } catch (e: Throwable) { }
     }
 
     /* ------------------------------------------------------------------ delivery */
@@ -161,7 +163,7 @@ object Proactive {
     }
 
     /** Level 1 (act silently): battery saver is harmless, and only works when WRITE_SECURE_SETTINGS was granted (grant-all.sh). */
-    private fun saverOn(c: Context): Boolean = try {
+    fun saverOn(c: Context): Boolean = try {
         Settings.Global.putInt(c.contentResolver, "low_power", 1)
         Settings.Global.getInt(c.contentResolver, "low_power", 0) == 1
     } catch (e: Throwable) { false }

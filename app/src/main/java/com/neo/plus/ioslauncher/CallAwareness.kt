@@ -135,7 +135,7 @@ object CallAwareness {
     /* ------------------------------------------------------------------ */
 
     @Suppress("MissingPermission")
-    private fun bestLocation(ctx: Context): Location? {
+    fun bestLocation(ctx: Context): Location? {
         if (!hasLocation(ctx)) return null
         val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         var best: Location? = null
@@ -169,7 +169,7 @@ object CallAwareness {
     }
 
     @Suppress("DEPRECATION")
-    private fun placeName(ctx: Context, l: Location): String = try {
+    fun placeName(ctx: Context, l: Location): String = try {
         val a = Geocoder(ctx, Locale.getDefault()).getFromLocation(l.latitude, l.longitude, 1)?.firstOrNull()
         if (a == null) "" else listOfNotNull(a.thoroughfare, a.subLocality, a.locality).distinct().joinToString(", ")
     } catch (e: Exception) { "" }

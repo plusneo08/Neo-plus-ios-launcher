@@ -74,6 +74,9 @@ object Friday {
         return out
     }
 
+    /** What looks wrong right now (used by the repair routine). */
+    fun problemsNow(c: Context): List<String> = problems(vitals(c))
+
     fun status(c: Context): String {
         val v = vitals(c)
         val bat = if (v.pct >= 0) "Battery ${v.pct}%" + (if (v.charging) ", charging" else "") + ", ${"%.0f".format(v.tempC)} degrees" else "Battery unknown"

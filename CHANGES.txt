@@ -21,3 +21,13 @@ NEW      Friday.kt     status report / diagnostics, system scan (with what to do
                        Voice: "status report", "diagnostics", "system scan" / "Friday, scan", "brief me", "morning briefing", "what did I miss"
 CHANGED  Proactive.kt  tell() and line() are public; the 60 s tick also runs Friday.watch
 CHANGED  Assistant.kt  FridayCmd voice command, action "friday"
+
+LAB (added): design 3B+3D, suit 4D+4E, information 5B, special 10C
+NEW      Lab.kt        simulate (AI what-if), self test, scan object (photo/screen -> AI), threat scan, reroute/restore power, repairs,
+                       where am I / save a spot / find it / trip recording (your own phone only), fleet (up to 9 tasks side by side)
+                       Voice: "simulate ...", "run a self test", "scan this object" / "scan the photo" / "scan the screen", "threat scan",
+                       "reroute power" / "restore power", "run repairs", "where am I", "I parked here", "where is my car",
+                       "start my trip" / "stop my trip", "run these at once: a; b; c", "fleet status", "stop the fleet"
+CHANGED  CallAwareness.kt bestLocation() / placeName() are public   Proactive.kt saverOn() public, tick also runs Lab.watch + Lab.tripTick
+CHANGED  Friday.kt     problemsNow()   Assistant.kt  LabCmd voice command, action "lab"
+NOT built on purpose: tracking other people.
