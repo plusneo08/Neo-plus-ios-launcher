@@ -83,6 +83,7 @@ object Proactive {
         try { Lab.tripTick(c) } catch (e: Throwable) { }
         try { DeviceLink.start(c) } catch (e: Throwable) { }
         try { Watch.tick(c) } catch (e: Throwable) { }
+        try { Diagnose.tick(c) } catch (e: Throwable) { }
     }
 
     /* ------------------------------------------------------------------ delivery */

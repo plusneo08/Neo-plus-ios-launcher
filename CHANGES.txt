@@ -101,3 +101,23 @@ NeoNotificationService.instance, AppEntry (pkg, shownLabel), AppAccess.allowed /
 Not built, on purpose: full OAuth sign-in (a token you give is stored on the phone; a 401 / 403 marks the connector "needs sign-in"),
 sending / paying / ordering for you through a connector (a ride link only opens the app with the address filled in), watching other people's phones.
 Connector links for Uber, Lyft, Spotify etc. are starting points; if an app ignores a link, the taps path takes over.
+
+DIAGNOSE (added): find out why YOUR OWN website / app back-end is down, slow or broken, and watch it
+NEW      Diagnose.kt   check: this phone's internet, DNS, TLS certificate (expiry, wrong name, untrusted), HTTP status with a plain cause for
+                       400 / 403 / 404 / 429 / 500 / 502 / 503 / 504, redirect chain and loops, time to first byte, error-page text, default
+                       server pages, near-empty pages, up to 8 of the page's own scripts / stylesheets (a missing one is the usual cause of a
+                       blank page), plain-http resources on an https page, and what changed since the last good check (title, size).
+                       Each finding comes with the likely cause and what to check.
+                       add / remove / list / history / baseline: watches saved sites every 2-60 min (8 sites at most); tells you when one goes
+                       down (after 2 failed checks in a row, never while this phone is offline), comes back, stays slow (3 slow checks), or its
+                       certificate has 14 days or less left. Alerts go through Proactive.tell, so quiet hours, sleep mode and calls apply.
+                       Voice: "what's wrong with example.com", "diagnose example.com", "is example.com down", "check example.com",
+                       "monitor my site example.com", "stop monitoring example.com", "uptime of example.com", "list my sites"
+CHANGED  Assistant.kt  action "diagnose" (info action), DiagnoseCmd in the voice-command chain, prompt catalogue line
+CHANGED  Proactive.kt  60 s tick also runs Diagnose.tick
+Plain GET / HEAD requests only: no login, no POST, no port scanning, nothing changed on the site. A web address that came from text just read
+(message, page, notification) needs your OK first, via Guard. It cannot see errors inside the page's JavaScript or anything behind a login.
+Needs nothing new in the manifest (INTERNET and ACCESS_NETWORK_STATE are already used). Plain http:// addresses also need cleartext traffic allowed
+for that host in your network config, otherwise the result says so.
+Diagnose.kt type-checked with Kotlin 2.0.21 against stand-ins for the Android and org.json classes, and run against a local test server (healthy,
+missing script, 404, 500, redirect loop, slow, empty page, nginx default page, connection refused). The rest of the project is still not compiled here.
