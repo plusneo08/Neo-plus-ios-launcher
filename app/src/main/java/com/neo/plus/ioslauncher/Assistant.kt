@@ -126,7 +126,7 @@ object PhoneActions {
     )
 
     /** Actions that fetch something to tell the user (the note is the answer). */
-    val infoActions = setOf("calendar", "weather", "lookup", "news", "stock", "sports", "read_sms", "call_log", "screen", "read_messages", "read_notifications", "read_app", "last_message", "sleep_mode", "wake_call", "mode", "auto_sleep", "proactive", "friday", "lab", "swarm", "sleep_report", "sleep_voice", "time_lock", "send_money", "money_setup", "web_search", "look", "excel_create", "excel_edit", "excel_read", "compare_files", "word_report", "web_task", "web_batch", "page_source", "file_read", "ui_list", "app_task", "goal", "call_assist", "lock_app", "post_apps", "queue", "approvals", "schedule", "schedules", "report_number")
+    val infoActions = setOf("calendar", "weather", "lookup", "news", "stock", "sports", "read_sms", "call_log", "screen", "read_messages", "read_notifications", "read_app", "last_message", "sleep_mode", "wake_call", "mode", "auto_sleep", "proactive", "friday", "lab", "swarm", "companion", "sleep_report", "sleep_voice", "time_lock", "send_money", "money_setup", "web_search", "look", "excel_create", "excel_edit", "excel_read", "compare_files", "word_report", "web_task", "web_batch", "page_source", "file_read", "ui_list", "app_task", "goal", "call_assist", "lock_app", "post_apps", "queue", "approvals", "schedule", "schedules", "report_number")
 
     /** Every action (chat, orb, agent, scheduler, approvals) shows the HUD from its start until it returns. */
     fun run(ctx: Context, name: String, a: JSONObject, apps: List<AppEntry>): ActionResult {
@@ -518,6 +518,7 @@ object PhoneActions {
             "friday" -> return Friday.handle(ctx, a)
             "lab" -> return Lab.handle(ctx, a)
             "swarm" -> return Swarm.handle(ctx, a)
+            "companion" -> return DeviceLink.handle(ctx, a)
 
             "sleep_voice" -> return SleepMode.setFreeVoice(ctx, a.optBoolean("free", true))
 
@@ -1078,6 +1079,7 @@ object LocalCommands {
         ProactiveCmd.plan(text)?.let { return it }
         LabCmd.plan(text)?.let { return it }
         SwarmCmd.plan(text)?.let { return it }
+        CompanionCmd.plan(text)?.let { return it }
         FridayCmd.plan(text)?.let { return it }
         ModeCmd.plan(text)?.let { return it }
         SleepCmd.plan(text)?.let { return it }

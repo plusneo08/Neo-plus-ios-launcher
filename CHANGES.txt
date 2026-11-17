@@ -48,3 +48,26 @@ NEW   bluetoothInfo(): name, address, type, connected state, bond state, and bat
 NEW   wifiInfo(): the Wi-Fi network name, signal strength, link speed, band, and this phone's own IP and DNS
       Voice: "tell me about my earbuds", "device info", "what do you know about this", "wifi info", "what network am I on"
 Only reads what Android itself already knows from pairing or connecting; nothing is queried from a device you have not connected to.
+
+APP INFO (added to Lab.kt): ask what is known about one of your own apps
+NEW   appInfo(): name, package, version, install date, last-updated date, size on disk, the permissions it was granted,
+      whether it's a system app, and whether it's running right now
+      Voice: "app info for Chrome", "information about the Maps app", "tell me about the Spotify app"
+Reads the same data Settings shows for that app; nothing is requested from the app itself.
+
+DEVICE LINK (added): "send an app like MDM" — honest version, consent on both ends, nothing installs itself
+NEW      DeviceLink.kt     opt-in device sharing between two phones running Neo Plus on the same Wi-Fi:
+                           - "turn on device sharing" (off by default)              - "show my pairing code" (6-digit, 10 min, local network only)
+                           - "pair with code 123456 as Dad's phone"                 - "send Spotify to Dad's phone"
+                           - "list paired devices"                                  - "call this phone Kitchen tablet"
+                           The receiving phone gets a notification: "<name> wants you to install <app>", with Review (opens
+                           that app's Play Store page) and Decline. The other phone's own person still has to tap Install —
+                           nothing is pushed or installed silently. Uses Android's own NSD (NsdManager) for local discovery
+                           and a plain local-network socket; no internet server, no cloud account.
+NEW      CompanionReceiver  dismisses the request notification on Decline
+CHANGED  Assistant.kt       CompanionCmd voice command, action "companion"
+CHANGED  Proactive.kt       tick also calls DeviceLink.start (starts the local listener only while device sharing is on)
+CHANGED  AndroidManifest.xml  added CHANGE_WIFI_MULTICAST_STATE permission, registered CompanionReceiver
+On purpose, not built: a silent remote install. Real MDM can do that only because the receiving device is enrolled in
+Google's own Android Enterprise device management, a separate setup this app does not perform; faking a silent install
+without that is what malware does, so every request still needs the other phone's own person to tap Install.

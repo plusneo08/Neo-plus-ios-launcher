@@ -81,6 +81,7 @@ object Proactive {
         try { Friday.watch(c) } catch (e: Throwable) { }
         try { Lab.watch(c) } catch (e: Throwable) { }
         try { Lab.tripTick(c) } catch (e: Throwable) { }
+        try { DeviceLink.start(c) } catch (e: Throwable) { }
     }
 
     /* ------------------------------------------------------------------ delivery */

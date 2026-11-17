@@ -8,6 +8,7 @@ import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -129,6 +130,51 @@ object Lab {
             "Examine the object in this picture.", img)
     }
 
+    /* ------------------------------------------------------------------ app info */
+
+    private fun fmtSize(b: Long): String = when {
+        b >= 1_073_741_824L -> "%.1f GB".format(Locale.US, b / 1_073_741_824f)
+        b >= 1_048_576L -> "%.0f MB".format(Locale.US, b / 1_048_576f)
+        else -> "%.0f KB".format(Locale.US, b / 1024f)
+    }
+
+    private fun fmtDate(t: Long): String {
+        val cal = Calendar.getInstance().apply { timeInMillis = t }
+        return "%04d-%02d-%02d".format(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH))
+    }
+
+    private fun isRunning(c: Context, pkg: String): Boolean = try {
+        val am = c.getSystemService(ActivityManager::class.java)
+        am.runningAppProcesses?.any { it.processName == pkg || (it.pkgList?.contains(pkg) == true) } == true
+    } catch (e: Throwable) { false }
+
+    /** Everything this phone knows about one of your own apps, by name: version, size, install/update dates, permissions
+     *  it was granted, whether it's a system app, and whether it's running right now. Reads the same data Settings shows. */
+    fun appInfo(c: Context, query: String): String {
+        val q = query.trim()
+        if (q.isBlank()) return "Which app? For example: app info for Chrome."
+        val app = OrbBridge.apps().findBest(q) ?: return "No app called “$q”."
+        val pm = c.packageManager
+        val lines = ArrayList<String>()
+        lines += "Name: ${app.label}"
+        lines += "Package: ${app.realPkg}"
+        try {
+            val pkgInfo = pm.getPackageInfo(app.realPkg, PackageManager.GET_PERMISSIONS)
+            val versionName = pkgInfo.versionName ?: "unknown"
+            lines += "Version: $versionName"
+            lines += "Installed: " + fmtDate(pkgInfo.firstInstallTime)
+            if (pkgInfo.lastUpdateTime != pkgInfo.firstInstallTime) lines += "Last updated: " + fmtDate(pkgInfo.lastUpdateTime)
+            try { lines += "Size on disk: " + fmtSize(java.io.File(pkgInfo.applicationInfo!!.sourceDir).length()) } catch (e: Throwable) { }
+            val flag = android.content.pm.PackageInfo.REQUESTED_PERMISSION_GRANTED
+            val granted = pkgInfo.requestedPermissions?.filterIndexed { i, _ -> (pkgInfo.requestedPermissionsFlags?.getOrNull(i) ?: 0) and flag != 0 }
+                ?.map { it.substringAfterLast('.') }?.distinct().orEmpty()
+            if (granted.isNotEmpty()) lines += "Permissions granted: " + granted.take(8).joinToString(", ")
+        } catch (e: Exception) { lines += "Could not read its version or permissions." }
+        lines += "System app: " + (if (app.system) "yes" else "no")
+        lines += "Running now: " + (if (isRunning(c, app.realPkg)) "yes" else "no")
+        return lines.joinToString(". ") + "."
+    }
+
     /* ------------------------------------------------------------------ 4D threat scan */
 
     private fun label(pm: PackageManager, pkg: String): String = try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() } catch (e: Exception) { pkg }
@@ -136,7 +182,7 @@ object Lab {
     private val stores = setOf("com.android.vending", "com.sec.android.app.samsungapps", "com.amazon.venezia", "com.huawei.appmarket", "com.xiaomi.mipicks", "com.heytap.market", "com.vivo.appstore", "org.fdroid.fdroid", "com.aurora.store")
 
     private fun installer(pm: PackageManager, pkg: String): String? = try {
-        if (Build.VERSION.SDK_INT >= 30) pm.getInstallSourceInfo(pkg).installingPackage else @Suppress("DEPRECATION") pm.getInstallerPackageName(pkg)
+        if (Build.VERSION.SDK_INT >= 30) pm.getInstallSourceInfo(pkg).installingPackageName else @Suppress("DEPRECATION") pm.getInstallerPackageName(pkg)
     } catch (e: Exception) { null }
 
     fun threatScan(c: Context): String {
@@ -353,6 +399,7 @@ object Lab {
         "restore" -> restorePower(c)
         "repair" -> repair(c)
         "where" -> whereAmI(c)
+        "app_info" -> appInfo(c, a.optString("text"))
         "park" -> saveSpot(c, a.optString("label"))
         "find" -> findSpot(c, a.optString("label"))
         "trip" -> trip(c, a.optString("op"))
@@ -375,6 +422,9 @@ object LabCmd {
     private val reroute = r("\\bre-?route (?:the )?power\\b|\\bextend (?:the )?battery\\b|\\bsave power\\b")
     private val restore = r("\\brestore (?:the )?power\\b")
     private val repair = r("\\brun (?:the )?repairs?\\b|\\brepair (?:the )?(?:systems?|phone|yourself)\\b|\\boptimi[sz]e (?:the )?phone\\b|\\bclean up the phone\\b")
+    // "app info for Chrome" needs no trailing word; "tell me about X app" / "what do you know about X app" needs the
+    // trailing "app" so it doesn't swallow "tell me about my earbuds" (that's a Bluetooth device, handled by SwarmCmd).
+    private val appInfo = r("^(?:app info(?: for| on| about)?|info(?:rmation)? (?:on|about|for) the\\s+)\\s*(?:the\\s+)?(.+?)(?:\\s+app)?$|^(?:tell me about|what do you know about)\\s+(?:the\\s+)?(.+?)\\s+app$")
     private val where = r("\\bwhere am i\\b")
     private val park = r("\\bi (?:just )?parked(?: here)?\\b|\\b(?:remember|save|mark) (?:where i parked|this spot|my car(?: here)?)\\b")
     private val parkGeneric = r("\\bremember (?:that )?(?:my )?([a-z ]{2,20}?) (?:is |are )?here\\b")
@@ -400,6 +450,7 @@ object LabCmd {
             val parts = m.groupValues[1].split(Regex("[;\\n]|\\band also\\b", I)).map { it.trim() }.filter { it.isNotEmpty() }
             if (parts.size >= 2) return plan("fleet", "tasks" to JSONArray(parts))
         }
+        appInfo.find(t)?.let { m -> val name = m.groupValues.drop(1).firstOrNull { g -> g.isNotBlank() } ?: ""; return plan("app_info", "text" to name) }
         if (threats.containsMatchIn(t)) return plan("threats")
         if (selftest.containsMatchIn(t)) return plan("selftest")
         if (scanScreen.containsMatchIn(t)) return plan("scan_object", "source" to "screen")
