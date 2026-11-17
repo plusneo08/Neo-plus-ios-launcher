@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Looper
+import android.os.PowerManager
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.ConnectException
@@ -92,6 +93,17 @@ object Diagnose {
         t.start()
         try { t.join(60_000) } catch (e: InterruptedException) { }
         return out.get() ?: "The check is still running. Ask again in a moment."
+    }
+
+    /** Keeps the CPU awake for one probe (60 s at most, released at once), so checks still run with the screen off. */
+    private fun <T> awake(c: Context, block: () -> T): T {
+        var wl: PowerManager.WakeLock? = null
+        try {
+            wl = c.applicationContext.getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "neoplus:diagnose")
+            wl.setReferenceCounted(false)
+            wl.acquire(60_000L)
+        } catch (e: Throwable) { }
+        try { return block() } finally { try { wl?.let { if (it.isHeld) it.release() } } catch (e: Throwable) { } }
     }
 
     /* ------------------------------------------------------------------ one probe */
@@ -445,7 +457,7 @@ object Diagnose {
         if (site == null && Guard.tainted() && !Guard.ok(a)) {
             return Guard.hold("diagnose", a, "check ${hostOf(url)} (the address came from text I just read, not from you)")
         }
-        return report(probe(c, url, true), site)
+        return report(awake(c) { probe(c, url, true) }, site)
     }
 
     private fun add(c: Context, a: JSONObject, raw: String): String {
@@ -457,7 +469,7 @@ object Diagnose {
         }
         val every = a.optInt("every", 5).coerceIn(2, 60)
         val name = a.optString("name").ifBlank { host }
-        val p = probe(c, url, false)
+        val p = awake(c) { probe(c, url, false) }
         val up = isUp(p)
         synchronized(this) {
             val arr = load(c)
@@ -493,7 +505,7 @@ object Diagnose {
     private fun baseline(c: Context, raw: String): String {
         val (url, site) = resolve(c, raw) ?: return "Which site? Say “monitor ${raw.ifBlank { "example.com" }}” first."
         if (site == null) return "I am not watching that site yet. Say “monitor $raw” first."
-        val p = probe(c, url, false)
+        val p = awake(c) { probe(c, url, false) }
         if (!isUp(p)) return "It does not look healthy right now (" + reason(p) + "), so I did not save this as the normal page."
         synchronized(this) {
             val arr = load(c)
@@ -577,7 +589,7 @@ object Diagnose {
         }
         for (host in hosts) {
             val site = synchronized(this) { val a = load(c); val i = find(a, host); if (i >= 0) a.getJSONObject(i) else null } ?: continue
-            val p = probe(c, site.optString("url"), false)
+            val p = awake(c) { probe(c, site.optString("url"), false) }
             val now = System.currentTimeMillis()
             val alerts = ArrayList<Pair<String, Boolean>>()
             synchronized(this) {

@@ -121,3 +121,12 @@ Needs nothing new in the manifest (INTERNET and ACCESS_NETWORK_STATE are already
 for that host in your network config, otherwise the result says so.
 Diagnose.kt type-checked with Kotlin 2.0.21 against stand-ins for the Android and org.json classes, and run against a local test server (healthy,
 missing script, 404, 500, redirect loop, slow, empty page, nginx default page, connection refused). The rest of the project is still not compiled here.
+
+BACKGROUND WORK (added): tasks keep going while you use another app, and without covering it
+CHANGED  Diagnose.kt    each site check holds a CPU wake lock for its own duration only (60 s at most, released straight after), so monitoring still runs with the screen off
+CHANGED  HudOverlay.kt  the full-screen HUD is no longer drawn over another app: after another app has been in front for about 0.7 s the HUD is removed
+                        and the ongoing "working" notification (TaskService) carries the status. It comes back on the home screen, inside Neo Plus, or at once
+                        when a task is waiting for you (a CAPTCHA or a code). Needs accessibility on to know which app is in front; without it the HUD behaves as before.
+Already true: TaskService keeps the app alive with a foreground service and a wake lock while a task runs, so non-screen work (website jobs, files, network, chat
+requests, diagnose) carries on in the background. Tasks that TAP or TYPE inside apps (app task, gestures, connector tap paths) act on whatever is on screen, so they
+cannot safely run behind another app; pausing them when you leave needs a hook in AppTask / PhoneActions, which are not in this zip.

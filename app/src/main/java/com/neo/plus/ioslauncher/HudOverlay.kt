@@ -90,6 +90,9 @@ object HudOverlay {
         if (!enabled(c)) { remove(); ticking = false; return }
         if (busy()) {
             idleSince = 0L
+            // The user opened another app: the HUD must not paint over it. The "working" notification stays; the HUD comes back
+            // on the home screen, inside Neo Plus, or at once when a task is waiting for the user.
+            if (userElsewhere() && TaskLog.visible().none { it.active && it.waiting }) { remove(); return }
             if (view == null) add(c)
             val v = view ?: return
             val active = TaskLog.visible().filter { it.active }
@@ -116,6 +119,21 @@ object HudOverlay {
             if (idleSince == 0L) idleSince = SystemClock.uptimeMillis()
             if (SystemClock.uptimeMillis() - idleSince > 1200) { remove(); ticking = false; main.removeCallbacks(tick) }
         }
+    }
+
+    private var fgCheckedAt = 0L
+    private var awaySince = 0L
+    private var away = false
+
+    /** True once another app (not Neo Plus, the system bars or a launcher) has been in front for about 0.7 s. Looked at 2-3 times a second. */
+    private fun userElsewhere(): Boolean {
+        val now = SystemClock.uptimeMillis()
+        if (now - fgCheckedAt < 400) return away
+        fgCheckedAt = now
+        val pkg = try { Verify.fg() } catch (e: Throwable) { null }
+        val other = pkg != null && pkg != ctx?.packageName && pkg != "com.android.systemui" && !pkg.contains("launcher", ignoreCase = true)
+        if (other) { if (awaySince == 0L) awaySince = now; away = now - awaySince > 700 } else { awaySince = 0L; away = false }
+        return away
     }
 
     private fun add(c: Context) {
