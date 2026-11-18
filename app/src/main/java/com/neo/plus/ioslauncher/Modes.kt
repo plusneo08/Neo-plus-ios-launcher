@@ -105,7 +105,7 @@ object Modes {
         val msg = if (m.key == "sleep") r
         else m.label + " is on. " + r.removePrefix("Okay. ").replace(" and call you ", " and phone you with a summary at ")
         return msg + if (why == null) " Calls: I’ll answer them and talk to the caller for you."
-        else " Calls: I can’t talk to callers yet ($why), so they get the short greeting."
+        else " Calls: I can’t talk to callers yet ($why), so they are only announced to you."
     }
 
     fun status(ctx: Context): String {

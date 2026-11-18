@@ -108,11 +108,21 @@ object CallAssist {
         // A rule for this exact person wins; otherwise a call on the assistant's own SIM follows the line rule
         val specific = rules(app).any { r -> r.first.isNotBlank() && r.first != "unknown" && r.first != "everyone" &&
             ((name.isNotBlank() && name.contains(r.first, ignoreCase = true)) || sameNumber(r.first, number)) }
+        // A rule "conversation" for this caller, or any mode being on (sleep, work, meeting, ...) with no other rule for the call:
+        // answer and talk to the caller. A rule for a person, "decline" or "greeting" etc. always wins over the mode.
+        val convRule = picked.first == "conversation" && !(onLine && !specific)
+        val modeTalk = Modes.current(app) != null && picked.first == "announce" && !onLine
+        if ((convRule || modeTalk) && CallConversation.cannotRun(app) == null) {
+            SleepHooks.note(app, "NOTE", "Phone call", who, "Incoming call", "I answered and talked to the caller")
+            val r = CallConversation.start(app, number, name, if (convRule) picked.second else "")
+            notify(app, "Answered a call", "$who: $r", false)
+            return
+        }
         val (action, text) = if (onLine && !specific) AssistantLine.lineAction(app) else picked
         val via = if (onLine) " on your assistant line (${AssistantLine.label(app, slot)})" else ""
         SleepHooks.note(app, "NOTE", "Phone call" + (if (onLine) " (assistant line)" else ""), who, "Incoming call",
             when (action) { "decline" -> "I declined it"; "decline_text" -> "I declined it and texted them"; "speaker" -> "I answered on speaker"
-                "greeting" -> "I answered and played the greeting"; else -> "I announced it, it was not answered by me" })
+                "greeting", "conversation" -> "I answered and played the greeting"; else -> "I announced it, it was not answered by me" })
         when (action) {
             "decline" -> { endCall(app); notify(app, "Declined a call", "Declined the call from $who", false) }
             "decline_text" -> {
@@ -123,7 +133,7 @@ object CallAssist {
                 val r = answer(app, speaker = true)
                 notify(app, "Answered on speaker", "$who: $r", false)
             }
-            "greeting" -> {
+            "greeting", "conversation" -> {   // "conversation" lands here when it cannot run (permissions, no key)
                 val r = answerWithGreeting(app, text)
                 notify(app, "Answered with a greeting", "$who: $r", false)
             }
@@ -238,6 +248,8 @@ object CallAssist {
             "decline" -> if (!ringing) "No call is ringing" else { endCall(app); "Declined" }
             "decline_text" -> if (!ringing) "No call is ringing" else declineWithText(app, ringingNumber, ringingName, a.optString("text"))
             "owner" -> { prefs(app).edit().putString("owner", a.optString("name").trim().take(40)).apply(); "The greeting will say it is ${a.optString("name").trim()}’s assistant" }
+            "conversation_setup" -> CallConversation.configure(app, a)
+            "conversation_log" -> CallConversation.recent(app)
             "line" -> AssistantLine.configure(app, a)
             "line_log" -> AssistantLine.recent(app)
             "on" -> { prefs(app).edit().putBoolean("on", true).apply(); "Call assistant is on" }
@@ -247,8 +259,8 @@ object CallAssist {
                 val action = a.optString("action").trim().lowercase()
                 val rs = rules(app).filter { !it.first.equals(who, true) }
                 if (action == "remove" || action == "announce") { saveRules(app, rs); return "Calls from $who: just announced" }
-                if (action !in listOf("decline", "decline_text", "speaker", "greeting")) return "Choose: announce, decline, decline_text, speaker or greeting"
-                if ((action == "decline" || action == "decline_text" || action == "greeting" || action == "speaker") && !granted(app, Manifest.permission.ANSWER_PHONE_CALLS)) return NEED_PERM
+                if (action !in listOf("decline", "decline_text", "speaker", "greeting", "conversation")) return "Choose: announce, decline, decline_text, speaker, greeting or conversation"
+                if ((action == "decline" || action == "decline_text" || action == "greeting" || action == "conversation" || action == "speaker") && !granted(app, Manifest.permission.ANSWER_PHONE_CALLS)) return NEED_PERM
                 saveRules(app, rs + Triple(who, action, a.optString("text").trim()))
                 "Calls from $who: $action"
             }
@@ -277,7 +289,7 @@ class CallStateReceiver : BroadcastReceiver() {
                     try { pending.finish() } catch (e: Exception) { }
                 }.start()
             }
-            TelephonyManager.EXTRA_STATE_IDLE -> CallAssist.onCallEnded(app)
+            TelephonyManager.EXTRA_STATE_IDLE -> { CallAssist.onCallEnded(app); CallConversation.onIdle(app) }
             else -> CallAssist.onCallEnded(app) // answered: the buttons are no longer needed
         }
     }
