@@ -283,6 +283,7 @@ Never give personal details, addresses, account, PIN, OTP or password informatio
 If you are unsure, take a message.
 What to do: ${brief.ifBlank { "Take a polite message." }}
 Info you may share: ${info.ifBlank { "none" }}
+${Skills.promptFor(ctx, "calls")}
 When the caller says goodbye, has what they need, or the message is complete, end the call politely.
 Answer in EXACTLY this format, three lines:
 LANG: <BCP-47 tag of the caller's language, for example en-US, sw-TZ, fr-FR, pt-PT>

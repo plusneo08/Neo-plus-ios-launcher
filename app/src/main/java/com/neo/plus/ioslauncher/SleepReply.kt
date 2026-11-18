@@ -42,10 +42,11 @@ Emotional or personal topics (a relationship, someone upset, sad or angry, an ar
     /** The same rules, but saying what Neo is really doing when it is not sleep (e.g. "in a meeting"). */
     internal fun SleepMode.systemFor(ctx: Context): String {
         val act = prefs(ctx).getString("activity", "").orEmpty().trim()
-        if (act.isEmpty()) return SLEEP_SYSTEM
+        val extra = Skills.promptFor(ctx, "messages")
+        if (act.isEmpty()) return SLEEP_SYSTEM + extra
         return SLEEP_SYSTEM.replace("Neo is asleep", "Neo is $act").replace("he's asleep right now", "he's $act right now")
             .replace("when he wakes up", "when he's free") +
-            "\nNeo is NOT asleep: he is currently $act. Say that, never say he is asleep, and never invent more detail about what he is doing."
+            "\nNeo is NOT asleep: he is currently $act. Say that, never say he is asleep, and never invent more detail about what he is doing." + extra
     }
 
     internal fun SleepMode.handle(ctx: Context, key: String, pkg: String, app: String, title: String, text: String, group: Boolean, category: String, history: List<String>) {
