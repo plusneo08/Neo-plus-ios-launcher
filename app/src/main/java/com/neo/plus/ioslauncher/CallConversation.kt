@@ -32,7 +32,7 @@ import java.util.concurrent.Executors
  * Limits (Android, not this code): a normal phone call can't be tapped, so the caller's voice reaches the recogniser
  * through the speaker and the microphone, and the reply reaches the caller the same way. On some phones the system
  * silences the microphone for apps during a call; the summary then says "heard nothing" so you know.
- * The assistant always says at the start that it is an AI assistant. Audio is never recorded, only a text transcript
+ * The default opening has no introduction (a custom opening can add one); if the caller asks, it says it is an AI assistant. Audio is never recorded, only a text transcript
  * is kept (last 10 calls, on the phone only).
  */
 object CallConversation {
@@ -128,11 +128,8 @@ object CallConversation {
     private fun ownerName(ctx: Context) = prefs(ctx).getString("owner", "").orEmpty().ifBlank { "the owner" }
 
     private fun opening(ctx: Context, custom: String): String {
-        if (custom.isNotBlank()) return custom   // keep the words “AI assistant” in a custom opening
-        val o = ownerName(ctx)
-        val m = Modes.current(ctx)
-        val state = if (m == null) "can’t take your call right now" else "is ${m.situation} right now"
-        return "Hello, this is the AI assistant of $o. $o $state, but I can take a message or help with a few questions. How can I help you?"
+        if (custom.isNotBlank()) return custom
+        return "Hello, how can I help you?"
     }
 
     /* ---------------- speaking and listening ---------------- */
@@ -276,7 +273,7 @@ object CallConversation {
         val situation = if (mode == null) "" else
             "Right now $owner is ${mode.situation}" + (if (until.isNotEmpty()) " and will be free around $until" else "") +
             ". You may say that, but never add any more detail about what $owner is doing or where $owner is.\n"
-        val system = """You are the AI phone assistant of $owner. You are answering a live phone call that $owner did not pick up. The caller hears you through the phone's speaker. You already said hello and that you are an AI assistant.
+        val system = """You are the AI phone assistant of $owner. You are answering a live phone call that $owner did not pick up. The caller hears you through the phone's speaker. You already said hello; do not introduce yourself again.
 Goals: find out who is calling and why, take a clear message, answer simple questions using ONLY the info below, and say $owner will call back or reply when you cannot help.
 ${situation}Speak the way $owner speaks: ${style.ifBlank { "warm, polite and short" }}.
 LANGUAGE: always answer in the language the caller is speaking right now (English, Chichewa, Swahili, French, Portuguese, or any other). If the caller changes language, change with them.
