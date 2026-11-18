@@ -32,7 +32,7 @@ import java.util.concurrent.Executors
 
 private const val SLEEP_REPORT_SYSTEM = """You are Neo Plus Assistant, speaking to Neo on a phone call right after he woke up. Tell him what happened during the night.
 Sound like a real person chatting on the phone, not like someone reading a report: warm, relaxed, contractions ("you've", "I didn't"), short and medium sentences mixed, small natural connectors like "so", "also", "and one more thing". Plain text only, no markdown, no lists. Say times the way people say them out loud ("around two in the morning"), never as digits like 02:15. Speak English unless Neo's messages show he wants otherwise.
-Start with "Good morning." Then cover, in this order: who wrote to him and what about, and what you answered; then messages that mention money: say only who wrote and on which app, that you did NOT answer them and they are waiting for him, and never read out amounts, numbers or account details; then other notifications grouped by app with counts; then group chats you left alone.
+Start with "Good morning." Then cover, in this order: who wrote to him and what about, and what you answered; then other notifications grouped by app with counts; then group chats you left alone.
 Phone calls, goal progress (app starts with Goal), texts on the assistant line and switched-off permissions also count: mention each in plain words, calls and texts on the assistant line by who and what you did. Skip a part when it is empty. If nothing happened say it was a quiet night. Never read out codes or passwords. Do not invent anything. Mention every item in the log, none may be skipped; a line like "You picked up and unlocked the phone" means he was awake for a moment in the night, say when. Keep it under about 200 words unless a lot happened. Do not say goodbye or have a good day: the call carries on and a question to him is added after your summary."""
 
     fun SleepMode.report(ctx: Context): String {
@@ -60,7 +60,7 @@ Phone calls, goal progress (app starts with Goal), texts on the assistant line a
         val text = try {
             if (key.isBlank()) throw Exception("no key")
             Llm.chat(Provider.GEMINI, key, GeminiModels.FLASH, SLEEP_REPORT_SYSTEM,
-                listOf(true to ("Kinds: REPLIED=I answered, MONEY=money message not answered, MSG=message not answered, GROUP=group chat not answered, AUTO=automated message, NOTE=other notification, FAILED=could not answer.\n\n" + sb)), null, false).trim()
+                listOf(true to ("Kinds: REPLIED=I answered, MSG=message not answered, GROUP=group chat not answered, AUTO=automated message, NOTE=other notification, FAILED=could not answer.\n\n" + sb)), null, false).trim()
         } catch (e: Exception) { fallbackReport(arr) }
         val full = withMorningAsk(app, text)
         prefs(app).edit().putString("report", full).apply()
@@ -83,19 +83,16 @@ Phone calls, goal progress (app starts with Goal), texts on the assistant line a
 
     internal fun SleepMode.fallbackReport(arr: JSONArray): String {
         val c = HashMap<String, Int>()
-        val money = LinkedHashSet<String>()
         val people = LinkedHashSet<String>()
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
             val k = o.optString("k")
             c[k] = (c[k] ?: 0) + 1
-            if (k == "MONEY") money.add(o.optString("who") + " on " + o.optString("app"))
             if (k == "REPLIED" || k == "MSG") people.add(o.optString("who"))
         }
         val parts = ArrayList<String>()
         parts.add("Good morning.")
         if (people.isNotEmpty()) parts.add("${people.size} people wrote to you: ${people.joinToString(", ")}. I answered ${c["REPLIED"] ?: 0} of them.")
-        if (money.isNotEmpty()) parts.add("There are money messages from ${money.joinToString(", ")}. I did not answer them, they are waiting for you.")
         if ((c["NOTE"] ?: 0) > 0) parts.add("You also had ${c["NOTE"]} other notifications.")
         if ((c["GROUP"] ?: 0) > 0) parts.add("${c["GROUP"]} group messages were left alone.")
         return parts.joinToString(" ")

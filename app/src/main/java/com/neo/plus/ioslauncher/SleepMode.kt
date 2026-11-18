@@ -29,8 +29,7 @@ import java.util.Locale
 import java.util.concurrent.Executors
 
 /**
- * Sleep mode. While it is on, chat messages are answered for the user (saying that it is an assistant), money messages
- * are never answered, and everything is written to a log. At the wake-up time the phone "rings" with an incoming call
+ * Sleep mode. While it is on, chat messages are answered for the user and everything is written to a log. At the wake-up time the phone "rings" with an incoming call
  * from the assistant, which reads the night summary out loud when answered.
  */
 object SleepMode {
@@ -132,8 +131,8 @@ object SleepMode {
         val warn = (if (!Settings.canDrawOverlays(app)) " To make sure the call screen opens by itself, allow Display over other apps for Neo Plus." else "") +
             (if (battery) " Please allow “No restrictions” for Neo Plus so the phone does not stop me while you sleep." else "")
         if (callOnly) return "Okay, I’ll call you at $at to wake you up and tell you what happened.$warn"
-        if (act.isNotEmpty()) return "Okay. I’ll answer your messages as your assistant, saying you’re $act, except money ones, and call you $at.$warn"
-        return "Good night. Sleep mode is on: I’ll answer your messages except money ones, and call you $at.$warn"
+        if (act.isNotEmpty()) return "Okay. I’ll answer your messages as your assistant, saying you’re $act, and call you $at.$warn"
+        return "Good night. Sleep mode is on: I’ll answer your messages and call you $at.$warn"
     }
 
     fun stop(ctx: Context): String {

@@ -39,7 +39,7 @@ object Scheduler {
 
     /** Never run later: they move money, change who owns the phone, or would schedule themselves. */
     private val BLOCKED = setOf(
-        "schedule", "schedules", "send_money", "money_setup", "release_device_owner", "power_off", "kiosk",
+        "schedule", "schedules", "release_device_owner", "power_off", "kiosk",
         "unlock", "forget", "time_lock", "sleep_mode", "queue", "approvals"
     )
 

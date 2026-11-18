@@ -413,13 +413,6 @@
         <receiver android:name=".SleepPrepReceiver" android:exported="false" />
         <receiver android:name=".AutoSleepReceiver" android:exported="false" />
 
-        <!-- Money: the screen where the user must tap Authorise before any transfer -->
-        <activity
-            android:name=".MoneyAuthActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:theme="@style/Theme.Neo.Translucent" />
-
         <!-- Morning mood call: rings every day, asks how you feel, the answer picks the crown-screen quotes -->
         <receiver android:name=".MoodCallReceiver" android:exported="false" />
         <receiver android:name=".MoodBootReceiver" android:exported="false">

@@ -23,7 +23,7 @@ object EventLog {
     private const val PREF = "neo_eventlog"
     private val skip = setOf("ui_list", "ui_wait", "look", "listen", "lock_app", "approvals", "schedules", "unlock")
     private val nameOnly = Guard.untrustedReads + setOf(
-        "send_money", "money_setup", "remember", "forget", "report_number", "call_log",
+        "remember", "forget", "report_number", "call_log",
         "message", "whatsapp", "messenger", "email", "reply_message", "call", "whatsapp_call", "post"
     )
 

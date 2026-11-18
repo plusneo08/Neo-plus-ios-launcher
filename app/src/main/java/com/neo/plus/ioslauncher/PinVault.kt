@@ -9,8 +9,7 @@ import org.json.JSONObject
  *  - Encrypted with the same Android Keystore key as the saved website logins; nothing is ever sent anywhere.
  *  - The AI model NEVER sees a PIN: it writes the placeholder {{pin:NAME}} and the phone types the real digits itself.
  *  - Never typed while a scheduled job or a goal check-in is running ([unattended]): only when the user asks.
- *  - Airtel Money / Mpamba PINs are also used by the money flow, but ONLY after the user tapped Authorise and the PIN
- *    screen shows exactly the amount and number that were authorised ([MoneySteps]).
+ *  - Airtel Money / Mpamba PINs are only typed when the user asks for them.
  */
 object PinVault {
     private const val PREFS = "neo_pin_vault"

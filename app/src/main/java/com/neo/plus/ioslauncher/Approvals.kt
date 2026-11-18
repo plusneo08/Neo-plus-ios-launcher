@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * The "waiting for your OK" list. Anything the assistant wants to send on its own initiative (follow-ups, promotions,
  * reminders, anything to several people) is parked here as a notification with Send / Skip, and only goes out after the user taps Send.
  * Works for every outgoing channel the assistant has: WhatsApp, WhatsApp Business, Messenger / Facebook, SMS, email and posts.
- * Money never goes through here: send_money has its own authorisation screen.
+ * Payments are not handled here.
  */
 object Approvals {
     private const val PREF = "neo_approvals"

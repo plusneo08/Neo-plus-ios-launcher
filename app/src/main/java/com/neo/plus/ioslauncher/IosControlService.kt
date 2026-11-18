@@ -404,7 +404,7 @@ class IosControlService : AccessibilityService() {
         val n = cls.substringAfterLast('.')
         return when {
             n == "MainActivity" -> 1
-            n in setOf("LockActivity", "NeoLockScreenActivity", "WakeCallActivity", "ApprovalCallActivity", "NeoCallActivity", "RecorderPermissionActivity", "MoneyAuthActivity") -> 3
+            n in setOf("LockActivity", "NeoLockScreenActivity", "WakeCallActivity", "ApprovalCallActivity", "NeoCallActivity", "RecorderPermissionActivity") -> 3
             n.endsWith("Activity") -> 2
             else -> 0
         }

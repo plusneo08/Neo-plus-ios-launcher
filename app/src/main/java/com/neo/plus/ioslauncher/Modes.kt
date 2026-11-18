@@ -9,7 +9,7 @@ import java.util.Locale
 
 /**
  * Modes: sleep, work, journey, chill and meeting. They all do what Sleep mode does (answer chat messages as the
- * assistant, never money ones, log everything, ring you with a spoken summary when the mode ends) and, new, they all
+ * assistant, log everything, ring you with a spoken summary when the mode ends) and, new, they all
  * answer phone calls by talking to the caller (see CallConversation.kt). The only differences are what the assistant
  * says you are doing and the wording of the summary.
  *
