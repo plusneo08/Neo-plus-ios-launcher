@@ -39,33 +39,7 @@ object EnableAssistant {
         Settings.Secure.getString(ctx.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
             ?.contains(ctx.packageName) == true
 
-    fun ready(ctx: Context) = overlayOk(ctx) && accessibilityOk(ctx) && DeviceAdmin.isActive(ctx) && isDefaultAssistant(ctx)
-
-    /** True when NEO PLUS is the phone's chosen digital assistant (assist gesture / long-press Home open Neo). */
-    fun isDefaultAssistant(ctx: Context): Boolean {
-        try {
-            if (Build.VERSION.SDK_INT >= 29) {
-                val rm = ctx.getSystemService(android.app.role.RoleManager::class.java)
-                if (rm != null && rm.isRoleAvailable(android.app.role.RoleManager.ROLE_ASSISTANT) && rm.isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT)) return true
-            }
-        } catch (e: Throwable) { }
-        val cur = try { Settings.Secure.getString(ctx.contentResolver, "assistant") } catch (e: Exception) { null }
-        return cur?.startsWith(ctx.packageName + "/") == true
-    }
-
-    /** Asks Android to make NEO PLUS the default digital assistant (the system's own prompt, or the Digital assistant settings page). */
-    fun requestDefaultAssistant(ctx: Context) {
-        try {
-            if (Build.VERSION.SDK_INT >= 29) {
-                val rm = ctx.getSystemService(android.app.role.RoleManager::class.java)
-                if (rm != null && rm.isRoleAvailable(android.app.role.RoleManager.ROLE_ASSISTANT) && !rm.isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT)) {
-                    if (ctx.safeStart(rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_ASSISTANT))) return
-                }
-            }
-        } catch (e: Throwable) { }
-        toast(ctx, "Choose NEO PLUS as the Digital assistant app")
-        if (!ctx.safeStart(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS))) ctx.safeStart(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
-    }
+    fun ready(ctx: Context) = overlayOk(ctx) && accessibilityOk(ctx) && DeviceAdmin.isActive(ctx)
 
     private fun toast(ctx: Context, msg: String) = Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
 
@@ -115,7 +89,6 @@ object EnableAssistant {
             }
             !DeviceAdmin.isActive(ctx) -> ctx.safeStart(DeviceAdmin.requestIntent(ctx))
             !isDefaultHome(ctx) -> requestDefaultHome(ctx)
-            !isDefaultAssistant(ctx) -> requestDefaultAssistant(ctx)
             else -> toast(ctx, "Neo Plus Assistant is enabled")
         }
     }

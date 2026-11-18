@@ -101,10 +101,6 @@ class MainActivity : ComponentActivity() {
         if (!hp.getBoolean("home_asked_v1", false) && !EnableAssistant.isDefaultHome(this)) {
             hp.edit().putBoolean("home_asked_v1", true).apply()
             window.decorView.postDelayed({ EnableAssistant.requestDefaultHome(this) }, 1500)
-        } else if (!hp.getBoolean("assist_asked_v1", false) && !EnableAssistant.isDefaultAssistant(this)) {
-            // Once: ask Android to make NEO PLUS the default digital assistant (next start after the Home prompt)
-            hp.edit().putBoolean("assist_asked_v1", true).apply()
-            window.decorView.postDelayed({ EnableAssistant.requestDefaultAssistant(this) }, 1500)
         }
     }
 

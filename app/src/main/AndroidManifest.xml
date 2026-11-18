@@ -148,12 +148,6 @@
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-            <!-- Opens Neo Plus Assistant when the phone sends an assist / voice-command request -->
-            <intent-filter>
-                <action android:name="android.intent.action.ASSIST" />
-                <action android:name="android.intent.action.VOICE_COMMAND" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
         </activity>
 
         <!-- Lets WhatsApp, Messenger, Instagram and Gmail read the photo / song / file the assistant sends for you -->
@@ -181,23 +175,6 @@
         <service
             android:name=".SleepService"
             android:exported="false" />
-
-        <!-- Default digital assistant: Android lists Neo Plus under Default apps > Digital assistant app -->
-        <service
-            android:name=".NeoVoiceInteractionService"
-            android:exported="true"
-            android:permission="android.permission.BIND_VOICE_INTERACTION">
-            <meta-data
-                android:name="android.voice_interaction"
-                android:resource="@xml/voice_interaction_service" />
-            <intent-filter>
-                <action android:name="android.service.voice.VoiceInteractionService" />
-            </intent-filter>
-        </service>
-        <service
-            android:name=".NeoVoiceSessionService"
-            android:exported="true"
-            android:permission="android.permission.BIND_VOICE_INTERACTION" />
 
         <!-- Keeps the assistant working while other apps are open -->
         <service
