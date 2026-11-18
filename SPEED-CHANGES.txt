@@ -1,23 +1,30 @@
-SPEED - what changed (calls answer and reply faster)
-====================================================
-CHANGED  CallConversation.kt  caller calls: the reply is streamed and spoken sentence by sentence while Gemini is still writing it
-                              (was: wait for the whole reply, then make the voice). The opening and the fixed phrases ("I can't hear
-                              you", goodbye ...) are made in the background the moment the call is answered, so they play at once.
-                              Waits: opening 1400 -> 800 ms, before listening 450 -> 200 ms, end-of-speech silence 1600 -> 1100 ms.
-CHANGED  WakeCallActivity.kt  wake-up / morning / "call Neo" calls: same streaming, the answer is spoken while it is written.
-                              If the model needed a follow-up step (lookup, action) the final answer is spoken as before.
-CHANGED  Speaker.kt           live speech can now tell when it has finished (liveStart(ctx, onDone)); pauses between spoken pieces
-                              are about 45% shorter (period 380 -> 200 ms, comma 200 -> 100 ms ...). Affects every voice reply.
-CHANGED  LiveReply.kt         optional onSpoken callback (nothing else changes for the chat / orb)
-CHANGED  CallAssist.kt        Llm.warm() when the phone rings: the connection to Google is open before the first request
+SPEED - all changes so far (part 1 + part 2). This zip REPLACES the earlier one: copy all 7 files over your project.
 
-Copy these 5 files over the same paths in your project and build. NOT compiled here (no Android build tools in my sandbox);
-brackets balance in every changed file. Send me the first build error if there is one.
+PART 1 - speak while the reply is written
+  CallConversation.kt  caller calls stream the reply; voice starts after the first sentence; opening + fixed phrases made at answer time;
+                       waits: opening 1400->800 ms, before listening 450->200 ms, end-of-speech silence 1600->1100 ms
+  WakeCallActivity.kt  wake-up / morning / "call Neo" calls speak while the reply is written
+  Speaker.kt           live speech reports when it is finished; pauses between spoken pieces ~45% shorter
+  LiveReply.kt         optional onSpoken callback
+  CallAssist.kt        Llm.warm() when the phone rings
 
-Tune if needed (constants at the top of CallConversation):
-  OPEN_DELAY_MS 800      raise to 1200 if the caller misses the first word of the greeting
-  LISTEN_GAP_MS 200      raise to 400 if the assistant hears its own voice
-  END_SILENCE_MS 1100    raise to 1400 if slow talkers get cut off
+PART 2 - lighter prompt, "one moment" filler, faster voice give-up
+  NEW      CallPrompt.kt   short call prompt (~1.5k characters instead of ~33k) + the rule for when the full one is needed
+  CHANGED  Agent.kt        respond(..., useSearch) : null = as before, false = no live web search for this request
+  CHANGED  WakeCallActivity.kt
+      - plain conversation uses the short prompt and no live search; a request that may need the phone or live information
+        (words such as open, call, send, set, play, weather, news, today, find, check ...) uses the full prompt as before
+      - if the short prompt is not enough the model answers NEED_TOOLS (never spoken, not an action) and the same request is
+        asked again with the full prompt
+      - a heavy request that has not started to speak after 1.2 s plays "One moment." / "Let me check that." / "Sure, one second."
+  CHANGED  CallConversation.kt   caller calls: same filler after 2.2 s without a voice
+  CHANGED  Speaker.kt
+      - Speaker.filler(): plays on its own track; the real reply waits for it to end (max 2 s) instead of cutting it; Speaker.stop() stops it
+      - Gemini voice gets 2.5 s for its first words (was 9 s / 5 s), one retry of 3 s (was 10 s), then the phone's voice takes over
 
-NOT changed: approval calls (their yes / skip commands are already local; only side questions use the model), the
-cloud-voice time-outs (5-9 s before the phone's voice takes over), the model retries.
+Not compiled here (no Android build tools in my sandbox); brackets balance in every changed file. Send me the first build error.
+
+Tune: CallConversation.kt  OPEN_DELAY_MS 800, LISTEN_GAP_MS 200, END_SILENCE_MS 1100, FILLER_AFTER_MS 2200
+      Speaker.kt           FIRST_WAIT_MS 2500, RETRY_WAIT_MS 3000  (raise on a slow connection, or the phone's voice takes over too often)
+      CallPrompt.kt        NEEDS_FULL word list (a word there = the full prompt for that request)
+Not changed: approval calls, model retry waits in Llm.retrying.

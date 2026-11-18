@@ -545,10 +545,10 @@ object Speaker {
                     // The first words wait up to 9 s for the Gemini voice (5 s when "gemini_always" is off); one more try before the phone's voice.
                     val always = geminiAlways(app)
                     var why = ""
-                    var pcm = try { jobs[i].get(if (i == 0) (if (always) 9L else 5L) else 25L, TimeUnit.SECONDS) } catch (e: Exception) { why = e.cause?.message ?: e.message ?: e.javaClass.simpleName; null }
+                    var pcm = try { jobs[i].get(if (i == 0) FIRST_WAIT_MS else 25_000L, TimeUnit.MILLISECONDS) } catch (e: Exception) { why = e.cause?.message ?: e.message ?: e.javaClass.simpleName; null }
                     if (pcm == null && always && naturalToken == my) {
                         pcm = try {
-                            pool.submit<ByteArray> { NaturalVoice.synth(cfg.key, chunks[i].first, cfg.voice, fast = i == 0) }.get(10L, TimeUnit.SECONDS)
+                            pool.submit<ByteArray> { NaturalVoice.synth(cfg.key, chunks[i].first, cfg.voice, fast = i == 0) }.get(if (i == 0) RETRY_WAIT_MS else 10_000L, TimeUnit.MILLISECONDS)
                         } catch (e: Exception) { why = e.cause?.message ?: e.message ?: why; null }
                     }
                     if (naturalToken != my) { jobs.forEach { it.cancel(true) }; return@execute }
@@ -559,6 +559,7 @@ object Speaker {
                         main.post { if (naturalToken == my) { speaking = false; speakSystem(app, rest, onStart, onDone) } }
                         return@execute
                     }
+                    if (i == 0) waitFiller(my)   // a "one moment" that is playing is finished first, never cut
                     main.post { if (naturalToken == my) onStart?.invoke(chunks[i].first) }
                     playPcm(pcm, my)
                     // stop where the punctuation is, and a little longer where one message ends and the next begins
@@ -612,14 +613,15 @@ object Speaker {
         pool.execute {
             var idle = 0
             var firstItem = true
+            var liveStarted = false
             try {
                 while (naturalToken == my) {
                     val item = q.poll(200, TimeUnit.MILLISECONDS)
                     if (item == null) { if (++idle > 600) break else continue } // nothing for 2 minutes: give up
                     idle = 0
                     val job = item.job ?: break
-                    // The first words must not keep the user waiting: after 5 s the phone's own voice takes over.
-                    val pcm = try { job.get(if (firstItem) 5L else 25L, TimeUnit.SECONDS) } catch (e: Exception) { null }
+                    // The first words must not keep the user waiting: after a few seconds the phone's own voice takes over.
+                    val pcm = try { job.get(if (firstItem) FIRST_WAIT_MS else 25_000L, TimeUnit.MILLISECONDS) } catch (e: Exception) { null }
                     firstItem = false
                     if (naturalToken != my) break
                     if (pcm == null) { // cloud voice failed: this piece and everything after it is spoken by the phone's voice
@@ -633,6 +635,7 @@ object Speaker {
                         if (speakNow) speakLiveRest(my)
                         break
                     }
+                    if (!liveStarted) { liveStarted = true; waitFiller(my) }
                     playPcm(pcm, my)
                     // quiet at the punctuation, unless this was the last piece of the reply
                     val next = q.peek()
@@ -652,6 +655,71 @@ object Speaker {
             }
         }
         return true
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Filler: a short "One moment." while the real answer is being made   */
+    /* ------------------------------------------------------------------ */
+
+    /** The Gemini voice gets this long for its first words before the phone's own voice takes over (was 9 s / 5 s, retry 10 s). */
+    private const val FIRST_WAIT_MS = 2_500L
+    private const val RETRY_WAIT_MS = 3_000L
+
+    @Volatile private var fillerEndAt = 0L
+    @Volatile private var fillerTrack: AudioTrack? = null
+
+    /**
+     * Plays a very short phrase ("One moment.") on its own, outside the normal speech, so the real reply that follows does not
+     * cut it: the reply waits for the filler to end (waitFiller). Nothing is played when the reply already started to speak
+     * ([stillWanted] false, or something is being said), or when there is no Gemini voice. Make the phrase ahead of time with
+     * [prewarmSpeech] so it starts at once.
+     */
+    fun filler(ctx: Context, text: String, stillWanted: () -> Boolean) {
+        val cfg = NaturalVoice.config(ctx.applicationContext) ?: return
+        pool.execute {
+            try {
+                val chunk = chunkP(splitP(text)).firstOrNull()?.first ?: return@execute
+                val pcm = NaturalVoice.synth(cfg.key, chunk, cfg.voice, fast = true)
+                if (speaking || !stillWanted()) return@execute
+                fillerEndAt = System.currentTimeMillis() + pcm.size / 2 * 1000L / NaturalVoice.RATE + 50L
+                playFiller(pcm)
+            } catch (e: Exception) { }
+        }
+    }
+
+    /** Waits (at most 2 s) for a filler that is still playing; the real reply starts right after it. */
+    private fun waitFiller(my: Long) {
+        val w = fillerEndAt - System.currentTimeMillis()
+        if (w in 1..2000L) pauseFor(w, my)
+    }
+
+    private fun playFiller(pcm: ByteArray) {
+        val t = AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
+            )
+            .setAudioFormat(
+                AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setSampleRate(NaturalVoice.RATE).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build()
+            )
+            .setBufferSizeInBytes(pcm.size)
+            .setTransferMode(AudioTrack.MODE_STATIC)
+            .build()
+        fillerTrack = t
+        try {
+            t.write(pcm, 0, pcm.size)
+            val frames = pcm.size / 2
+            t.play()
+            val limit = System.currentTimeMillis() + frames * 1000L / NaturalVoice.RATE + 1500L
+            while (fillerTrack === t && t.playbackHeadPosition < frames && System.currentTimeMillis() < limit) Thread.sleep(25)
+        } finally {
+            try { t.setVolume(0f) } catch (e: Exception) { }
+            try { t.stop() } catch (e: Exception) { }
+            try { t.release() } catch (e: Exception) { }
+            if (fillerTrack === t) fillerTrack = null
+            fillerEndAt = 0L
+        }
     }
 
     private fun fireLiveDone() {
@@ -724,6 +792,10 @@ object Speaker {
     }
 
     fun stop() {
+        val ft = fillerTrack
+        fillerTrack = null
+        fillerEndAt = 0L
+        try { ft?.pause(); ft?.flush() } catch (e: Exception) { }
         main.post {
             naturalToken++
             try { track?.pause(); track?.flush() } catch (e: Exception) { }

@@ -54,7 +54,8 @@ object Agent {
     fun respond(
         ctx: Context, provider: Provider, key: String, model: String, system: String,
         history: List<Pair<Boolean, String>>, apps: List<AppEntry>, image0: ByteArray? = null, extra: String? = null,
-        onPartial: ((String) -> Unit)? = null
+        onPartial: ((String) -> Unit)? = null,
+        useSearch: Boolean? = null   // null = decide as usual; false = never use live web search (plain conversation is faster without it)
     ): Outcome {
         val hist = history.toMutableList()
         if (!extra.isNullOrBlank() && hist.isNotEmpty() && hist.last().first) {
@@ -65,7 +66,7 @@ object Agent {
         val done = ArrayList<ActionResult>() // actions that did not need any data and already ran
         val earlyNames = ArrayList<String>()  // ... of which these ran while the first reply was still streaming in
         // Live web search only when the question can need it (a screenshot or an extra block means a real task: keep it on).
-        val search = image0 != null || !extra.isNullOrBlank() || needsSearch(hist.lastOrNull { it.first }?.second.orEmpty())
+        val search = useSearch ?: (image0 != null || !extra.isNullOrBlank() || needsSearch(hist.lastOrNull { it.first }?.second.orEmpty()))
         while (true) {
             // Only the first model call streams (its text can be shown and spoken at once); follow-up rounds answer normally.
             var earlyRan = 0 // how many leading actions of this reply were already run while it streamed

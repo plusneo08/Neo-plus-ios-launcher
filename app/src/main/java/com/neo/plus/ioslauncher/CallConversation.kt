@@ -44,6 +44,7 @@ object CallConversation {
     private const val LISTEN_GAP_MS = 200L      // after the assistant's voice ends, before listening (echo dies away); was 450
     private const val END_SILENCE_MS = 1100L    // silence that ends the caller's turn; was 1600
     private const val MAYBE_END_SILENCE_MS = 800L
+    private const val FILLER_AFTER_MS = 2200L   // no voice yet after this long: say "One moment."
     private val REPLY_TAG = Regex("(?i)REPLY:[ \\t]*")
 
     private val main = Handler(Looper.getMainLooper())
@@ -68,6 +69,7 @@ object CallConversation {
     private var turnNo = 0
     private var turnSpeechDone = false
     private var turnReply: Reply? = null
+    @Volatile private var turnVoice = false   // the voice of this turn's reply has started
     private val hist = ArrayList<Pair<Boolean, String>>()
     private val transcript = ArrayList<String>()
 
@@ -142,7 +144,7 @@ object CallConversation {
                 "I can’t hear you any more. Goodbye.",
                 "I can’t hear you. Please send a text message and you will get a reply. Goodbye.",
                 "I have to go now. ${ownerName(a)} will get back to you. Goodbye."
-            )
+            ) + CallPrompt.fillers
             for (t in phrases) { try { Speaker.prewarmSpeech(a, SpokenText.clean(t)) } catch (e: Exception) { } }
         }.start()
     }
@@ -269,14 +271,19 @@ object CallConversation {
         hist.add(true to said)
         val snapshot = ArrayList(hist)
         val my = ++turnNo
-        turnSpeechDone = false; turnReply = null
+        turnSpeechDone = false; turnReply = null; turnVoice = false
+        // A slow answer: after a moment say "One moment." (played on its own; the real reply waits for it to end instead of cutting it)
+        main.postDelayed({
+            if (valid(id) && turnNo == my && !turnVoice)
+                Speaker.filler(a, CallPrompt.filler(my), { valid(id) && turnNo == my && !turnVoice })
+        }, FILLER_AFTER_MS)
         io.execute {
             // The reply is spoken sentence by sentence while the model is still writing it; the voice reports back when it is all said.
             val live = LiveReply(a, true) {
                 main.post { if (valid(id) && turnNo == my) { turnSpeechDone = true; advance(id) } }
             }
             val r = try {
-                draft(a, snapshot, live) { main.post { if (valid(id) && turnNo == my) uiStatus = 1 } }
+                draft(a, snapshot, live) { turnVoice = true; main.post { if (valid(id) && turnNo == my) uiStatus = 1 } }
             } catch (e: Exception) {
                 if (live.voiceStarted) Speaker.stop()
                 null
