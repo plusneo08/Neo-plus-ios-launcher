@@ -508,14 +508,14 @@ object Speaker {
     /** How long the voice stays quiet after a piece of speech: it depends on the punctuation it ended with, and is longer when a message ended. */
     private fun gapAfter(piece: String, endsMessage: Boolean): Long {
         val base = when (piece.trimEnd().lastOrNull()) {
-            '.' -> 380L
-            '!', '?' -> 450L
-            '…' -> 600L
-            ':', ';' -> 300L
-            ',' -> 200L
+            '.' -> 200L
+            '!', '?' -> 240L
+            '…' -> 350L
+            ':', ';' -> 150L
+            ',' -> 100L
             else -> 0L
         }
-        return if (endsMessage) base + 450L else base
+        return if (endsMessage) base + 250L else base
     }
 
     /** Silence between two pieces; ends at once when the speech is stopped. */
@@ -585,16 +585,20 @@ object Speaker {
     @Volatile private var liveFedOnce = false   // reset by liveStart: the first piece of a live reply uses the fast voice model
     private var liveFailed = false              // guarded by liveLock
     private val liveRest = StringBuilder()      // text the Gemini voice could not make; guarded by liveLock
+    @Volatile private var liveDone: (() -> Unit)? = null // called on the main thread when the live reply has been spoken to the end
 
     /**
      * Opens a live session (stops anything being said). False when there is no Gemini key. Finished pieces of the reply are
      * then fed with [liveFeed] and the end is signalled with [liveEnd]. If the Gemini voice fails part-way, the rest of the
      * reply is spoken with the phone's own voice once the reply is complete.
+     * [onDone] (optional) is called on the main thread once everything has been spoken (also when the phone's voice finished the
+     * rest). It is NOT called when the speech was stopped or replaced by something else.
      */
-    fun liveStart(ctx: Context): Boolean {
+    fun liveStart(ctx: Context, onDone: (() -> Unit)? = null): Boolean {
         val app = ctx.applicationContext
         appCtx = app
         val cfg = NaturalVoice.config(app) ?: return false
+        liveDone = onDone
         try { tts?.stop() } catch (e: Exception) { }
         try { track?.pause(); track?.flush() } catch (e: Exception) { }
         val my = ++naturalToken
@@ -642,16 +646,27 @@ object Speaker {
             } finally {
                 q.forEach { it.job?.cancel(true) }
                 main.post { if (naturalToken == my) speaking = false }
+                // Spoken to the end by the Gemini voice (when it failed, speakLiveRest reports the end of the phone's voice instead)
+                val failed = synchronized(liveLock) { liveFailed }
+                if (!failed && naturalToken == my) fireLiveDone()
             }
         }
         return true
     }
 
+    private fun fireLiveDone() {
+        val d = liveDone
+        liveDone = null
+        if (d != null) main.post { try { d() } catch (e: Exception) { } }
+    }
+
     private fun speakLiveRest(my: Long) {
         val text = synchronized(liveLock) { liveRest.toString().also { liveRest.setLength(0) } }.trim()
-        val app = appCtx ?: return
-        if (text.isEmpty()) return
-        main.post { if (naturalToken == my) { speaking = false; speakSystem(app, text, null, null) } }
+        val app = appCtx
+        val d = liveDone
+        liveDone = null
+        if (app == null || text.isEmpty()) { if (d != null) main.post { try { d() } catch (e: Exception) { } }; return }
+        main.post { if (naturalToken == my) { speaking = false; speakSystem(app, text, null, d) } }
     }
 
     /** One finished piece of the reply (a sentence or a few). Its voice is made at once, in order. */

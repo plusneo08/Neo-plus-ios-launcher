@@ -96,6 +96,7 @@ object CallAssist {
         if (!enabled(app) || ringHandled) return
         ringHandled = true
         ringing = true
+        Llm.warm()   // open the connection to Google now, so a reply (if the assistant answers) does not pay for it
         // The system sends the ringing broadcast twice; the number is only in one of them, so wait a moment for it.
         var number = latestNumber
         if (number.isBlank() && granted(app, Manifest.permission.READ_CALL_LOG)) { try { Thread.sleep(700) } catch (e: InterruptedException) { }; number = latestNumber }

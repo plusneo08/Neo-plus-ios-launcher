@@ -1,0 +1,23 @@
+SPEED - what changed (calls answer and reply faster)
+====================================================
+CHANGED  CallConversation.kt  caller calls: the reply is streamed and spoken sentence by sentence while Gemini is still writing it
+                              (was: wait for the whole reply, then make the voice). The opening and the fixed phrases ("I can't hear
+                              you", goodbye ...) are made in the background the moment the call is answered, so they play at once.
+                              Waits: opening 1400 -> 800 ms, before listening 450 -> 200 ms, end-of-speech silence 1600 -> 1100 ms.
+CHANGED  WakeCallActivity.kt  wake-up / morning / "call Neo" calls: same streaming, the answer is spoken while it is written.
+                              If the model needed a follow-up step (lookup, action) the final answer is spoken as before.
+CHANGED  Speaker.kt           live speech can now tell when it has finished (liveStart(ctx, onDone)); pauses between spoken pieces
+                              are about 45% shorter (period 380 -> 200 ms, comma 200 -> 100 ms ...). Affects every voice reply.
+CHANGED  LiveReply.kt         optional onSpoken callback (nothing else changes for the chat / orb)
+CHANGED  CallAssist.kt        Llm.warm() when the phone rings: the connection to Google is open before the first request
+
+Copy these 5 files over the same paths in your project and build. NOT compiled here (no Android build tools in my sandbox);
+brackets balance in every changed file. Send me the first build error if there is one.
+
+Tune if needed (constants at the top of CallConversation):
+  OPEN_DELAY_MS 800      raise to 1200 if the caller misses the first word of the greeting
+  LISTEN_GAP_MS 200      raise to 400 if the assistant hears its own voice
+  END_SILENCE_MS 1100    raise to 1400 if slow talkers get cut off
+
+NOT changed: approval calls (their yes / skip commands are already local; only side questions use the model), the
+cloud-voice time-outs (5-9 s before the phone's voice takes over), the model retries.

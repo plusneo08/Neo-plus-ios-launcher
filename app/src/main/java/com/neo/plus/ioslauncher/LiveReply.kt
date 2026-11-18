@@ -7,8 +7,9 @@ import android.content.Context
  * such as [[do:...]] are never shown or spoken), and, when [voice] is on, hands finished sentences to the Gemini voice so it
  * starts talking after the first sentence instead of after the whole reply. The first sentence goes out alone (fastest
  * start); later ones are grouped (about 160 characters) so the voice makes fewer requests.
+ * [onSpoken] (optional) is called on the main thread when the voice has spoken the whole reply.
  */
-internal class LiveReply(private val ctx: Context, private var voice: Boolean) {
+internal class LiveReply(private val ctx: Context, private var voice: Boolean, private val onSpoken: (() -> Unit)? = null) {
     private val raw = StringBuilder()
     private var visible = ""
     private var spokenTo = 0
@@ -56,7 +57,7 @@ internal class LiveReply(private val ctx: Context, private var voice: Boolean) {
         spokenTo += cutAt
         if (chunk.isEmpty()) return
         if (!voiceStarted) {
-            if (!Speaker.liveStart(ctx)) { voice = false; return } // no Gemini key: the normal path speaks at the end
+            if (!Speaker.liveStart(ctx, onSpoken)) { voice = false; return } // no Gemini key: the normal path speaks at the end
             voiceStarted = true
         }
         first = false

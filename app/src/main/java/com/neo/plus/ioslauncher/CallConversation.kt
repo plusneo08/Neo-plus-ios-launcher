@@ -40,6 +40,11 @@ object CallConversation {
     private const val MAX_TURNS = 12
     private const val MAX_MS = 4 * 60_000L
     private const val MAX_SILENT = 3
+    private const val OPEN_DELAY_MS = 800L      // after answering, before the opening is spoken (the line needs a moment to open); was 1400
+    private const val LISTEN_GAP_MS = 200L      // after the assistant's voice ends, before listening (echo dies away); was 450
+    private const val END_SILENCE_MS = 1100L    // silence that ends the caller's turn; was 1600
+    private const val MAYBE_END_SILENCE_MS = 800L
+    private val REPLY_TAG = Regex("(?i)REPLY:[ \\t]*")
 
     private val main = Handler(Looper.getMainLooper())
     private val io = Executors.newSingleThreadExecutor()
@@ -59,6 +64,10 @@ object CallConversation {
     private var langTag = ""
     private var heard = ""
     private var recognizer: SpeechRecognizer? = null
+    // one caller turn: the reply streams in and is spoken while it is written (main thread only)
+    private var turnNo = 0
+    private var turnSpeechDone = false
+    private var turnReply: Reply? = null
     private val hist = ArrayList<Pair<Boolean, String>>()
     private val transcript = ArrayList<String>()
 
@@ -99,6 +108,7 @@ object CallConversation {
         active = true
         token = id
         try { a.startActivity(Intent(a, AiCallActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)) } catch (e: Exception) { }
+        prepare(a, custom)
         main.post {
             appCtx = a
             who = name.ifBlank { number.ifBlank { "an unknown caller" } }
@@ -112,11 +122,29 @@ object CallConversation {
                     CallAssist.speakerOn(a)
                     say(opening(a, custom), id) { listen(id) }
                 }
-            }, 1400)
+            }, OPEN_DELAY_MS)
             // hard limit for the whole call
             main.postDelayed({ if (valid(id)) closing("I have to go now. ${ownerName(a)} will get back to you. Goodbye.", id) }, MAX_MS)
         }
         return "Answered, talking to the caller as your assistant"
+    }
+
+    /**
+     * Gets the first words ready while the line opens: the connection to Google is opened, and the voice for the opening and
+     * the short fixed phrases is made now (kept in the voice cache), so they play at once. Own thread: the model work must not wait for it.
+     */
+    private fun prepare(a: Context, custom: String) {
+        Llm.warm()
+        Thread {
+            val phrases = listOf(
+                opening(a, custom),
+                "Hello? I can’t hear you well. Could you please speak a little louder?",
+                "I can’t hear you any more. Goodbye.",
+                "I can’t hear you. Please send a text message and you will get a reply. Goodbye.",
+                "I have to go now. ${ownerName(a)} will get back to you. Goodbye."
+            )
+            for (t in phrases) { try { Speaker.prewarmSpeech(a, SpokenText.clean(t)) } catch (e: Exception) { } }
+        }.start()
     }
 
     /** The phone went idle: the caller hung up (or we did). */
@@ -143,7 +171,7 @@ object CallConversation {
         fun next() {
             if (fired) return
             fired = true
-            main.postDelayed({ if (valid(id)) then() }, 450)   // let the echo of our own voice die away before listening
+            main.postDelayed({ if (valid(id)) then() }, LISTEN_GAP_MS)   // let the echo of our own voice die away before listening
         }
         main.postDelayed({ next() }, 25_000)                    // in case the voice never reports back
         try {
@@ -173,7 +201,8 @@ object CallConversation {
             .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, a.packageName)
-            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1600L)
+            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, END_SILENCE_MS)
+            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, MAYBE_END_SILENCE_MS)
         if (langTag.isNotBlank()) {
             i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, langTag)          // the language the caller spoke last turn
         } else if (Build.VERSION.SDK_INT >= 33) {
@@ -239,13 +268,26 @@ object CallConversation {
         ui.add(AiLine(true, said)); uiStatus = 3; uiHeard = ""
         hist.add(true to said)
         val snapshot = ArrayList(hist)
+        val my = ++turnNo
+        turnSpeechDone = false; turnReply = null
         io.execute {
-            val r = try { draft(a, snapshot) } catch (e: Exception) { null }
-            main.post { if (valid(id)) onReply(r, id) }
+            // The reply is spoken sentence by sentence while the model is still writing it; the voice reports back when it is all said.
+            val live = LiveReply(a, true) {
+                main.post { if (valid(id) && turnNo == my) { turnSpeechDone = true; advance(id) } }
+            }
+            val r = try {
+                draft(a, snapshot, live) { main.post { if (valid(id) && turnNo == my) uiStatus = 1 } }
+            } catch (e: Exception) {
+                if (live.voiceStarted) Speaker.stop()
+                null
+            }
+            val spoke = live.voiceStarted
+            main.post { if (valid(id) && turnNo == my) onReply(r, id, spoke) }
         }
     }
 
-    private fun onReply(r: Reply?, id: Long) {
+    /** [spoke]: the voice already started (and speaks the whole reply) while the reply was being written. */
+    private fun onReply(r: Reply?, id: Long, spoke: Boolean) {
         if (r == null || r.text.isBlank()) {
             hist.add(false to "(no reply)")
             closing("Sorry, I’m having trouble right now. Please send a text message. Goodbye.", id)
@@ -256,10 +298,25 @@ object CallConversation {
         // Android's recogniser has no Chichewa: leave the language open for it
         if (r.lang.isNotBlank() && !r.lang.startsWith("ny", true)) langTag = r.lang
         if (r.lang.isNotBlank()) uiLang = r.lang
-        if (r.end || turns >= MAX_TURNS) closing(r.text, id) else say(r.text, id) { listen(id) }
+        if (spoke) {
+            transcript.add("Assistant: ${r.text}")
+            ui.add(AiLine(false, r.text)); uiStatus = 1
+            turnReply = r
+            advance(id)          // goes on as soon as the voice has finished
+        } else if (r.end || turns >= MAX_TURNS) closing(r.text, id) else say(r.text, id) { listen(id) }
     }
 
-    private fun draft(ctx: Context, history: List<Pair<Boolean, String>>): Reply? {
+    /** Once the reply is known AND has been spoken to the end: hang up after a goodbye, or listen again. */
+    private fun advance(id: Long) {
+        val r = turnReply ?: return
+        if (!turnSpeechDone || !valid(id)) return
+        turnReply = null
+        main.postDelayed({
+            if (valid(id)) { if (r.end || turns >= MAX_TURNS) finish(id, true) else listen(id) }
+        }, LISTEN_GAP_MS)
+    }
+
+    private fun draft(ctx: Context, history: List<Pair<Boolean, String>>, live: LiveReply, onVoice: () -> Unit): Reply? {
         val key = ctx.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE).getString("key", "").orEmpty()
         if (KeyPool.parse(key).isEmpty()) return null
         KeyPool.attach(ctx)
@@ -289,7 +346,22 @@ Answer in EXACTLY this format, three lines:
 LANG: <BCP-47 tag of the caller's language, for example en-US, sw-TZ, fr-FR, pt-PT>
 END: <yes or no>
 REPLY: <what you say out loud>"""
-        val raw = Llm.chat(Provider.GEMINI, key, GeminiModels.FLASH, system, history, null, search = false)
+        // Only the text after "REPLY:" is spoken; LANG and END come first and are read from the finished answer.
+        val acc = StringBuilder()
+        var fed = -1
+        var announced = false
+        val raw = Llm.chatStream(key, GeminiModels.FLASH, system, history, null, false) { piece ->
+            acc.append(piece)
+            if (fed < 0) { val m = REPLY_TAG.find(acc); if (m != null) fed = m.range.last + 1 }
+            if (fed >= 0 && acc.length > fed) {
+                val part = acc.substring(fed)
+                fed = acc.length
+                live.push(part)
+                if (!announced && live.voiceStarted) { announced = true; onVoice() }
+            }
+        }
+        live.finish()
+        if (!announced && live.voiceStarted) onVoice()
         return parse(raw)
     }
 
