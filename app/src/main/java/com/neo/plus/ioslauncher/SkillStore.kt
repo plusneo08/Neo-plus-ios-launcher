@@ -436,7 +436,8 @@ object SkillStore {
         Approvals.add(app, "skill_commit", JSONObject().put("stage", id).put("token", token).put("text", summary), Approvals.lastApps)
 
         return "I downloaded and checked $names from ${tree.label} (${staged.sumOf { it.files }} file(s), $kb KB). " +
-            "It is NOT installed yet: I put it in your “Waiting for your OK” list. Tap Install on the notification, or say yes in the approval call, to add it. " +
+            "It is NOT installed yet: I put it in your “Waiting for your OK” list. " +
+            (if (Approvals.notificationsOk(app)) "Tap Install on the notification, or say yes in the approval call, to add it. " else "But notifications are OFF for this app, so no Install button can show. I opened the notification settings: turn them on, then say “list my approvals” to bring it back. ") +
             (if (warnings.isNotEmpty()) "Warning: it " + warnings.joinToString("; ") + ". Look at it before you accept. " else "") +
             "Scripts are never installed."
     }

@@ -1,15 +1,22 @@
 package com.neo.plus.ioslauncher
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
+import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -85,7 +92,7 @@ object Approvals {
         items.add(item)
         while (items.size > 50) items.removeAt(0)
         save(ctx, items)
-        notifyItem(ctx, item)
+        if (!notifyItem(ctx, item)) openNotificationSettings(ctx)
         try {
             if (urgent) {
                 ApprovalCall.ring(ctx, true)
@@ -97,13 +104,56 @@ object Approvals {
         return item
     }
 
-    private fun notifyItem(ctx: Context, item: Item) {
+    private fun ensureChannel(app: Context) {
+        if (Build.VERSION.SDK_INT < 26) return
+        val nm = app.getSystemService(NotificationManager::class.java) ?: return
+        if (nm.getNotificationChannel(CH) == null) {
+            val c = NotificationChannel(CH, "Waiting for your OK", NotificationManager.IMPORTANCE_HIGH)
+            c.description = "Messages and skill installs that wait for your OK"
+            c.lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+            nm.createNotificationChannel(c)
+        }
+    }
+
+    /** True when a notification can really reach the notification list (permission, app switch and channel all on). */
+    fun notificationsOk(ctx: Context): Boolean {
+        val app = ctx.applicationContext
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(app, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
+        if (!NotificationManagerCompat.from(app).areNotificationsEnabled()) return false
+        if (Build.VERSION.SDK_INT >= 26) {
+            val ch = app.getSystemService(NotificationManager::class.java)?.getNotificationChannel(CH)
+            if (ch != null && ch.importance == NotificationManager.IMPORTANCE_NONE) return false
+        }
+        return true
+    }
+
+    /** Opens this app's notification settings (used when notifications are blocked). */
+    fun openNotificationSettings(ctx: Context) {
         try {
             val app = ctx.applicationContext
-            val nm = app.getSystemService(NotificationManager::class.java) ?: return
-            if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CH) == null) {
-                nm.createNotificationChannel(NotificationChannel(CH, "Waiting for your OK", NotificationManager.IMPORTANCE_HIGH))
-            }
+            val i = if (Build.VERSION.SDK_INT >= 26)
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, app.packageName)
+            else Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + app.packageName))
+            app.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) { Log.w("Approvals", "settings", e) }
+    }
+
+    /** Puts every waiting item back into the notification list (also what \"list\" does). */
+    fun repostAll(ctx: Context): Boolean {
+        val app = ctx.applicationContext
+        var ok = true
+        for (it in list(app)) if (!notifyItem(app, it)) ok = false
+        return ok
+    }
+
+    /** Posts the "Waiting for your OK" notification. Returns false when it could not be shown. */
+    private fun notifyItem(ctx: Context, item: Item): Boolean {
+        return try {
+            val app = ctx.applicationContext
+            ensureChannel(app)
+            if (!notificationsOk(app)) { Log.w("Approvals", "notifications are blocked"); return false }
+            val nm = NotificationManagerCompat.from(app)
             fun pi(what: String, code: Int): PendingIntent {
                 val i = Intent(app, ApprovalReceiver::class.java)
                     .setAction("neo.approval." + what + "." + item.id)
@@ -111,18 +161,29 @@ object Approvals {
                     .putExtra(EXTRA_DO, what)
                 return PendingIntent.getBroadcast(app, item.id.hashCode() + code, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             }
-            val n = NotificationCompat.Builder(app, CH)
+            val open = app.packageManager.getLaunchIntentForPackage(app.packageName)?.let {
+                PendingIntent.getActivity(app, item.id.hashCode() + 3, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            }
+            val b = NotificationCompat.Builder(app, CH)
                 .setSmallIcon(android.R.drawable.ic_dialog_email)
-                .setContentTitle("Waiting for your OK")
+                .setContentTitle(if (item.action == "skill_commit") "Install skill? Waiting for your OK" else "Waiting for your OK")
                 .setContentText(item.summary)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(item.summary))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setWhen(item.at).setShowWhen(true)
                 .addAction(0, if (item.action == "skill_commit") "Install" else "Send", pi("send", 1))
                 .addAction(0, "Skip", pi("skip", 2))
                 .setAutoCancel(false)
                 .setOnlyAlertOnce(true)
-                .build()
-            nm.notify(item.id.hashCode(), n)
-        } catch (e: Exception) { }
+            if (open != null) b.setContentIntent(open)
+            nm.notify(item.id.hashCode(), b.build())
+            true
+        } catch (e: Exception) {
+            Log.w("Approvals", "notify failed", e)
+            false
+        }
     }
 
     private fun cancelNotification(ctx: Context, id: String) {
@@ -164,7 +225,7 @@ object Approvals {
                 "Skipped ${items.size} waiting item(s)"
             }
             else -> if (items.isEmpty()) "Nothing is waiting for your OK"
-            else items.mapIndexed { i, it -> "${i + 1}. " + it.summary }.joinToString("\n")
+            else (if (repostAll(app)) "" else "Notifications are OFF for this app, so the Install/Send buttons cannot show. Turn them on in Settings > Apps > NEO PLUS > Notifications, or say \"approve all\" / \"skip all\".\n") + items.mapIndexed { i, it -> "${i + 1}. " + it.summary }.joinToString("\n")
         }
     }
 }

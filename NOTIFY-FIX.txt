@@ -1,0 +1,5 @@
+Copy the 2 files over the same paths, then add this line to AndroidManifest.xml (inside <manifest>, before <application>) if it is not there:
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+Android 13+ also needs the user to allow it once: Settings > Apps > NEO PLUS > Notifications.
+Test: say "install the pdf skill from anthropics/skills" -> a "Waiting for your OK" notification with Install / Skip appears.
+Say "list my approvals" to re-post waiting items to the notification list.
