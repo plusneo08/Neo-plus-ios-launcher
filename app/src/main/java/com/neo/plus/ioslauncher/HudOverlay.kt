@@ -1,17 +1,22 @@
 package com.neo.plus.ioslauncher
 
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
+import android.os.BatteryManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.text.TextPaint
 import android.text.TextUtils
 import android.view.View
 import android.view.WindowManager
@@ -20,6 +25,8 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.cos
+import kotlin.math.sin
 
 /** What the assistant is doing right now, in plain words. Feeds the live HUD and the dashboard's intelligence feed. */
 object HudState {
@@ -39,7 +46,8 @@ object HudState {
 
     /** "ui_tap {label: Search}" -> "Tapping Search" style sentence for any action. */
     fun describe(name: String, a: JSONObject): String {
-        val detail = listOf("app", "to", "label", "describe", "text", "query", "url", "site", "goal", "title").map { a.optString(it).trim() }.firstOrNull { it.isNotEmpty() }.orEmpty().take(50)
+        val detail = listOf("app", "to", "label", "describe", "text", "query", "url", "site", "goal", "title")
+            .map { a.optString(it).trim() }.firstOrNull { it.isNotEmpty() }.orEmpty().take(50)
         val verb = when (name) {
             "open_app" -> "Opening"; "call" -> "Calling"; "message", "whatsapp", "messenger" -> "Messaging"
             "open_url" -> "Opening address"; "ui_tap", "ui_tap_visual" -> "Tapping"; "ui_type" -> "Typing"
@@ -53,9 +61,9 @@ object HudState {
 }
 
 /**
- * Iron Man style heads-up display drawn over whatever is on screen while the assistant works or opens things:
- * clock, rotating rings and a live read-out of exactly what is happening (real steps, not decoration).
- * Switch it off with SharedPreferences neo_assistant / "hud" = false. Needs "Display over other apps" or the Neo Plus accessibility controls.
+ * Iron Man Jarvis-style heads-up display drawn over the screen while the assistant works or opens things:
+ * clock, system diagnostics, enlarged centered gold/cyan telemetry rings with live internal operations,
+ * and a live terminal read-out of real steps.
  */
 object HudOverlay {
     private val main = Handler(Looper.getMainLooper())
@@ -65,7 +73,8 @@ object HudOverlay {
     private var ticking = false
     private var idleSince = 0L
 
-    fun enabled(c: Context): Boolean = c.applicationContext.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE).getBoolean("hud", true)
+    fun enabled(c: Context): Boolean =
+        c.applicationContext.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE).getBoolean("hud", true)
 
     fun start(c: Context) {
         if (!enabled(c)) return
@@ -76,22 +85,19 @@ object HudOverlay {
     private val tick = object : Runnable {
         override fun run() {
             if (!ticking) return
-            try { sync() } catch (e: Throwable) { }
-            main.postDelayed(this, 60)
+            try { sync() } catch (_: Throwable) { }
+            main.postDelayed(this, 50)
         }
     }
 
-    // Stays up while ANY task is running (a website/app task feed, or a chat request tracked by TaskService);
-    // only after the work is done does the usual 5 second "finished" read-out run out and the HUD close.
-    private fun busy(): Boolean = TaskLog.activeCount() > 0 || TaskService.running() || System.currentTimeMillis() - HudState.lastAt < 5000
+    private fun busy(): Boolean =
+        TaskLog.activeCount() > 0 || TaskService.running() || System.currentTimeMillis() - HudState.lastAt < 5000
 
     private fun sync() {
         val c = ctx ?: return
         if (!enabled(c)) { remove(); ticking = false; return }
         if (busy()) {
             idleSince = 0L
-            // The user opened another app: the HUD must not paint over it. The "working" notification stays; the HUD comes back
-            // on the home screen, inside Neo Plus, or at once when a task is waiting for the user.
             if (userElsewhere() && TaskLog.visible().none { it.active && it.waiting }) { remove(); return }
             if (view == null) add(c)
             val v = view ?: return
@@ -105,19 +111,27 @@ object HudOverlay {
                 title = f.title.ifBlank { "Working" }.take(48)
                 if (f.total > 0) progress = (f.done.toFloat() / f.total).coerceIn(0f, 1f)
                 alert = f.waiting
-                f.lines.takeLast(7).forEach { l -> rows += (when (l.kind) { TaskLine.Kind.ERROR -> 2; TaskLine.Kind.WARN -> 2; TaskLine.Kind.OK, TaskLine.Kind.FIX -> 1; else -> 0 }) to l.text }
+                f.lines.takeLast(6).forEach { l ->
+                    rows += (when (l.kind) {
+                        TaskLine.Kind.ERROR, TaskLine.Kind.WARN -> 2
+                        TaskLine.Kind.OK, TaskLine.Kind.FIX -> 1
+                        else -> 0
+                    }) to l.text
+                }
                 if (f.status.isNotBlank()) rows += 3 to f.status
             } else {
                 HudState.history.takeLast(6).forEach { rows += 0 to it }
                 if (TaskService.running()) {
                     title = TaskService.currentLabel().take(48)
-                    rows += 3 to "Working… stays here until it is finished"
+                    rows += 3 to "ACTIVE PROCESS... STANDBY"
                 }
             }
             v.update(title, rows, progress, alert)
         } else {
             if (idleSince == 0L) idleSince = SystemClock.uptimeMillis()
-            if (SystemClock.uptimeMillis() - idleSince > 1200) { remove(); ticking = false; main.removeCallbacks(tick) }
+            if (SystemClock.uptimeMillis() - idleSince > 1200) {
+                remove(); ticking = false; main.removeCallbacks(tick)
+            }
         }
     }
 
@@ -125,14 +139,19 @@ object HudOverlay {
     private var awaySince = 0L
     private var away = false
 
-    /** True once another app (not Neo Plus, the system bars or a launcher) has been in front for about 0.7 s. Looked at 2-3 times a second. */
     private fun userElsewhere(): Boolean {
         val now = SystemClock.uptimeMillis()
         if (now - fgCheckedAt < 400) return away
         fgCheckedAt = now
-        val pkg = try { Verify.fg() } catch (e: Throwable) { null }
-        val other = pkg != null && pkg != ctx?.packageName && pkg != "com.android.systemui" && !pkg.contains("launcher", ignoreCase = true)
-        if (other) { if (awaySince == 0L) awaySince = now; away = now - awaySince > 700 } else { awaySince = 0L; away = false }
+        val pkg = try { Verify.fg() } catch (_: Throwable) { null }
+        val other = pkg != null && pkg != ctx?.packageName && pkg != "com.android.systemui" &&
+            !pkg.contains("launcher", ignoreCase = true)
+        if (other) {
+            if (awaySince == 0L) awaySince = now
+            away = now - awaySince > 700
+        } else {
+            awaySince = 0L; away = false
+        }
         return away
     }
 
@@ -145,26 +164,36 @@ object HudOverlay {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         )
-        try { host.first.addView(v, lp); view = v; wm = host.first } catch (e: Throwable) { view = null }
+        try { host.first.addView(v, lp); view = v; wm = host.first } catch (_: Throwable) { view = null }
     }
 
     private fun remove() {
         val v = view ?: return
-        try { wm?.removeView(v) } catch (e: Throwable) { }
+        try { wm?.removeView(v) } catch (_: Throwable) { }
         view = null
     }
 }
 
-/** The HUD itself: one custom view, drawn with plain Canvas calls (no layouts, so it is cheap and cannot crash on lifecycle). */
+/**
+ * Custom Jarvis HUD Canvas:
+ * - Top-left clock + System Diagnostics box (Power, Link, Core Temp)
+ * - Enlarged centered gold/cyan telemetry ring with live internal operations
+ * - Bottom terminal command feed + progress bar
+ */
 private class NeoHudView(c: Context) : View(c) {
     private val d = c.resources.displayMetrics.density
     private val cyan = Color.rgb(34, 229, 255)
+    private val cyanDeep = Color.rgb(10, 110, 145)
+    private val gold = Color.rgb(245, 194, 66)
     private val red = Color.rgb(255, 69, 58)
     private val green = Color.rgb(48, 209, 88)
     private val amber = Color.rgb(255, 200, 40)
+
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.MONOSPACE }
     private val oval = RectF()
+    private val clipPath = Path()
+    private val panelPath = Path()
     private val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
     private val secFmt = SimpleDateFormat("ss", Locale.getDefault())
     private val dateFmt = SimpleDateFormat("EEEE d MMM yyyy", Locale.getDefault())
@@ -177,6 +206,11 @@ private class NeoHudView(c: Context) : View(c) {
     private var newestAt = SystemClock.uptimeMillis()
     private val born = SystemClock.uptimeMillis()
 
+    // Cached device telemetry (polled every ~2s so onDraw stays fast)
+    private var lastTelAt = 0L
+    private var batteryPct = 0.85f
+    private var coreTempNorm = 0.48f
+
     fun update(t: String, r: List<Pair<Int, String>>, prog: Float, al: Boolean) {
         title = t; rows = r; progress = prog; alert = al
         val last = r.lastOrNull()?.second.orEmpty()
@@ -184,109 +218,267 @@ private class NeoHudView(c: Context) : View(c) {
         invalidate()
     }
 
-    private fun col(base: Int, a: Int): Int = Color.argb(a.coerceIn(0, 255), Color.red(base), Color.green(base), Color.blue(base))
+    private fun refreshTelemetry() {
+        val now = SystemClock.uptimeMillis()
+        if (now - lastTelAt < 2000L) return
+        lastTelAt = now
+        try {
+            val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            if (intent != null) {
+                val lvl = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, 85)
+                val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100).coerceAtLeast(1)
+                batteryPct = (lvl.toFloat() / scale).coerceIn(0.05f, 1f)
+                val tempTenths = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 340)
+                // Normalize 20C..50C into 0.15..0.95
+                coreTempNorm = (((tempTenths / 10f) - 20f) / 30f).coerceIn(0.15f, 0.95f)
+            }
+        } catch (_: Throwable) { }
+    }
+
+    private fun col(base: Int, a: Int): Int =
+        Color.argb(a.coerceIn(0, 255), Color.red(base), Color.green(base), Color.blue(base))
 
     override fun onDraw(cv: Canvas) {
         val w = width.toFloat(); val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
+        refreshTelemetry()
+
         val now = SystemClock.uptimeMillis()
         val t = (now - born) / 1000f
         val fade = (((now - born) / 350f).coerceIn(0f, 1f) * 255).toInt()
+        val bad = rows.any { it.first == 2 } || alert
 
-        // soft dark veil at the bottom so the read-out stays readable on any app
+        // 1. Dark atmospheric HUD backdrop + bottom gradient veil
         p.style = Paint.Style.FILL
-        p.shader = LinearGradient(0f, h * 0.45f, 0f, h, Color.argb(0, 0, 8, 20), Color.argb((150 * fade / 255), 0, 8, 20), Shader.TileMode.CLAMP)
-        cv.drawRect(0f, h * 0.45f, w, h, p); p.shader = null
+        p.shader = LinearGradient(
+            0f, 0f, 0f, h,
+            intArrayOf(
+                Color.argb((120 * fade / 255), 2, 10, 18),
+                Color.argb((95 * fade / 255), 3, 16, 26),
+                Color.argb((205 * fade / 255), 2, 8, 16)
+            ),
+            floatArrayOf(0f, 0.45f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        cv.drawRect(0f, 0f, w, h, p)
+        p.shader = null
 
-        // corner brackets
-        p.style = Paint.Style.STROKE; p.strokeWidth = 2.5f * d; p.color = col(cyan, 200 * fade / 255)
-        val m = 14f * d; val L = 34f * d
+        // 2. Corner HUD brackets
+        p.style = Paint.Style.STROKE; p.strokeWidth = 2.2f * d; p.color = col(cyan, 190 * fade / 255)
+        val m = 12f * d; val L = 30f * d
         cv.drawLine(m, m + L, m, m, p); cv.drawLine(m, m, m + L, m, p)
         cv.drawLine(w - m - L, m, w - m, m, p); cv.drawLine(w - m, m, w - m, m + L, p)
         cv.drawLine(m, h - m - L, m, h - m, p); cv.drawLine(m, h - m, m + L, h - m, p)
         cv.drawLine(w - m - L, h - m, w - m, h - m, p); cv.drawLine(w - m, h - m, w - m, h - m - L, p)
 
-        // clock + date (top left)
-        val top = 52f * d
-        tp.style = Paint.Style.FILL; tp.color = col(cyan, 235 * fade / 255); tp.textSize = 46f * d
+        // 3. Top-left clock + System Diagnostics box
+        val top = 46f * d
+        val leftX = 22f * d
+        tp.style = Paint.Style.FILL; tp.color = col(cyan, 235 * fade / 255); tp.textSize = 40f * d
         val date = Date()
         val hm = timeFmt.format(date)
-        cv.drawText(hm, 26f * d, top + 40f * d, tp)
+        cv.drawText(hm, leftX, top + 34f * d, tp)
         val hmW = tp.measureText(hm)
-        tp.textSize = 16f * d; cv.drawText(secFmt.format(date), 30f * d + hmW, top + 40f * d, tp)
-        tp.textSize = 12f * d; tp.color = col(cyan, 170 * fade / 255)
-        cv.drawText(dateFmt.format(date).uppercase(Locale.getDefault()), 28f * d, top + 60f * d, tp)
-        tp.textSize = 11f * d; tp.color = col(if (alert) amber else green, 220 * fade / 255)
-        cv.drawText(if (alert) "WAITING FOR YOU" else "NEO PLUS · ONLINE", 28f * d, top + 78f * d, tp)
+        tp.textSize = 14f * d; cv.drawText(secFmt.format(date), leftX + 4f * d + hmW, top + 34f * d, tp)
+        tp.textSize = 10.5f * d; tp.color = col(cyan, 175 * fade / 255)
+        cv.drawText(dateFmt.format(date).uppercase(Locale.getDefault()), leftX + 2f * d, top + 51f * d, tp)
 
-        // main rotating rings (right side)
-        val cx = w * 0.74f; val cy = h * 0.30f; val r = minOf(w, h) * 0.17f
-        p.style = Paint.Style.STROKE
-        p.strokeWidth = 2f * d; p.color = col(cyan, 120 * fade / 255); cv.drawCircle(cx, cy, r, p)
-        p.strokeWidth = 6f * d; p.strokeCap = Paint.Cap.BUTT
-        oval.set(cx - r * 0.86f, cy - r * 0.86f, cx + r * 0.86f, cy + r * 0.86f)
-        p.color = col(cyan, 230 * fade / 255)
-        for (i in 0 until 3) cv.drawArc(oval, t * 90f + i * 120f, 70f, false, p)
-        p.strokeWidth = 2f * d; p.color = col(cyan, 150 * fade / 255)
-        oval.set(cx - r * 0.66f, cy - r * 0.66f, cx + r * 0.66f, cy + r * 0.66f)
-        for (i in 0 until 8) cv.drawArc(oval, -t * 140f + i * 45f, 28f, false, p)
-        // tick marks
-        p.strokeWidth = 1.5f * d; p.color = col(cyan, 140 * fade / 255)
-        for (i in 0 until 60) {
-            val a = Math.toRadians((i * 6.0) + t * 12.0)
-            val r1 = r * 1.06f; val r2 = r * (if (i % 5 == 0) 1.18f else 1.12f)
-            cv.drawLine(cx + (Math.cos(a) * r1).toFloat(), cy + (Math.sin(a) * r1).toFloat(), cx + (Math.cos(a) * r2).toFloat(), cy + (Math.sin(a) * r2).toFloat(), p)
-        }
-        // progress arc in the middle (or a pulsing core when the size of the job is unknown)
-        val core = r * 0.42f
-        oval.set(cx - core, cy - core, cx + core, cy + core)
-        p.strokeWidth = 7f * d; p.strokeCap = Paint.Cap.ROUND
-        p.color = col(cyan, 60 * fade / 255); cv.drawCircle(cx, cy, core, p)
-        p.color = col(if (alert) amber else cyan, 255 * fade / 255)
-        if (progress >= 0f) cv.drawArc(oval, -90f, 360f * progress, false, p)
-        else cv.drawArc(oval, t * 220f, 100f, false, p)
-        p.strokeCap = Paint.Cap.BUTT
-        tp.textAlign = Paint.Align.CENTER; tp.textSize = 15f * d; tp.color = col(cyan, 240 * fade / 255)
-        cv.drawText(if (progress >= 0f) "${(progress * 100).toInt()}%" else "AI", cx, cy + 5f * d, tp)
-        tp.textAlign = Paint.Align.LEFT
+        drawSystemDiagnostics(cv, leftX, top + 60f * d, fade, t)
 
-        // small red alert ring (lower right of the main ring) that pulses on warnings / errors
-        val bad = rows.any { it.first == 2 } || alert
-        val pr = 20f * d * (1f + 0.15f * Math.sin(t * 6.0).toFloat())
-        p.strokeWidth = 3f * d; p.color = col(if (bad) red else green, 230 * fade / 255)
-        cv.drawCircle(w * 0.88f, h * 0.52f, pr, p)
-        p.style = Paint.Style.FILL; p.color = col(if (bad) red else green, 110 * fade / 255)
-        cv.drawCircle(w * 0.88f, h * 0.52f, pr * 0.45f, p)
-        p.style = Paint.Style.STROKE
+        // 4. ENLARGED CENTER JARVIS RING + LIVE INTERNAL OPERATIONS
+        val cx = w * 0.50f
+        val cy = h * 0.43f
+        val r = minOf(w, h) * 0.34f
+        drawCenterJarvisHud(cv, cx, cy, r, t, fade, bad)
 
-        // live read-out (bottom left): exactly what is happening, newest line at the bottom with a typing effect
-        val left = 26f * d
-        val maxW = w - left - 30f * d
-        val lineH = 22f * d
-        val shown = rows.takeLast(8)
-        val base = h - 120f * d
-        tp.textSize = 12.5f * d
-        p.style = Paint.Style.FILL
-        val tit = TextUtils.ellipsize("▌ " + title.uppercase(Locale.getDefault()), android.text.TextPaint(tp), maxW, TextUtils.TruncateAt.END).toString()
-        tp.color = col(cyan, 255 * fade / 255); tp.isFakeBoldText = true
-        cv.drawText(tit, left, base - lineH * (shown.size + 1), tp); tp.isFakeBoldText = false
-        shown.forEachIndexed { i, (kind, text) ->
-            val y = base - lineH * (shown.size - 1 - i)
-            val newestRow = i == shown.size - 1
-            val color = when (kind) { 2 -> red; 1 -> green; 3 -> amber; else -> cyan }
-            val a = if (newestRow) 255 else (110 + 20 * i).coerceAtMost(220)
-            var s = text
-            if (newestRow) { val n = ((now - newestAt) / 22L).toInt().coerceAtLeast(1); if (n < s.length) s = s.substring(0, n) + "█" }
-            tp.color = col(color, a * fade / 255)
-            val line = TextUtils.ellipsize((if (newestRow) "› " else "  ") + s, android.text.TextPaint(tp), maxW, TextUtils.TruncateAt.END).toString()
-            cv.drawText(line, left, y, tp)
-        }
-        // scanning line under the read-out
-        val scanW = (w - 2 * left)
-        p.style = Paint.Style.STROKE; p.strokeWidth = 2f * d; p.color = col(cyan, 70 * fade / 255)
-        cv.drawLine(left, h - 92f * d, left + scanW, h - 92f * d, p)
-        p.color = col(cyan, 230 * fade / 255)
-        val sx = left + ((t * 0.5f) % 1f) * scanW
-        cv.drawLine(sx, h - 92f * d, minOf(sx + 60f * d, left + scanW), h - 92f * d, p)
+        // 5. Bottom terminal feed (real live steps + progress bar)
+        drawTerminalFeed(cv, w, h, t, fade, bad)
     }
-}
+
+    private fun drawSystemDiagnostics(cv: Canvas, x: Float, y: Float, fade: Int, t: Float) {
+        val boxW = 168f * d
+        val boxH = 74f * d
+        val cut = 10f * d
+
+        panelPath.reset()
+        panelPath.moveTo(x, y)
+        panelPath.lineTo(x + boxW - cut, y)
+        panelPath.lineTo(x + boxW, y + cut)
+        panelPath.lineTo(x + boxW, y + boxH)
+        panelPath.lineTo(x + cut, y + boxH)
+        panelPath.lineTo(x, y + boxH - cut)
+        panelPath.close()
+
+        p.style = Paint.Style.FILL
+        p.color = Color.argb((110 * fade / 255), 5, 24, 36)
+        cv.drawPath(panelPath, p)
+
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = 1.2f * d
+        p.color = col(cyan, 160 * fade / 255)
+        cv.drawPath(panelPath, p)
+
+        tp.style = Paint.Style.FILL
+        tp.textSize = 9.5f * d
+        tp.color = col(cyan, 220 * fade / 255)
+        cv.drawText("SYSTEM DIAGNOSTICS", x + 8f * d, y + 14f * d, tp)
+
+        val linkFill = (0.45f + 0.25f * sin(t * 2.2f)).coerceIn(0.2f, 0.95f)
+        val bars = listOf(
+            Triple("POWER", batteryPct, green),
+            Triple("LINK", linkFill, cyan),
+            Triple("CORE TEMP", coreTempNorm, if (coreTempNorm > 0.78f) amber else green)
+        )
+        bars.forEachIndexed { idx, (label, pct, barCol) ->
+            val rowY = y + 29f * d + idx * 15f * d
+            tp.textSize = 8.5f * d
+            tp.color = col(cyan, 195 * fade / 255)
+            cv.drawText(label, x + 8f * d, rowY, tp)
+
+            val bx = x + 68f * d
+            val bw = boxW - 78f * d
+            val bh = 6f * d
+            oval.set(bx, rowY - bh, bx + bw, rowY)
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = 1f * d
+            p.color = col(cyan, 120 * fade / 255)
+            cv.drawRoundRect(oval, 3f * d, 3f * d, p)
+
+            oval.set(bx + 1f * d, rowY - bh + 1f * d, bx + 1f * d + (bw - 2f * d) * pct, rowY - 1f * d)
+            p.style = Paint.Style.FILL
+            p.color = col(barCol, 225 * fade / 255)
+            cv.drawRoundRect(oval, 2f * d, 2f * d, p)
+        }
+
+        tp.textSize = 8.5f * d
+        tp.color = col(if (alert) amber else green, 220 * fade / 255)
+        cv.drawText(if (alert) "STATUS: AWAITING INPUT" else "NETWORK: ONLINE · ACTIVE", x + 4f * d, y + boxH + 13f * d, tp)
+    }
+
+    private fun drawCenterJarvisHud(
+        cv: Canvas, cx: Float, cy: Float, r: Float, t: Float, fade: Int, bad: Boolean
+    ) {
+        val accent = if (bad) red else cyan
+
+        // Subtle radial ambient glow behind the ring
+        p.style = Paint.Style.FILL
+        p.color = col(cyanDeep, 55 * fade / 255)
+        cv.drawCircle(cx, cy, r * 1.12f, p)
+
+        // Outer thin structural ring + diagonal crosshair rays
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = 1.4f * d
+        p.color = col(accent, 110 * fade / 255)
+        cv.drawCircle(cx, cy, r * 1.08f, p)
+        for (deg in listOf(35.0, 145.0, 215.0, 325.0)) {
+            val rad = Math.toRadians(deg)
+            cv.drawLine(
+                cx + (cos(rad) * r * 0.98f).toFloat(),
+                cy + (sin(rad) * r * 0.98f).toFloat(),
+                cx + (cos(rad) * r * 1.24f).toFloat(),
+                cy + (sin(rad) * r * 1.24f).toFloat(),
+                p
+            )
+        }
+
+        // Gold metallic segmented outer bevel ring (signature Iron Man HUD ring)
+        p.strokeWidth = 7.5f * d
+        p.strokeCap = Paint.Cap.BUTT
+        oval.set(cx - r * 0.94f, cy - r * 0.94f, cx + r * 0.94f, cy + r * 0.94f)
+        p.color = col(gold, 175 * fade / 255)
+        for (i in 0 until 4) {
+            cv.drawArc(oval, t * 28f + i * 90f + 8f, 74f, false, p)
+        }
+
+        // Rotating 60-tick compass ring
+        p.strokeWidth = 1.6f * d
+        p.color = col(accent, 175 * fade / 255)
+        for (i in 0 until 60) {
+            val a = Math.toRadians((i * 6.0) + t * 14.0)
+            val r1 = r * 0.99f
+            val r2 = r * (if (i % 5 == 0) 1.06f else 1.025f)
+            cv.drawLine(
+                cx + (cos(a) * r1).toFloat(), cy + (sin(a) * r1).toFloat(),
+                cx + (cos(a) * r2).toFloat(), cy + (sin(a) * r2).toFloat(), p
+            )
+        }
+
+        // Counter-rotating cyan segmented telemetry arcs
+        p.strokeWidth = 4.5f * d
+        oval.set(cx - r * 0.85f, cy - r * 0.85f, cx + r * 0.85f, cy + r * 0.85f)
+        p.color = col(accent, 230 * fade / 255)
+        for (i in 0 until 3) {
+            cv.drawArc(oval, -t * 75f + i * 120f, 76f, false, p)
+        }
+
+        // Inner fine dashed arc ring
+        p.strokeWidth = 2f * d
+        oval.set(cx - r * 0.78f, cy - r * 0.78f, cx + r * 0.78f, cy + r * 0.78f)
+        p.color = col(gold, 190 * fade / 255)
+        for (i in 0 until 12) {
+            cv.drawArc(oval, t * 52f + i * 30f, 16f, false, p)
+        }
+
+        // --- INNER VISOR WORKSPACE (clipped inside r * 0.74f) ---
+        val innerR = r * 0.74f
+        clipPath.reset()
+        clipPath.addCircle(cx, cy, innerR, Path.Direction.CW)
+        cv.save()
+        cv.clipPath(clipPath)
+
+        // Dark holographic visor glass background
+        p.style = Paint.Style.FILL
+        p.color = Color.argb((175 * fade / 255), 3, 20, 32)
+        cv.drawCircle(cx, cy, innerR, p)
+
+        // Subtle horizontal tactical scan grid inside the core
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = 0.8f * d
+        p.color = col(cyan, 42 * fade / 255)
+        val step = 14f * d
+        var gx = cx - innerR
+        while (gx <= cx + innerR) { cv.drawLine(gx, cy - innerR, gx, cy + innerR, p); gx += step }
+        var gy = cy - innerR
+        while (gy <= cy + innerR) { cv.drawLine(cx - innerR, gy, cx + innerR, gy, p); gy += step }
+
+        // Rotating 3D-style wireframe telemetry globe in the center
+        val globeR = innerR * 0.44f
+        p.strokeWidth = 1.1f * d
+        p.color = col(cyan, 115 * fade / 255)
+        cv.drawCircle(cx, cy, globeR, p)
+        for (lat in listOf(-0.6f, -0.3f, 0f, 0.3f, 0.6f)) {
+            val ry = globeR * kotlin.math.sqrt((1f - lat * lat).coerceAtLeast(0.05f))
+            oval.set(cx - ry, cy + lat * globeR - ry * 0.28f, cx + ry, cy + lat * globeR + ry * 0.28f)
+            cv.drawOval(oval, p)
+        }
+        for (mIdx in 0 until 4) {
+            val phase = ((t * 0.6f + mIdx * 0.25f) % 1f)
+            val rx = globeR * cos(phase * Math.PI).toFloat()
+            oval.set(cx - kotlin.math.abs(rx), cy - globeR, cx + kotlin.math.abs(rx), cy + globeR)
+            cv.drawOval(oval, p)
+        }
+
+        // Top internal telemetry readout inside ring
+        val activeCount = TaskLog.activeCount().coerceAtLeast(if (TaskService.running()) 1 else 0)
+        tp.style = Paint.Style.FILL
+        tp.textAlign = Paint.Align.CENTER
+        tp.textSize = 8.5f * d
+        tp.color = col(cyan, 225 * fade / 255)
+        cv.drawText("SYS STABILITY: 98%  ·  TASKS: $activeCount", cx, cy - innerR * 0.64f, tp)
+        tp.color = col(gold, 225 * fade / 255)
+        val moduleTitle = title.uppercase(Locale.getDefault()).take(24)
+        cv.drawText("MODULE // $moduleTitle", cx, cy - innerR * 0.50f, tp)
+
+        // Left & Right internal mini target reticles
+        val sideOffset = innerR * 0.58f
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = 1.4f * d
+        p.color = col(gold, 200 * fade / 255)
+        cv.drawCircle(cx - sideOffset, cy, 14f * d, p)
+        cv.drawCircle(cx + sideOffset, cy, 14f * d, p)
+        p.color = col(accent, 210 * fade / 255)
+        cv.drawArc(
+            RectF(cx - sideOffset - 18f * d, cy - 18f * d, cx - sideOffset + 18f * d, cy + 18f * d),
+            t * 140f, 110f, false, p
+        )
+        cv.drawA
