@@ -391,6 +391,8 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                     MenuRow("Voice", "Female or male voice, and hear it", 2)
                     MenuRow("Website authorisation", "Websites the assistant may operate, saved logins and the daily limit", 3)
                     MenuRow("Apps", "Choose which phone apps the assistant may open and control", 4)
+                    MenuRow("Approvals",
+                        Approvals.list(ctx).size.let { n -> if (n == 0) "Nothing is waiting. Messages and skill installs the assistant wants to do show up here for your OK" else "$n waiting for your OK: tap to send, install or skip" }, 9)
                     var volSys by remember { mutableStateOf(IosControlService.systemVolume(ctx)) }
                     Column(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.12f))
@@ -655,6 +657,7 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                 6 -> PinsPanel { page = 0 }
                 7 -> LockPanel(apps) { page = 0 }
                 8 -> AwarenessPanel { page = 0 }
+                9 -> ApprovalsPanel { page = 0 }
 
                 else -> {
                     Text("Website authorisation", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
@@ -1295,6 +1298,97 @@ private fun PinsPanel(onBack: () -> Unit) {
     }
 }
 
+
+/** Settings > Approvals: everything that waits for the owner's OK (messages, posts, skill installs). Works even when notifications are off. */
+@Composable
+private fun ApprovalsPanel(onBack: () -> Unit) {
+    val ctx = LocalContext.current
+    val note = Color.White.copy(alpha = 0.7f)
+    var tick by remember { mutableStateOf(0) }
+    var msg by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(1500); tick++ } }
+    val t = tick   // reload the list whenever this changes
+    val items = remember(t) { Approvals.list(ctx) }
+
+    // Sending or installing can take a while (network, other apps): never on the main thread.
+    fun decide(id: String, send: Boolean) {
+        if (busy) return
+        busy = true
+        Thread {
+            val r = try { Approvals.decide(ctx, id, send) } catch (e: Exception) { "Couldn’t finish that (" + e.javaClass.simpleName + ")" }
+            msg = r
+            busy = false
+            tick++
+        }.start()
+    }
+
+    Text("Approvals", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+    Text(
+        "Things the assistant wants to send or install wait here until you say yes. Nothing goes out and nothing is installed without your tap, " +
+            "and you can do it here even when notifications are off.",
+        color = note, fontSize = 13.sp, lineHeight = 18.sp
+    )
+    if (!Approvals.notificationsOk(ctx)) {
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0xFFFFC857).copy(alpha = 0.18f)).padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("Notifications are off, so no buttons show in the notification list.", color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
+            Box(Modifier.clip(RoundedCornerShape(50)).background(UserBlueBottom).clickable { Approvals.openNotificationSettings(ctx) }.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                Text("Turn on", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+    if (items.isEmpty()) {
+        Text("Nothing is waiting for your OK.", color = note, fontSize = 14.sp)
+    } else {
+        items.forEach { it0 ->
+            val isSkill = it0.action == "skill_commit"
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.12f)).padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(if (isSkill) "Install skill" else "Waiting for your OK", color = note, fontSize = 12.sp)
+                Text(it0.summary, color = Color.White, fontSize = 14.sp, lineHeight = 19.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    Box(
+                        Modifier.weight(1f).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.16f))
+                            .clickable { decide(it0.id, false) }.padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) { Text("Skip", color = Color.White, fontSize = 14.sp) }
+                    Box(
+                        Modifier.weight(1f).clip(RoundedCornerShape(50)).background(UserBlueBottom)
+                            .clickable { decide(it0.id, true) }.padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) { Text(if (isSkill) "Install" else "Send", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+                }
+            }
+        }
+        if (items.size > 1) Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            Box(
+                Modifier.weight(1f).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.16f))
+                    .clickable { msg = Approvals.handle(ctx, "skip_all"); tick++ }.padding(vertical = 10.dp),
+                contentAlignment = Alignment.Center
+            ) { Text("Skip all", color = Color.White, fontSize = 14.sp) }
+            Box(
+                Modifier.weight(1f).clip(RoundedCornerShape(50)).background(UserBlueBottom)
+                    .clickable { msg = Approvals.handle(ctx, "approve_all"); tick++ }.padding(vertical = 10.dp),
+                contentAlignment = Alignment.Center
+            ) { Text("Approve all", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+        }
+    }
+    if (msg.isNotBlank()) Text(msg, color = Color(0xFF7DFFB0), fontSize = 13.sp, lineHeight = 18.sp)
+    Text(
+        "Open the Skills screen", color = Color(0xFF8AA8FF), fontSize = 14.sp,
+        modifier = Modifier.clickable { SkillStore.openScreen(ctx) }
+    )
+    Box(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.16f))
+            .clickable { onBack() }.padding(vertical = 12.dp),
+        contentAlignment = Alignment.Center
+    ) { Text("Back", color = Color.White, fontSize = 15.sp) }
+}
 
 /** Lock settings. Switching the lock off or weakening it needs the phone's own unlock first (see AppLock). */
 @Composable
