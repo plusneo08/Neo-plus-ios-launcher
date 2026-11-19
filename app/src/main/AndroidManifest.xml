@@ -422,6 +422,13 @@
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.Neo" />
 
+        <!-- Skills screen: installed skills + "Waiting for your OK" with the Install button -->
+        <activity
+            android:name=".SkillsActivity"
+            android:exported="false"
+            android:label="Skills"
+            android:theme="@style/Theme.Neo" />
+
         <!-- Feeds the iOS-style Notification Centre (user must switch on Notification access once) -->
         <service
             android:name=".NeoNotificationService"
