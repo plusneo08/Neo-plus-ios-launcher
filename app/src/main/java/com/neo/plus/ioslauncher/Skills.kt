@@ -92,13 +92,18 @@ object Skills {
 
     fun list(ctx: Context): String {
         val a = load(ctx)
-        if (a.length() == 0) return "You have no skills yet. Say, for example: add a skill for messages: tell people who you are."
+        val packs = SkillStore.listText(ctx)
+        if (a.length() == 0) {
+            return if (packs.isNotEmpty()) packs
+            else "You have no skills yet. Say, for example: add a skill for messages: tell people who you are, or: install the skills from github.com/anthropics/skills."
+        }
         val sb = StringBuilder("Your skills:")
         for (i in 0 until a.length()) {
             val o = a.optJSONObject(i) ?: continue
             sb.append("\n${i + 1}. ").append(o.optString("name")).append(" (").append(o.optString("scope", "all"))
                 .append(if (o.optBoolean("on", true)) "" else ", off").append("): ").append(o.optString("text").take(120))
         }
+        if (packs.isNotEmpty()) sb.append("\n\n").append(packs)
         return sb.toString()
     }
 
@@ -123,9 +128,12 @@ object Skills {
 
     fun handle(ctx: Context, a: JSONObject): String = when (a.optString("do").lowercase(Locale.ROOT)) {
         "add", "set" -> add(ctx, a.optString("name"), a.optString("text"), a.optString("for", a.optString("scope", "all")))
-        "remove", "delete" -> remove(ctx, a.optString("which", a.optString("name")))
-        "on", "enable" -> setOn(ctx, a.optString("which", a.optString("name")), true)
-        "off", "disable" -> setOn(ctx, a.optString("which", a.optString("name")), false)
+        "install", "import", "get" -> SkillStore.install(ctx, a)
+        "update", "upgrade" -> SkillStore.update(ctx, a.optString("which", a.optString("name")))
+        "use" -> SkillStore.use(ctx, a.optString("name", a.optString("which")), a.optString("file"))
+        "remove", "delete" -> a.optString("which", a.optString("name")).let { w -> if (SkillStore.has(ctx, w) && find(load(ctx), w).isEmpty()) SkillStore.remove(ctx, w) else remove(ctx, w) }
+        "on", "enable" -> a.optString("which", a.optString("name")).let { w -> if (SkillStore.has(ctx, w) && find(load(ctx), w).isEmpty()) SkillStore.setOn(ctx, w, true) else setOn(ctx, w, true) }
+        "off", "disable" -> a.optString("which", a.optString("name")).let { w -> if (SkillStore.has(ctx, w) && find(load(ctx), w).isEmpty()) SkillStore.setOn(ctx, w, false) else setOn(ctx, w, false) }
         else -> list(ctx)
     }
 }
@@ -142,9 +150,36 @@ object SkillCmd {
 
     private fun plan(o: JSONObject) = LocalPlan("", listOf("skill" to o))
 
+    // "install the skills from github.com/anthropics/skills", "install the pdf skill from anthropics/skills", "install skill https://.../SKILL.md"
+    private val srcRe = Regex("(https?://\\S+|github:\\S+|(?:github\\.com|raw\\.githubusercontent\\.com)/\\S+|\\b[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]+(?:/\\S*)?)", I)
+    private val installVerb = Regex("^(?:please\\s+)?(?:install|import|download|fetch)\\b", I)
+    private val looseVerb = Regex("^(?:please\\s+)?(?:add|get|load)\\b", I)
+    private val nameRe = Regex("(?:install|import|download|fetch|add|get|load)\\s+(?:the\\s+|a\\s+|new\\s+)*([A-Za-z0-9_-]+)\\s+skill\\b", I)
+    private val notNames = setOf("a", "an", "the", "new", "this", "that", "my", "all", "some", "more", "another")
+    private val updateRe = Regex("^(?:please\\s+)?update\\s+(?:all\\s+|my\\s+|the\\s+)*skills?(?:\\s+(.+))?$|^(?:please\\s+)?update\\s+(?:the\\s+)?(.+?)\\s+skill$", I)
+
+    private fun installPlan(t: String): LocalPlan? {
+        val strict = installVerb.containsMatchIn(t)
+        if (!strict && !looseVerb.containsMatchIn(t)) return null
+        val m = srcRe.find(t) ?: return null
+        var src = m.value.trimEnd('.', ',', ')', '!', '?')
+        val isUrl = src.startsWith("http", true) || src.startsWith("github:", true) || src.contains("github.com", true) || src.contains("githubusercontent", true)
+        if (!isUrl && !strict) return null   // "add a skill: say yes/no" is a text skill, not an address
+        val before = t.substring(0, m.range.first)
+        // "add a skill for calls: see https://..." is a text skill that mentions a link
+        if (Regex("\\bfor\\s+(messages?|texts?|chats?|calls?|phone calls?|the assistant|assistant|everything|all)\\b|:", I).containsMatchIn(before)) return null
+        if (src.startsWith("github.com", true) || src.startsWith("raw.githubusercontent.com", true)) src = "https://$src"
+        val o = JSONObject().put("do", "install").put("source", src)
+        nameRe.find(t)?.groupValues?.get(1)?.let { n -> if (n.lowercase(Locale.ROOT) !in notNames) o.put("name", n) }
+        if (Regex("\\ball\\b", I).containsMatchIn(before)) o.put("all", true)
+        return plan(o)
+    }
+
     fun plan(text: String): LocalPlan? {
         val t = text.trim().trimEnd('!', '?')
         if (!t.contains("skill", true)) return null
+        installPlan(t)?.let { return it }
+        updateRe.find(t)?.let { m -> return plan(JSONObject().put("do", "update").put("which", m.groupValues[1].ifBlank { m.groupValues[2] }.ifBlank { "all" })) }
         addRe.find(t)?.let { m ->
             var rest = m.groupValues[1].trim()
             var scope = "all"

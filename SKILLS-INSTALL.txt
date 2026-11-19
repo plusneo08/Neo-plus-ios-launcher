@@ -1,0 +1,35 @@
+INSTALLABLE SKILLS (like Claude Code) - what changed
+=====================================================
+NEW      SkillStore.kt   skill packs: a folder with SKILL.md (name + description header, then the instructions) and optional text files
+CHANGED  Skills.kt       skill {"do":"install"|"update"|"use"} + list/remove/on/off also cover installed packs; typed/spoken commands
+CHANGED  Approvals.kt    the install waits in "Waiting for your OK" with an Install button (it is not Send)
+CHANGED  Assistant.kt    new actions skill_use (loads a skill) and skill_commit (only from an approved item); the installed skills'
+                         names + descriptions are added to the assistant's instructions; skill_use returns data to the model
+CHANGED  CallPrompt.kt   the short call prompt lists the skills and asks for the full tools when one fits
+
+Copy all 11 files (this zip also contains the speed changes) over the same paths and build. NOT compiled here (no Android build tools in
+my sandbox); brackets balance in every changed file and the voice-command patterns were tested on sample sentences. Send me the first build error.
+
+SAY TO THE ASSISTANT
+  install the skills from github.com/anthropics/skills     -> lists the skills in that repo
+  install the pdf skill from anthropics/skills              -> downloads + checks it, then it waits for your OK (notification: Install / Skip)
+  install all skills from github.com/owner/repo
+  install skill https://example.com/SKILL.md   (or a link to a .zip, or a file such as /storage/emulated/0/Download/x.zip)
+  update my skills | list my skills | turn off the pdf skill | remove the pdf skill
+
+HOW IT WORKS
+  1. Install: the files are downloaded and scanned (words about passwords, PINs, payments, "ignore previous instructions",
+     shell commands ...). Warnings are shown in the notification. NOTHING is installed until you tap Install.
+     The AI model cannot approve it: the approval key is stored with the waiting item and the model never sees it.
+  2. Only each skill's name + description is added to the assistant's instructions (about one line each).
+  3. When a request matches a skill the assistant calls skill_use, reads the full SKILL.md (and any listed file) and follows it.
+     Loading a skill counts as reading outside text: for 2 minutes risky actions (calendar changes, connectors ...) ask you first.
+  4. Skills never override the safety rules (no payments, no PINs/OTPs/passwords, no personal details).
+
+LIMITS
+  - Scripts are NOT installed (a "scripts" folder, or any file that is not plain text). The assistant cannot run them, so a skill that
+    depends on scripts only works as far as its written instructions go.
+  - Up to 10 skills per request, 30 files / 600 KB per skill, 40 skills in total. Only https. GitHub's free limit is about 60 requests/hour.
+  - Plain-text skills added with "add a skill for calls: ..." work as before (short text, a scope: messages / calls / assistant / all).
+  - Installed skills are used in the assistant chat and in the voice calls with the assistant. They are not added to the instructions
+    for answering callers or messages for you (that stays the old text skills with a scope).

@@ -70,6 +70,7 @@ object Approvals {
             "email" -> "Email"
             "message" -> "SMS"
             "post" -> "Post on " + a.optString("app").ifBlank { "your app" }
+            "skill_commit" -> "Install skill"
             else -> action
         }
         val head = if (action == "post" || to.isBlank()) how else how + " to " + to
@@ -115,7 +116,7 @@ object Approvals {
                 .setContentTitle("Waiting for your OK")
                 .setContentText(item.summary)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(item.summary))
-                .addAction(0, "Send", pi("send", 1))
+                .addAction(0, if (item.action == "skill_commit") "Install" else "Send", pi("send", 1))
                 .addAction(0, "Skip", pi("skip", 2))
                 .setAutoCancel(false)
                 .setOnlyAlertOnce(true)
@@ -136,6 +137,7 @@ object Approvals {
         cancelNotification(app, id)
         if (!send) return "Skipped: " + item.summary
         val r = PhoneActions.run(app, item.action, JSONObject(item.args.toString()), lastApps)
+        if (item.action == "skill_commit") return r.note
         return if (r.ok) "Sent: " + item.summary else "Couldn’t send: " + item.summary + " (" + r.note + ")"
     }
 

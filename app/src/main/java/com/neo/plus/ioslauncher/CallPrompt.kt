@@ -25,6 +25,7 @@ object CallPrompt {
             "price|prices|score|scores|result|results|fixture|match|search|google|look up|lookup|find|latest|today|tonight|tomorrow|current|currently|" +
             "now|president|prime minister|champion|winner|bitcoin|exchange rate|near me|opening hours|remember|forget|skill|approve|approval|" +
             "notification|notifications|missed|download|upload|file|files|excel|spreadsheet|word|post|share|turn|switch|set|change|show|read|" +
+            "skills|install|" +
             "write|create|make|add|delete|save|copy|type|tap|click|scroll|enable|disable|close|start|stop|go to|check)\\b",
         RegexOption.IGNORE_CASE
     )
@@ -65,6 +66,6 @@ If the user asks you to DO something on the phone (open an app, call, message, a
 Context:
 Now: $now (${TimeZone.getDefault().id}).
 Weather: $weather.
-${mem}""".trimIndent() + Skills.promptFor(ctx, "assistant")
+${mem}""".trimIndent() + Skills.promptFor(ctx, "assistant") + SkillStore.catalog(ctx, light = true)
     }
 }
