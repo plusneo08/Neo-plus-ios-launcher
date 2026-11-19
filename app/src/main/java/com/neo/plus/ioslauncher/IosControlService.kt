@@ -224,6 +224,12 @@ class IosControlService : AccessibilityService() {
     /** A JPEG of what is on the screen right now (Android 11+), scaled down; null if unavailable. Call off the main thread. */
     fun captureScreen(): ByteArray? {
         if (Build.VERSION.SDK_INT < 30) return null
+        HudOverlay.shotHold = true // the HUD draws nothing while the picture is taken
+        try { Thread.sleep(140) } catch (e: Exception) { }
+        try { return captureScreenRaw() } finally { HudOverlay.shotHold = false }
+    }
+
+    private fun captureScreenRaw(): ByteArray? {
         val latch = CountDownLatch(1)
         var out: ByteArray? = null
         try {
