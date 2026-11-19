@@ -637,6 +637,42 @@ object SkillStore {
         Approvals.dropStage(app, id)
     }
 
+    class Found(val dirName: String, val slug: String, val name: String, val description: String)
+
+    /** Explore: lists the skills in a GitHub repo or folder without installing anything. Returns the skills and an error text ("" when fine). */
+    fun browse(ctx: Context, src: String): Pair<List<Found>, String> {
+        return try {
+            val (tree, base) = openSource(src.trim())
+            val dirs = tree.entries.map { it.path }.filter { it == "SKILL.md" || it.endsWith("/SKILL.md") }
+                .map { it.removeSuffix("SKILL.md").trimEnd('/') }
+                .filter { base.isEmpty() || it == base || it.startsWith("$base/") }
+                .take(60)
+            if (dirs.isEmpty()) return emptyList<Found>() to "No skills found there."
+            val pool = Executors.newFixedThreadPool(4)
+            val out = ArrayList<Found>()
+            try {
+                val jobs = dirs.map { d ->
+                    pool.submit(Callable {
+                        val md = String(tree.read(if (d.isEmpty()) "SKILL.md" else "$d/SKILL.md"), Charsets.UTF_8)
+                        val pr = parse(md)
+                        val dirName = d.substringAfterLast('/').ifBlank { tree.label.substringAfterLast('/') }
+                        val name = pr.meta["name"].orEmpty().ifBlank { dirName }
+                        val desc = pr.meta["description"].orEmpty()
+                            .ifBlank { pr.body.trim().lines().firstOrNull { it.isNotBlank() && !it.trimStart().startsWith("#") }.orEmpty() }
+                            .trim().take(220)
+                        Found(dirName, slugOf(name), name.take(60), desc)
+                    })
+                }
+                for (j in jobs) { try { out.add(j.get(30, TimeUnit.SECONDS)) } catch (e: Exception) { } }
+            } finally { pool.shutdownNow() }
+            out.sortedBy { it.name.lowercase(Locale.ROOT) } to (if (out.isEmpty()) "Couldn’t read the skills there." else "")
+        } catch (e: IOException) {
+            emptyList<Found>() to ("Couldn’t open that: " + friendly(e))
+        } catch (e: Exception) {
+            emptyList<Found>() to "Couldn’t open that."
+        }
+    }
+
     fun openScreen(ctx: Context): String = try {
         val app = ctx.applicationContext
         app.startActivity(Intent(app, SkillsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

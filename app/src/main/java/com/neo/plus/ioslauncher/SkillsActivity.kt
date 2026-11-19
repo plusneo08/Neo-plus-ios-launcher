@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -71,6 +72,16 @@ class SkillsActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         io.shutdown()
+    }
+
+    /** Same as [bg] for any result type. */
+    fun <T> bgOf(work: () -> T, fallback: T, done: (T) -> Unit) {
+        try {
+            io.execute {
+                val r = try { work() } catch (e: Exception) { fallback }
+                runOnUiThread { done(r) }
+            }
+        } catch (e: Exception) { done(fallback) }
     }
 
     /** Runs [work] off the main thread (downloads), then [done] on the main thread. */
@@ -151,6 +162,9 @@ private fun SkillsScreen(act: SkillsActivity) {
             var link by remember { mutableStateOf("") }
             var msg by remember { mutableStateOf("") }
             var busy by remember { mutableStateOf(false) }
+            var exploreSrc by remember { mutableStateOf("anthropics/skills") }
+            var browsed by remember { mutableStateOf("") }
+            val found = remember { mutableStateListOf<SkillStore.Found>() }
             val chat = remember { mutableStateListOf<Pair<Boolean, String>>() }
             var chatIn by remember { mutableStateOf("") }
             var draft by remember { mutableStateOf("") }
@@ -186,15 +200,16 @@ private fun SkillsScreen(act: SkillsActivity) {
                     fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TabButton("Installed (${installed.size})", tab == 0) { tab = 0 }
                     TabButton("Waiting (${waiting.size})", tab == 1) { tab = 1 }
+                    TabButton("Explore", tab == 3) { tab = 3 }
                     TabButton("Create", tab == 2) { tab = 2 }
                 }
                 Spacer(Modifier.height(8.dp))
 
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                    if (tab != 2) Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                    if (tab == 0 || tab == 1) Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                         Column(Modifier.padding(12.dp)) {
                             Text("Add a skill", fontWeight = FontWeight.SemiBold)
                             OutlinedTextField(
@@ -241,6 +256,27 @@ private fun SkillsScreen(act: SkillsActivity) {
                                 busy = busy
                             )
                         }
+                    } else if (tab == 3) {
+                        ExplorePanel(
+                            exploreSrc, { exploreSrc = it }, found, browsed, installed.map { it.slug }, busy,
+                            onBrowse = { src ->
+                                busy = true
+                                msg = "Looking for skills…"
+                                act.bgOf({ SkillStore.browse(act, src) }, emptyList<SkillStore.Found>() to "Couldn’t open that.") { res ->
+                                    found.clear()
+                                    found.addAll(res.first)
+                                    browsed = if (res.first.isEmpty()) "" else src.trim()
+                                    msg = if (res.second.isNotEmpty()) res.second else res.first.size.toString() + " skill(s) found. Tap Get to download and check one."
+                                    busy = false
+                                }
+                            },
+                            onGet = { f ->
+                                busy = true
+                                msg = "Downloading and checking…"
+                                val src = browsed
+                                act.bg({ SkillStore.install(act, JSONObject().put("source", src).put("name", f.dirName)) }) { r -> afterGet(r) }
+                            }
+                        )
                     } else if (tab == 2) {
                         CreatePanel(
                             chat, chatIn, { chatIn = it }, draft, { draft = it }, busy,
@@ -387,6 +423,53 @@ private fun CreatePanel(
                 OutlinedTextField(value = draft, onValueChange = onDraft, maxLines = 14, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(6.dp))
                 Button(enabled = !busy, onClick = onAdd) { Text("Add to Waiting") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExplorePanel(
+    src: String, onSrc: (String) -> Unit, found: List<SkillStore.Found>, browsed: String, have: List<String>, busy: Boolean,
+    onBrowse: (String) -> Unit, onGet: (SkillStore.Found) -> Unit
+) {
+    Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+        Column(Modifier.padding(12.dp)) {
+            Text("Explore skills", fontWeight = FontWeight.SemiBold)
+            Text(
+                "Look through a GitHub collection of skills. Nothing is installed until you tap Get, check the scan, and tap Install on the Waiting tab.",
+                fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(enabled = !busy, onClick = { onSrc("anthropics/skills"); onBrowse("anthropics/skills") }) { Text("Anthropic skills") }
+                OutlinedButton(
+                    enabled = !busy,
+                    onClick = {
+                        val h = "github.com/NousResearch/hermes-agent/tree/main/skills"
+                        onSrc(h); onBrowse(h)
+                    }
+                ) { Text("Hermes skills") }
+            }
+            Spacer(Modifier.height(6.dp))
+            OutlinedTextField(
+                value = src, onValueChange = onSrc, singleLine = true,
+                label = { Text("GitHub repo or folder (owner/repo)") }, modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(6.dp))
+            Button(enabled = !busy && src.isNotBlank(), onClick = { onBrowse(src) }) { Text("Browse") }
+        }
+    }
+    for (f in found) {
+        val isIn = f.slug in have
+        Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                    Text(f.name, fontWeight = FontWeight.SemiBold)
+                    Text(f.description, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (isIn) Text("Installed", fontSize = 13.sp, color = GREEN)
+                else Button(enabled = !busy && browsed.isNotBlank(), onClick = { onGet(f) }) { Text("Get") }
             }
         }
     }

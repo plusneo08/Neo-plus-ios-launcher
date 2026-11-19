@@ -5,6 +5,8 @@ NEW      SkillsActivity.kt  the Skills screen: tabs Installed / Waiting, "Add a 
                             Installed skills have an on/off switch, Update and Remove.
             + CREATE tab ("Create with chat"): describe the skill, the assistant may ask a question, writes a SKILL.md draft you can edit,
               "Add to Waiting" runs the same safety check, then you tap Install on the Waiting tab. Uses the key from the assistant settings (Gemini Flash).
+            + EXPLORE tab: browse a GitHub skills collection (Anthropic skills, Hermes skills, or any owner/repo or folder), see each skill's
+              name and description, tap Get -> it is downloaded, checked and put on the Waiting tab (nothing installs without Install).
 CHANGED  SkillStore.kt      scan result is saved as Ready / Needs review / Blocked (blocked = tries to override the assistant's rules, or acts
                             without telling you); blocked skills cannot be installed; functions for the screen
 CHANGED  Approvals.kt       tapping the "Install skill?" notification opens the Skills screen; settling a skill there removes the notification
