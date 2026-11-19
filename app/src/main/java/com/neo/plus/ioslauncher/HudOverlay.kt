@@ -481,4 +481,98 @@ private class NeoHudView(c: Context) : View(c) {
             RectF(cx - sideOffset - 18f * d, cy - 18f * d, cx - sideOffset + 18f * d, cy + 18f * d),
             t * 140f, 110f, false, p
         )
-        cv.drawA
+        cv.drawArc(
+            RectF(cx + sideOffset - 18f * d, cy - 18f * d, cx + sideOffset + 18f * d, cy + 18f * d),
+            -t * 140f, 110f, false, p
+        )
+
+        // Live operation / step label inside the lower visor
+        val liveOp = (newest.ifBlank { HudState.current.ifBlank { "STANDBY // MONITORING" } })
+            .take(36)
+        tp.style = Paint.Style.FILL
+        tp.textAlign = Paint.Align.CENTER
+        tp.textSize = 9.5f * d
+        tp.color = col(if (alert) amber else cyan, 235 * fade / 255)
+        cv.drawText(liveOp, cx, cy + innerR * 0.56f, tp)
+
+        if (progress in 0f..1f) {
+            val pctText = "${(progress * 100).toInt()}%"
+            tp.textSize = 8.5f * d
+            tp.color = col(gold, 220 * fade / 255)
+            cv.drawText("PROGRESS // $pctText", cx, cy + innerR * 0.70f, tp)
+        }
+
+        cv.restore()
+        tp.textAlign = Paint.Align.LEFT
+    }
+
+    private fun drawTerminalFeed(
+        cv: Canvas, w: Float, h: Float, t: Float, fade: Int, bad: Boolean
+    ) {
+        val padX = 16f * d
+        val barH = 6f * d
+        val bottomPad = 20f * d
+        val lineH = 15f * d
+        val visibleRows = rows.takeLast(5)
+        val feedHeight = (visibleRows.size.coerceAtLeast(1) * lineH) + 28f * d
+        val topY = (h - bottomPad - feedHeight).coerceAtLeast(h * 0.62f)
+
+        // Translucent terminal backing panel
+        p.style = Paint.Style.FILL
+        p.color = Color.argb((155 * fade / 255), 3, 12, 20)
+        oval.set(padX, topY, w - padX, h - bottomPad)
+        cv.drawRoundRect(oval, 8f * d, 8f * d, p)
+
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = 1.1f * d
+        p.color = col(if (bad) red else cyan, 140 * fade / 255)
+        cv.drawRoundRect(oval, 8f * d, 8f * d, p)
+
+        // Header row
+        tp.textAlign = Paint.Align.LEFT
+        tp.style = Paint.Style.FILL
+        tp.textSize = 9.5f * d
+        tp.color = col(gold, 225 * fade / 255)
+        val cursor = if (((t * 2f).toInt() % 2) == 0) "_" else " "
+        cv.drawText("> ${title.uppercase(Locale.getDefault())}$cursor", padX + 10f * d, topY + 14f * d, tp)
+
+        // Step rows
+        tp.textSize = 10.5f * d
+        val maxTextW = (w - padX * 2f) - 24f * d
+        if (visibleRows.isEmpty()) {
+            tp.color = col(cyan, 170 * fade / 255)
+            cv.drawText("• Awaiting live task events...", padX + 10f * d, topY + 30f * d, tp)
+        } else {
+            visibleRows.forEachIndexed { idx, (kind, msg) ->
+                val rowY = topY + 30f * d + idx * lineH
+                val rowColor = when (kind) {
+                    2 -> red
+                    1 -> green
+                    3 -> gold
+                    else -> cyan
+                }
+                val isRecent = (SystemClock.uptimeMillis() - newestAt) < 1200L && idx == visibleRows.lastIndex
+                val alpha = ((if (isRecent) 255 else 205) * fade / 255)
+                tp.color = col(rowColor, alpha)
+                val ellipsized = TextUtils.ellipsize(msg, TextPaint(tp), maxTextW, TextUtils.TruncateAt.END).toString()
+                cv.drawText("• $ellipsized", padX + 10f * d, rowY, tp)
+            }
+        }
+
+        // Progress bar along the bottom edge of the feed panel
+        if (progress in 0f..1f) {
+            val bx = padX + 10f * d
+            val bw = (w - padX * 2f) - 20f * d
+            val by = h - bottomPad - barH - 6f * d
+
+            p.style = Paint.Style.FILL
+            p.color = col(cyanDeep, 140 * fade / 255)
+            oval.set(bx, by, bx + bw, by + barH)
+            cv.drawRoundRect(oval, 3f * d, 3f * d, p)
+
+            p.color = col(if (bad) red else gold, 235 * fade / 255)
+            oval.set(bx, by, bx + bw * progress, by + barH)
+            cv.drawRoundRect(oval, 3f * d, 3f * d, p)
+        }
+    }
+}
