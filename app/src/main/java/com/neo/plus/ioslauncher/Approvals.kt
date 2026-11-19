@@ -161,8 +161,11 @@ object Approvals {
                     .putExtra(EXTRA_DO, what)
                 return PendingIntent.getBroadcast(app, item.id.hashCode() + code, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             }
-            val open = app.packageManager.getLaunchIntentForPackage(app.packageName)?.let {
-                PendingIntent.getActivity(app, item.id.hashCode() + 3, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            val open = if (item.action == "skill_commit")
+                PendingIntent.getActivity(app, item.id.hashCode() + 3, Intent(app, SkillsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP), flags)
+            else app.packageManager.getLaunchIntentForPackage(app.packageName)?.let {
+                PendingIntent.getActivity(app, item.id.hashCode() + 3, it, flags)
             }
             val b = NotificationCompat.Builder(app, CH)
                 .setSmallIcon(android.R.drawable.ic_dialog_email)
@@ -184,6 +187,16 @@ object Approvals {
             Log.w("Approvals", "notify failed", e)
             false
         }
+    }
+
+    /** Removes the waiting "Install skill" item (and its notification) once it was settled on the Skills screen. */
+    fun dropStage(ctx: Context, stage: String) {
+        val app = ctx.applicationContext
+        val all = list(app)
+        val gone = all.filter { x -> x.action == "skill_commit" && x.args.optString("stage") == stage }
+        if (gone.isEmpty()) return
+        for (g in gone) cancelNotification(app, g.id)
+        save(app, all.filter { x -> gone.none { g -> g.id == x.id } })
     }
 
     private fun cancelNotification(ctx: Context, id: String) {

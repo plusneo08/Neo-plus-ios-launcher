@@ -1,0 +1,19 @@
+SKILLS SCREEN (like ChatGPT) - what changed
+===========================================
+NEW      SkillsActivity.kt  the Skills screen: tabs Installed / Waiting, "Add a skill" (GitHub address, link, or Upload from phone),
+                            each waiting skill shows Ready / Needs review / Blocked, its warnings, and an Install (or Install anyway) / Skip button.
+                            Installed skills have an on/off switch, Update and Remove.
+            + CREATE tab ("Create with chat"): describe the skill, the assistant may ask a question, writes a SKILL.md draft you can edit,
+              "Add to Waiting" runs the same safety check, then you tap Install on the Waiting tab. Uses the key from the assistant settings (Gemini Flash).
+CHANGED  SkillStore.kt      scan result is saved as Ready / Needs review / Blocked (blocked = tries to override the assistant's rules, or acts
+                            without telling you); blocked skills cannot be installed; functions for the screen
+CHANGED  Approvals.kt       tapping the "Install skill?" notification opens the Skills screen; settling a skill there removes the notification
+CHANGED  Skills.kt          "open skills" / {"do":"open"} opens the screen
+CHANGED  Assistant.kt       one line in the prompt about {"do":"open"}
+
+YOU MUST ALSO add this inside <application> in AndroidManifest.xml (use the full name if your manifest has no package prefix):
+    <activity android:name=".SkillsActivity" android:exported="false" />
+Keep the POST_NOTIFICATIONS line from the earlier fix. Copy all 5 files over the same paths (Approvals.kt here includes the earlier notification fix).
+
+SAY: "install the pdf skill from anthropics/skills" -> notification AND the Waiting tab; "open skills" -> the screen.
+Not compiled here. Send me the first build error.

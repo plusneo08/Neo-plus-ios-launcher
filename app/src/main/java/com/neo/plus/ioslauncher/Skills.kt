@@ -134,6 +134,7 @@ object Skills {
         "remove", "delete" -> a.optString("which", a.optString("name")).let { w -> if (SkillStore.has(ctx, w) && find(load(ctx), w).isEmpty()) SkillStore.remove(ctx, w) else remove(ctx, w) }
         "on", "enable" -> a.optString("which", a.optString("name")).let { w -> if (SkillStore.has(ctx, w) && find(load(ctx), w).isEmpty()) SkillStore.setOn(ctx, w, true) else setOn(ctx, w, true) }
         "off", "disable" -> a.optString("which", a.optString("name")).let { w -> if (SkillStore.has(ctx, w) && find(load(ctx), w).isEmpty()) SkillStore.setOn(ctx, w, false) else setOn(ctx, w, false) }
+        "open", "screen", "manage" -> SkillStore.openScreen(ctx)
         else -> list(ctx)
     }
 }
@@ -147,6 +148,8 @@ object SkillCmd {
     private val removeRe = Regex("^(?:please\\s+)?(?:remove|delete)\\s+(?:the\\s+)?skill\\s+(.+)$|^(?:please\\s+)?(?:remove|delete)\\s+(?:the\\s+)?(.+?)\\s+skill$", I)
     private val offRe = Regex("^(?:please\\s+)?(?:turn off|switch off|disable|pause)\\s+(?:the\\s+)?skill\\s+(.+)$|^(?:please\\s+)?(?:turn off|switch off|disable|pause)\\s+(?:the\\s+)?(.+?)\\s+skill$", I)
     private val onRe = Regex("^(?:please\\s+)?(?:turn on|switch on|enable|resume)\\s+(?:the\\s+)?skill\\s+(.+)$|^(?:please\\s+)?(?:turn on|switch on|enable|resume)\\s+(?:the\\s+)?(.+?)\\s+skill$", I)
+
+    private val openRe = Regex("^(?:please\\s+)?(?:open|show|manage)\\s+(?:my\\s+|the\\s+)?skills?(?:\\s+(?:screen|page|menu|manager))?$", I)
 
     private fun plan(o: JSONObject) = LocalPlan("", listOf("skill" to o))
 
@@ -197,6 +200,7 @@ object SkillCmd {
             if (rest.startsWith("that ", true)) rest = rest.substring(5).trim()
             return plan(JSONObject().put("do", "add").put("text", rest).put("for", scope))
         }
+        if (openRe.containsMatchIn(t)) return plan(JSONObject().put("do", "open"))
         if (listRe.containsMatchIn(t)) return plan(JSONObject().put("do", "list"))
         removeRe.find(t)?.let { m -> return plan(JSONObject().put("do", "remove").put("which", m.groupValues[1].ifBlank { m.groupValues[2] })) }
         offRe.find(t)?.let { m -> return plan(JSONObject().put("do", "off").put("which", m.groupValues[1].ifBlank { m.groupValues[2] })) }

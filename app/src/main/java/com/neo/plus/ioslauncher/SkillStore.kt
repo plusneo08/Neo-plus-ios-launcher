@@ -1,6 +1,7 @@
 package com.neo.plus.ioslauncher
 
 import android.content.Context
+import android.content.Intent
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -141,6 +142,10 @@ object SkillStore {
         val all = texts.joinToString("\n")
         return RISKY.filter { it.first.containsMatchIn(all) }.map { it.second }
     }
+
+    /** Scan results that make a skill unusable (ChatGPT calls this "Blocked"); any other warning is "Needs review". */
+    private val BLOCKING = setOf(RISKY[0].second, RISKY[1].second)
+    private fun statusOf(w: List<String>): String = if (w.any { it in BLOCKING }) "blocked" else if (w.isNotEmpty()) "review" else "ready"
 
     /* ------------------------------------------------------------------ */
     /*  Getting the files: GitHub, a link, a zip, a file, pasted text       */
@@ -419,10 +424,11 @@ object SkillStore {
         val token = UUID.randomUUID().toString()
         val meta = JSONArray()
         staged.forEach { s ->
-            meta.put(JSONObject().put("slug", s.slug).put("name", s.name).put("description", s.description).put("source", s.source ?: ""))
+            meta.put(JSONObject().put("slug", s.slug).put("name", s.name).put("description", s.description).put("source", s.source ?: "")
+                .put("warnings", JSONArray(s.warnings)).put("status", statusOf(s.warnings)).put("files", s.files).put("bytes", s.bytes))
         }
         val pend = loadPending(app)
-        pend.put(id, JSONObject().put("token", token).put("at", System.currentTimeMillis()).put("skills", meta))
+        pend.put(id, JSONObject().put("token", token).put("at", System.currentTimeMillis()).put("label", tree.label).put("skills", meta))
         savePending(app, pend)
 
         val have = load(app)
@@ -433,6 +439,10 @@ object SkillStore {
         val summary = "$names from ${tree.label}: " + staged.first().description.take(110) +
             " · ${staged.sumOf { it.files }} file(s), $kb KB" +
             (if (warnings.isNotEmpty()) " · ⚠ " + warnings.joinToString("; ").take(160) else "")
+        if (staged.all { statusOf(it.warnings) == "blocked" }) {
+            return "I downloaded $names from ${tree.label}, but the safety check BLOCKED it: it " + warnings.joinToString("; ") +
+                ". It cannot be installed. You can look at it on the Skills screen and dismiss it."
+        }
         Approvals.add(app, "skill_commit", JSONObject().put("stage", id).put("token", token).put("text", summary), Approvals.lastApps)
 
         return "I downloaded and checked $names from ${tree.label} (${staged.sumOf { it.files }} file(s), $kb KB). " +
@@ -460,6 +470,7 @@ object SkillStore {
             val s = skills.optJSONObject(i) ?: continue
             val slug = slugOf(s.optString("slug"))
             if (slug.isEmpty()) continue
+            if (s.optString("status") == "blocked") continue   // the safety check blocked it
             val from = File(sd, slug)
             if (!from.isDirectory) continue
             val to = File(root(app), slug)
@@ -476,7 +487,7 @@ object SkillStore {
         pend.remove(id)
         savePending(app, pend)
         sd.deleteRecursively()
-        return if (done.isEmpty()) "Couldn’t install: the downloaded files are gone. Ask me again."
+        return if (done.isEmpty()) "Couldn’t install: the downloaded files are gone or the safety check blocked them. Ask me again."
         else "Installed " + done.joinToString(", ") + ". The assistant now knows when to use " + (if (done.size == 1) "it" else "them") + "."
     }
 
@@ -559,6 +570,78 @@ object SkillStore {
     /* ------------------------------------------------------------------ */
     /*  List, switch, remove, update                                        */
     /* ------------------------------------------------------------------ */
+
+    /* ------------------------------------------------------------------ */
+    /*  For the Skills screen (SkillsActivity)                              */
+    /* ------------------------------------------------------------------ */
+
+    class SkillInfo(val slug: String, val name: String, val description: String, val source: String, val on: Boolean)
+    class PendingSkill(val name: String, val description: String, val status: String, val warnings: List<String>, val files: Int, val kb: Int, val update: Boolean)
+    class PendingInfo(val id: String, val label: String, val skills: List<PendingSkill>, val at: Long)
+
+    fun installedList(ctx: Context): List<SkillInfo> {
+        val a = load(ctx.applicationContext)
+        val out = ArrayList<SkillInfo>()
+        for (i in 0 until a.length()) {
+            val o = a.optJSONObject(i) ?: continue
+            out.add(SkillInfo(o.optString("slug"), o.optString("name"), o.optString("description"), o.optString("source"), o.optBoolean("on", true)))
+        }
+        return out
+    }
+
+    /** Downloaded and checked skills that wait for the user's OK. */
+    fun pendingList(ctx: Context): List<PendingInfo> {
+        val app = ctx.applicationContext
+        cleanStale(app)
+        val pend = loadPending(app)
+        val have = load(app)
+        val out = ArrayList<PendingInfo>()
+        val keys = pend.keys()
+        while (keys.hasNext()) {
+            val id = keys.next()
+            val p = pend.optJSONObject(id) ?: continue
+            val arr = p.optJSONArray("skills") ?: JSONArray()
+            val list = ArrayList<PendingSkill>()
+            for (i in 0 until arr.length()) {
+                val s = arr.optJSONObject(i) ?: continue
+                val w = ArrayList<String>()
+                val wa = s.optJSONArray("warnings")
+                if (wa != null) for (k in 0 until wa.length()) w.add(wa.optString(k))
+                val slug = s.optString("slug")
+                val exists = (0 until have.length()).any { have.optJSONObject(it)?.optString("slug") == slug }
+                list.add(PendingSkill(s.optString("name"), s.optString("description"), s.optString("status", "ready"), w, s.optInt("files"), (s.optInt("bytes") + 512) / 1024, exists))
+            }
+            if (list.isNotEmpty()) out.add(PendingInfo(id, p.optString("label"), list, p.optLong("at")))
+        }
+        return out.sortedByDescending { it.at }
+    }
+
+    /** The user tapped Install on the Skills screen. The saved key is read here, never by the AI model. */
+    fun approvePending(ctx: Context, id: String): String {
+        val app = ctx.applicationContext
+        val p = loadPending(app).optJSONObject(id) ?: return "Couldn’t install: that request expired. Ask me again."
+        val r = commit(app, JSONObject().put("stage", id).put("token", p.optString("token")))
+        Approvals.dropStage(app, id)
+        return r
+    }
+
+    /** The user tapped Skip / Dismiss on the Skills screen. */
+    fun skipPending(ctx: Context, id: String) {
+        val app = ctx.applicationContext
+        try {
+            val pend = loadPending(app)
+            pend.remove(id)
+            savePending(app, pend)
+            File(stageRoot(app), id).deleteRecursively()
+        } catch (e: Exception) { }
+        Approvals.dropStage(app, id)
+    }
+
+    fun openScreen(ctx: Context): String = try {
+        val app = ctx.applicationContext
+        app.startActivity(Intent(app, SkillsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        "Opened the Skills screen."
+    } catch (e: Exception) { "Couldn’t open the Skills screen." }
 
     /** The installed skill packs as text ("" when there are none). */
     fun listText(ctx: Context): String {
