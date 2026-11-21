@@ -33,7 +33,8 @@ object CommunicationControl {
             settings.edit().putBoolean(ENABLED, true).putLong("enabled_at", System.currentTimeMillis()).apply()
             app.getSharedPreferences("neo_calls", Context.MODE_PRIVATE).edit().putBoolean("on", true).apply()
             SleepMode.prefs(app).edit().putLong("started", System.currentTimeMillis())
-                .putBoolean("calls_only", false).putString("activity", "").apply()
+                .putBoolean("calls_only", false).putString("activity", "").putString("mode", "")
+                .putLong("wake_at", 0L).putBoolean("auto", false).putInt("prep_n", -1).putLong("prep_at", 0L).apply()
             // Preserve all existing logs, transcripts, preferences, and per-contact counters.
             SleepService.start(app)
             return "Okay. I’ll handle eligible messages and calls until you say “I’m back”. I’ll keep a record for your catch-up report."
