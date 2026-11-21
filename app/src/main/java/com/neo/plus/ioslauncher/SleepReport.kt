@@ -38,7 +38,7 @@ Phone calls, goal progress (app starts with Goal), texts on the assistant line a
     private fun reportSafe(value: String): String {
         val labelled = Regex("(?i)(otp|one[- ]time (?:password|code)|verification code|security code|pin|password)(?:\\s*(?:is|:|=)?\\s*)[A-Za-z0-9-]{3,}")
         val withoutLabels = labelled.replace(value) { match -> match.groupValues[1] + " [hidden]" }
-        return Regex("\\b\\d{4,8}\\b").replace(withoutLabels, "[number hidden]")
+        return Regex("\\b\\d{4,}\\b").replace(withoutLabels, "[number hidden]")
     }
 
     fun SleepMode.report(ctx: Context): String {
@@ -60,7 +60,7 @@ Phone calls, goal progress (app starts with Goal), texts on the assistant line a
                 "GROUP" -> "Group message left for you"
                 "AUTO" -> "Automated message skipped"
                 "FAILED" -> "Reply failed"
-                "CALL" -> "Call handled"
+                "CALL" -> "Call handled"\n                "NOTE" -> "Other activity or notification"
                 "URGENT" -> "Urgent item"
                 "IMPORTANT" -> "Important item"
                 "OWNER_ONLY" -> "Needs your attention"
