@@ -36,9 +36,9 @@ Start with "Welcome back." Then cover, in this order: who wrote to him and what 
 Phone calls, goal progress (app starts with Goal), texts on the assistant line and switched-off permissions also count: mention each in plain words, calls and texts on the assistant line by who and what you did. Skip a part when it is empty. If nothing happened say there were no new messages or calls to report. Never read out codes or passwords. Do not invent anything. Mention every item in the log, none may be skipped; a line like "You picked up and unlocked the phone" means he was awake for a moment in the night, say when. Do not impose a word limit: include every logged message, reply, call, caller summary, missed call, and unresolved item. Group related events only if no detail is lost. Do not invent missing details or expose codes, passwords, PINs or OTPs."""
 
     private fun reportSafe(value: String): String {
-        val labelled = Regex("(?i)(otp|one[- ]time (?:password|code)|verification code|security code|pin|password)(?:\\\\s*(?:is|:|=)?\\\\s*)[A-Za-z0-9-]{3,}")
+        val labelled = Regex("(?i)(otp|one[- ]time (?:password|code)|verification code|security code|pin|password)(?:\\s*(?:is|:|=)?\\s*)[A-Za-z0-9-]{3,}")
         val withoutLabels = labelled.replace(value) { match -> match.groupValues[1] + " [hidden]" }
-        return Regex("\\\\b\\\\d{4,8}\\\\b").replace(withoutLabels, "[number hidden]")
+        return Regex("\\b\\d{4,8}\\b").replace(withoutLabels, "[number hidden]")
     }
 
     fun SleepMode.report(ctx: Context): String {
@@ -73,8 +73,8 @@ Phone calls, goal progress (app starts with Goal), texts on the assistant line a
             val time = tf.format(Date(event.optLong("t", 0L)))
             "${index + 1}. $time — $kind — $who via $source. Message/call: $message. NEO PLUS action: $reply."
         }
-        val report = "Welcome back. I recorded ${events.size} communication events since you asked me to handle messages and calls.\\n" +
-            details.joinToString("\\n")
+        val report = "Welcome back. I recorded ${events.size} communication events since you asked me to handle messages and calls.\n" +
+            details.joinToString("\n")
         prefs(app).edit().putString("report", report).apply()
         return report
     }
