@@ -103,8 +103,9 @@ object SleepMode {
     internal fun finish(app: Context) {
         prefs(app).edit().putBoolean("on", false).putInt("retries", 0).apply()
         WakeRinger.stop()
-        SleepService.stop(app)
         cancelAlarm(app)
+        // A stale legacy wake-up activity must never stop the new always-on communication service.
+        if (!CommunicationControl.isEnabled(app)) SleepService.stop(app)
         try { app.getSystemService(NotificationManager::class.java).cancel(NOTIF_ID) } catch (e: Exception) { }
     }
 
@@ -139,7 +140,8 @@ object SleepMode {
 
     fun ring(ctx: Context) {
         val app = ctx.applicationContext
-        if (!isOn(app)) return
+        // Only a legacy scheduled alarm may ring; the new communication switch is not a wake-up mode.
+        if (!prefs(app).getBoolean("on", false)) return
         val nm = app.getSystemService(NotificationManager::class.java)
         if (nm.getNotificationChannel(CHANNEL) == null) {
             val ch = NotificationChannel(CHANNEL, "Wake-up call", NotificationManager.IMPORTANCE_HIGH)
@@ -166,6 +168,7 @@ object SleepMode {
     fun missedCall(ctx: Context) {
         val app = ctx.applicationContext
         WakeRinger.stop()
+        if (!prefs(app).getBoolean("on", false)) return
         val nm = app.getSystemService(NotificationManager::class.java)
         val tries = prefs(app).getInt("retries", 0)
         if (isOn(app) && tries < MAX_RETRIES) {
