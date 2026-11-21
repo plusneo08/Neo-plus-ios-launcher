@@ -9,7 +9,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 
 /**
- * Loud notification for the moment a website task needs you (CAPTCHA, a code, a payment to confirm). It is shown when the
+ * Loud notification for the moment a website task needs you (a one-time code or a payment to confirm). It is shown when the
  * task pauses, repeated while it waits, and removed as soon as you have finished the step or the task stops.
  */
 object HandoffAlert {
