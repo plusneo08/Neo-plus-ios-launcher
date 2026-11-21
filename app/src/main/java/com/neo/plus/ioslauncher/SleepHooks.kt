@@ -3,9 +3,7 @@ package com.neo.plus.ioslauncher
 import android.content.Context
 
 /**
- * Lets the newer features add to the night summary: while sleep mode is on, calls, texts on the assistant's own number,
- * goal progress and permission problems are written into the same log the wake-up call reads out.
- * Does nothing when sleep mode is off.
+ * Records communication events while the single communication assistant is enabled.
  */
 object SleepHooks {
     fun note(ctx: Context, kind: String, app: String, who: String, text: String, reply: String = "") {
