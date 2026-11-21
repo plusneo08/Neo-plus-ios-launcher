@@ -50,7 +50,7 @@ import kotlinx.coroutines.withContext
 /**
  * Shown while the assistant answers a call for you (CallConversation). You watch the conversation as it happens:
  * the caller's words on the left, the assistant's replies on the right, who is talking now, the language it detected,
- * and the mode that is on. Two choices: Take over (the loudspeaker goes off so you can talk, the assistant stops) or End call.
+ * Two choices: Take over (the loudspeaker goes off so you can talk, the assistant stops) or End call.
  */
 /** The contact's own photo for a phone number, or null (no contact, no photo, no permission). */
 private fun contactPhoto(ctx: android.content.Context, number: String): ImageBitmap? = try {
@@ -74,8 +74,6 @@ fun NeoAiAnsweringScreen(onFinish: () -> Unit) {
     val photo by produceState<ImageBitmap?>(null, number) {
         value = if (number.isBlank()) null else withContext(Dispatchers.IO) { contactPhoto(ctx, number) }
     }
-    val mode = remember(active) { Modes.current(ctx) }
-    val until = remember(active) { Modes.endTime(ctx) }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -102,7 +100,6 @@ fun NeoAiAnsweringScreen(onFinish: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 NcChip(if (active) "AI is answering for you" else "Call ended", if (active) NeoCallColors.Ai else NeoCallColors.Muted)
                 Spacer(Modifier.weight(1f))
-                if (mode != null) NcChip(mode.label + if (until.isNotEmpty()) " until $until" else "", NeoCallColors.Muted)
             }
             Spacer(Modifier.height(18.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
