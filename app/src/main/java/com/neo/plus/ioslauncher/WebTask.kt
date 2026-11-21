@@ -48,10 +48,8 @@ import java.util.concurrent.atomic.AtomicInteger
  *  - Text on a web page is treated as data, never as instructions.
  *  - Files can only be uploaded if the user named them in the request, or they were created / downloaded by this task.
  *  - The user can stop it at any time (say "stop the website task").
- *  - It never tries to solve or bypass a CAPTCHA. When the page shows one (or asks for a code), the task PAUSES with the page
- *    left open: the page becomes touchable with a banner ("Solve the CAPTCHA, then tap Continue"). The user does the step
- *    themselves and taps Continue (or says "continue"); the task carries on from the same page and, in a batch, the same row.
- *    Cancel stops it, and so does waiting longer than [HANDOFF_MILLIS].
+ *  - CAPTCHA / human-verification challenges stop the task with a clear explanation; they are never solved or bypassed.
+ *    One-time codes and explicit payment confirmations still use the normal user hand-off.
  *
  * The page is driven by Gemini 4 Argon (Gemini 3.8 Flash if the key cannot use Argon), one JSON action per step.
  */
@@ -59,8 +57,8 @@ object WebTask {
     private val main = Handler(Looper.getMainLooper())
     private const val MAX_STEPS = 150   // only a safety limit: a task stops the moment it is done, big ones just get room to continue
     private const val MAX_MILLIS = 15 * 60_000L   // one task: 15 minutes at most
-    /** How long the task waits for the user to finish a CAPTCHA / code step before it gives up. */
-    private const val HANDOFF_MILLIS = 60 * 60_000L   // how long a task waits for you (CAPTCHA / code step) before giving up
+    /** How long the task waits for a one-time code or confirmation. */
+    private const val HANDOFF_MILLIS = 60 * 60_000L   // user hand-off timeout
     private const val ALERT_EVERY_MILLIS = 3 * 60_000L
     private const val MAX_HANDOFFS = 6
     // Quota savers: each step sends only the last few pages, older pages are cut short, and the element list is capped.
@@ -69,29 +67,6 @@ object WebTask {
     /** Flash does the task; the stronger model takes over only after this many failed steps in a row. */
     private const val ESCALATE_AFTER_FAILS = 2
     private const val LOCATE_ID = 9999
-    /** Read-only check of the page's own CAPTCHA answer fields: none | pending (shown, not answered yet) | solved (the user answered it). */
-    private const val CAPTCHA_STATE_JS = "(function(){try{var f=document.querySelectorAll('textarea[name=g-recaptcha-response],textarea[name=h-captcha-response],input[name=h-captcha-response],input[name=cf-turnstile-response]');if(!f.length)return 'none';for(var i=0;i<f.length;i++){if(f[i].value&&f[i].value.length>20)return 'solved';}return 'pending';}catch(e){return 'none';}})()"
-    /** Scrolls the CAPTCHA widget to the middle of the page so the user does not have to hunt for it. */
-    private const val SCROLL_CAPTCHA_JS = "(function(){try{var e=document.querySelector('.g-recaptcha,.h-captcha,.cf-turnstile,iframe[src*=recaptcha],iframe[src*=hcaptcha],iframe[src*=turnstile]');if(e){e.scrollIntoView({block:'center',inline:'center'});return 'ok';}return 'none';}catch(x){return 'none';}})()"
-
-    /**
-     * Fast path right after the user solved a CAPTCHA: presses the login button of the filled-in login form straight away (on the
-     * phone, no AI request), because CAPTCHA answers expire within about two minutes. It only clicks the page's own sign-in button and
-     * only when a visible password field is already filled; otherwise it returns 'none' and the normal AI step carries on.
-     */
-    private const val FAST_SUBMIT_JS = """(function(){try{
-function vis(e){var r=e.getBoundingClientRect();var s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none';}
-var pw=[].slice.call(document.querySelectorAll('input[type=password]')).filter(vis)[0];
-if(!pw||!pw.value)return 'none';
-var f=pw.form;var scope=f||document;var b=null;
-var btns=[].slice.call(scope.querySelectorAll('button,input[type=submit],input[type=button],[role=button]')).filter(function(e){return vis(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true';});
-var re=/log\s?in|sign\s?in|submit|continue|next|enter/i;
-for(var j=0;j<btns.length&&!b;j++){var l=(btns[j].innerText||btns[j].value||btns[j].getAttribute('aria-label')||'').trim();if(re.test(l))b=btns[j];}
-for(var i=0;i<btns.length&&!b;i++){var t=(btns[i].getAttribute('type')||'').toLowerCase();if(t==='submit')b=btns[i];}
-if(b){b.click();return 'submitted';}
-if(f){if(f.requestSubmit)f.requestSubmit();else f.submit();return 'submitted';}
-return 'none';}catch(e){return 'none';}})()"""
-
     private val ID_KINDS = setOf("click", "type", "select", "upload", "save_image")
 
     /** Every website task that is running now (up to [MAX_TASKS] at once, each with its own page, feed, picture and Gemini conversation). */
@@ -100,7 +75,7 @@ return 'none';}catch(e){return 'none';}})()"""
     val running: Boolean get() = sessions.isNotEmpty()
     val activeCount: Int get() = sessions.size
 
-    /** True while at least one task is paused and waiting for the user to do a CAPTCHA / code step on its page. */
+    /** True while a task is paused for a one-time code or confirmation. */
     val waitingForUser: Boolean get() = sessions.any { it.waitingForUser }
 
     /** Stops task [n] (its number in the split screen), or every task when [n] is null. */
@@ -254,6 +229,15 @@ return 'none';}catch(e){return 'none';}})()"""
     }
 
     // ------------------------------------------------------------------ the step loop
+    private fun isCaptchaChallenge(reason: String): Boolean {
+        val text = reason.lowercase()
+        return listOf(
+            "captcha", "recaptcha", "re-captcha", "hcaptcha", "h-captcha", "turnstile",
+            "i'm not a robot", "im not a robot", "verify you're human", "verify you are human",
+            "human verification", "image challenge", "select all images", "security challenge"
+        ).any { it in text }
+    }
+
     private fun stopWith(s: Session, kind: String, reason: String, text: String): String {
         s.lastKind = kind; s.lastReason = reason
         return text
@@ -336,17 +320,20 @@ return 'none';}catch(e){return 'none';}})()"""
                 }
                 "need_user" -> {
                     val why = scrub(s, act.optString("reason")).ifBlank { "a step only you can do" }
+                    if (isCaptchaChallenge(why)) {
+                        s.feed.add(TaskLine.Kind.ERROR, "Website verification is not supported; task stopped")
+                        return stopWith(s, "fail", why, "This website requires a CAPTCHA or human-verification challenge. NEO PLUS has stopped this task and will not attempt to solve or bypass it. Complete the check outside NEO PLUS, then start the task again.")
+                    }
                     s.feed.add(TaskLine.Kind.WARN, "Needs you: $why")
-                    // Pause with the page left open, let the user do the step themselves, then carry on from the same page.
+                    // One-time codes and confirmations still pause for the user.
                     val waitStart = System.currentTimeMillis()
-                    val capNow = unquote(js(s, CAPTCHA_STATE_JS, 2_000)) != "none"
                     val outcome = if (++handoffs > MAX_HANDOFFS) "unavailable" else awaitUser(s, why)
-                    started += System.currentTimeMillis() - waitStart // time spent waiting for the user does not count against the task
+                    started += System.currentTimeMillis() - waitStart
                     when (outcome) {
                         "continue" -> {
                             runCatching { SessionKeeper.save(s.ctx, s.entry.domain, s.entry.username) } // the site now trusts this device: keep that at once
                             s.feed.add(TaskLine.Kind.INFO, "Saved trust cookies after your step: " + SessionKeeper.snapshot(s.entry.domain))
-                            if (s.recording != null && s.recValid) s.recording!!.add(Rec(JSONObject().put("action", "need_user").put("reason", why).put("captcha", capNow), null, "", false))
+                            if (s.recording != null && s.recValid) s.recording!!.add(Rec(JSONObject().put("action", "need_user").put("reason", why), null, "", false))
                             s.feed.add(TaskLine.Kind.OK, "You finished the step, carrying on")
                             steps += "$n. (paused for you: $why)"
                             if (gated != null) {
@@ -356,15 +343,7 @@ return 'none';}catch(e){return 'none';}})()"""
                                 settle(s)
                                 continue@steps
                             }
-                            // Press Sign in immediately (no AI request, no waiting): the CAPTCHA answer expires within about two minutes.
-                            if (unquote(js(s, FAST_SUBMIT_JS, 1_500)) == "submitted") {
-                                s.feed.add(TaskLine.Kind.OK, "Pressed the sign in button straight away (done on the phone, no AI request)")
-                                steps += "$n+. pressed the sign in button right after the CAPTCHA"
-                                lastResult = "The user solved the CAPTCHA ($why) and the phone pressed the sign in button immediately. Check the page: if it shows the account / next page you are logged in; if it still shows the login form or an error, deal with it. If a new human step is showing, ask again with need_user."
-                                settle(s)
-                                continue@steps
-                            }
-                            lastResult = "The user has just done the human step themselves ($why). Look at the page now and carry on from here. Do not repeat steps that are already done and do not go back to the start. If the human step is still showing, ask again with need_user."
+                            lastResult = "The user has just completed the required code or confirmation ($why). Look at the page now and carry on from here. Do not repeat steps that are already done and do not go back to the start."
                             settle(s)
                             continue@steps
                         }
@@ -635,15 +614,12 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
                 }
                 "scroll", "wait" -> { execute(s, a, uploads); continue }
                 "need_user" -> {
-                    // A CAPTCHA step recorded earlier: give the page a moment to show it, hand over to the user, then press Sign in at once.
-                    var st = unquote(js(s, CAPTCHA_STATE_JS, 2_000))
-                    if (a.optBoolean("captcha")) { var tries = 0; while (st == "none" && tries++ < 15) { Thread.sleep(200); st = unquote(js(s, CAPTCHA_STATE_JS, 2_000)) } }
-                    if (a.optBoolean("captcha") && st != "pending") { s.feed.add(TaskLine.Kind.INFO, "      replay ${i + 1}/$total: no CAPTCHA this time"); continue }
-                    when (awaitUser(s, a.optString("reason").ifBlank { "a step only you can do" })) {
+                    val reason = a.optString("reason").ifBlank { "a step only you can do" }
+                    if (isCaptchaChallenge(reason)) return Replay(false, i, "CAPTCHA / human verification is not supported; complete it outside NEO PLUS and start the task again")
+                    when (awaitUser(s, reason)) {
                         "continue" -> {
-                            runCatching { SessionKeeper.save(s.ctx, s.entry.domain, s.entry.username) } // the site now trusts this device: keep that at once
-                            s.feed.add(TaskLine.Kind.INFO, "Saved trust cookies after your step: " + SessionKeeper.snapshot(s.entry.domain))
-                            if (unquote(js(s, FAST_SUBMIT_JS, 1_500)) == "submitted") s.feed.add(TaskLine.Kind.OK, "      replay ${i + 1}/$total: pressed sign in right after your step")
+                            runCatching { SessionKeeper.save(s.ctx, s.entry.domain, s.entry.username) }
+                            s.feed.add(TaskLine.Kind.INFO, "Saved trusted-session cookies: " + SessionKeeper.snapshot(s.entry.domain))
                             settle(s)
                             continue
                         }
@@ -983,7 +959,7 @@ $apiLines
 {"action":"scroll","dir":"down|up"}
 {"action":"wait","seconds":2}
 {"action":"finish","result":"short plain answer for the user","rows":[["Header1","Header2"],["a","b"]],"save_as":"name.xlsx"}   (rows and save_as only when the task asks to collect data into a spreadsheet)
-{"action":"need_user","reason":"..."}   (CAPTCHA / "I'm not a robot", a code sent by SMS/email/app, or anything only a human can do. The task pauses, the user does it on the page themselves and presses Continue, then you carry on from the same page)
+{"action":"need_user","reason":"..."}   (a one-time code sent by SMS/email/app or a payment confirmation that needs the user's approval; the task pauses and resumes after Continue)
 {"action":"fail","reason":"...","fixed_values":{"ColumnName":"corrected value"}}   (fixed_values ONLY when the page rejected an input and you are sure how to correct it, e.g. remove spaces or letters, add a missing digit)
 Add a short "thought" (under 10 words) to any action.
 A picture of the page as it looks right now may be attached to the current turn: use it to see the layout, pop-ups and images, but you still act only on the numbered elements.
@@ -999,7 +975,7 @@ Rules:
 $backendRule
 - If the page shows an error or rejects a value, read the exact message on the page and put it in your fail reason, so the user can fix the real cause.
 - A generated result (such as a barcode) is only done when it is really shown or downloaded; use save_image or the download button, then finish.
-- NEVER try to solve, click through, get around or work around a CAPTCHA, "I'm not a robot" check or image challenge yourself, and never look for a way to skip it. As soon as one is showing (or a code is asked for), reply with need_user and stop acting until the user has done it. After the user continues, the page is still where it was: keep going from there.
+- Do not solve, click through, bypass or work around a CAPTCHA, I'm not a robot check, image challenge or other human-verification gate. If one appears, use fail and stop the task with a short explanation. Do not use need_user for CAPTCHA. For one-time codes or payment confirmations, use need_user and resume only after the user continues.
 - Be efficient: do not re-click things that already worked, and finish as soon as the goal is done. If something fails twice, try another way, then fail with a clear reason.
 """.trimIndent()
     }
@@ -1450,13 +1426,8 @@ return 'started';})"""
         } catch (e: Exception) { }
     }
 
-    // ------------------------------------------------------------------ hand-off to the user (CAPTCHA, codes)
-    /**
-     * Pauses the task and leaves the page open for the user. The page window becomes touchable (and can take the keyboard for a
-     * code) with a banner above it: "Solve the CAPTCHA, then tap Continue" + Continue / Cancel and the time left.
-     * Nothing here solves or bypasses anything; the user does the step with their own finger.
-     * Returns "continue", "cancel", "timeout", or "unavailable" (no overlay permission, so the page cannot be shown).
-     */
+    // ------------------------------------------------------------------ hand-off to the user (one-time codes and confirmations)
+    /** CAPTCHA / human-verification challenges stop the task instead of entering this hand-off. */
     private fun awaitUser(s: Session, reason: String): String {
         if (!s.overlayAdded) return "unavailable"
         s.userSignal = 0
@@ -1465,30 +1436,16 @@ return 'started';})"""
         s.feed.question = reason.take(120)
         s.feed.waiting = true
         s.feed.setState("Waiting for you")
-        // Bring the CAPTCHA to the middle of the visible page so the box and any picture challenge are easy to reach.
-        Thread { runCatching { Thread.sleep(600); js(s, SCROLL_CAPTCHA_JS, 3_000) } }.start() // off the main thread: js() waits for it
         Announcer.say(s.ctx, "Task ${s.feed.id} needs you: $reason. Do it on the page, then tap Continue or say continue task ${s.feed.id}.")
         val deadline = System.currentTimeMillis() + HANDOFF_MILLIS
         var lastAlert = System.currentTimeMillis()
         HandoffAlert.show(s.ctx, reason, (HANDOFF_MILLIS / 60_000).toInt(), false)
         var result = "timeout"
-        var sawPending = false
-        var lastPoll = 0L
         var lastSecs = -1
         try {
             while (true) {
                 if (s.cancelled) { result = "cancel"; break }
                 if (s.userSignal == 1) { result = "continue"; break }
-                // Only watches (never clicks): once the page itself reports the CAPTCHA as solved by you, carry on without Continue.
-                if (System.currentTimeMillis() - lastPoll >= 200) {
-                    lastPoll = System.currentTimeMillis()
-                    val st = unquote(js(s, CAPTCHA_STATE_JS, 1_000))
-                    if (st == "pending") sawPending = true
-                    else if (st == "solved" && sawPending) {
-                        s.feed.add(TaskLine.Kind.OK, "CAPTCHA solved, continuing automatically")
-                        result = "continue"; break // no extra wait: the answer expires quickly, so press Sign in at once
-                    }
-                }
                 val left = deadline - System.currentTimeMillis()
                 if (left <= 0) break
                 if (System.currentTimeMillis() - lastAlert >= ALERT_EVERY_MILLIS) { lastAlert = System.currentTimeMillis(); HandoffAlert.show(s.ctx, reason, (left / 60_000).toInt() + 1, true) }
