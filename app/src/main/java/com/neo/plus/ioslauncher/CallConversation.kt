@@ -434,7 +434,7 @@ REPLY: <what you say out loud>"""
         } catch (e: Exception) { "" }
         val text = summary.ifBlank { lines.filter { it.startsWith("Caller:") }.joinToString(" ").take(300) }
         CallAssist.notify(a, "Call from $who", text, false)
-        SleepHooks.note(a, "NOTE", "Phone call (assistant answered)", who, "Talked for ${secs}s", text)
+        SleepHooks.note(a, "CALL", "Phone call (assistant answered)", who, "Talked for ${secs}s", text)
         save(a, who, number, text, lines)
     }
 
