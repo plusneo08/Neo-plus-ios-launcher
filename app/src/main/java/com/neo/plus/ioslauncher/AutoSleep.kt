@@ -29,7 +29,7 @@ object AutoSleep {
     const val ACTION = "com.neo.plus.ioslauncher.AUTO_SLEEP_CHECK"
 
     private fun p(ctx: Context) = ctx.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-    fun enabled(ctx: Context) = p(ctx).getBoolean("on", true)
+    fun enabled(ctx: Context) = false // retired: communication handling is explicitly user-controlled
     private fun idleMin(ctx: Context) = p(ctx).getInt("idle_min", 30).coerceIn(5, 180)
     private fun fromHour(ctx: Context) = p(ctx).getInt("from_hour", 21).coerceIn(0, 23)
     private fun wakeHour(ctx: Context) = p(ctx).getInt("wake_hour", 7).coerceIn(0, 23)
