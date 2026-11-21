@@ -29,8 +29,8 @@ import java.util.Locale
 import java.util.concurrent.Executors
 
 /**
- * Sleep mode. While it is on, chat messages are answered for the user and everything is written to a log. At the wake-up time the phone "rings" with an incoming call
- * from the assistant, which reads the night summary out loud when answered.
+ * Legacy communication event engine. User-facing scheduled modes are retired;
+ * CommunicationControl owns the single persistent on/off state and catch-up report.
  */
 object SleepMode {
     internal const val PREFS = "neo_sleep"
@@ -87,52 +87,9 @@ object SleepMode {
     /* ---------------- start / stop ---------------- */
 
     /** [callOnly] = just the wake-up call at that time (the phone rings like an incoming call and tells what happened), no answering of messages. */
+    @Deprecated("Scheduled sleep/activity modes were replaced by CommunicationControl")
     fun start(ctx: Context, hour: Int, minute: Int, activity: String = "", callOnly: Boolean = false): String {
-        val app = ctx.applicationContext
-        // What the user is doing instead of sleeping ("in a meeting", "driving"); blank = asleep. Kept short and on one line.
-        val fromParser = if (System.currentTimeMillis() - pendingAt < 120_000L) pendingActivity else ""
-        pendingActivity = ""
-        val act = activity.ifBlank { fromParser }.replace(Regex("[\\r\\n\"]"), " ").trim().take(40)
-        if (!callOnly && !NotificationManagerCompat.getEnabledListenerPackages(app).contains(app.packageName)) {
-            app.safeStart(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            return "Turn on notification access for Neo Plus, then tell me again"
-        }
-        if (!callOnly && AssistantConfig.load(app).key.isBlank()) return "Couldn’t start sleep mode: add your Gemini key in the assistant settings first"
-        val cal = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, hour.coerceIn(0, 23)); set(Calendar.MINUTE, minute.coerceIn(0, 59))
-            set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-        }
-        if (cal.timeInMillis <= System.currentTimeMillis() + 60_000) cal.add(Calendar.DAY_OF_YEAR, 1)
-        prefs(app).edit().putBoolean("on", true).putLong("wake_at", cal.timeInMillis).putLong("started", System.currentTimeMillis())
-            .putString("activity", act).putBoolean("auto", false).putBoolean("calls_only", callOnly).putString("log", "[]").putString("replied", "{}").putString("replied_n", "{}").putInt("retries", 0).putString("report", "").putInt("prep_n", -1).apply()
-        synchronized(seen) { seen.clear() }
-        NotifStore.convoClear()
-        // Capture what is already waiting in the notification shade, so nothing that arrived just before bed is missed
-        io.execute {
-            try {
-                val now = System.currentTimeMillis()
-                NeoNotificationService.instance?.activeNotifications?.sortedBy { it.postTime }
-                    ?.filter { now - it.postTime <= SWEEP_MS }?.forEach { onPosted(app, it) }
-            } catch (e: Exception) { }
-        }
-        schedule(app, cal.timeInMillis)
-        SleepPrep.schedule(app, cal.timeInMillis)   // the summary and its voice are made 5 minutes before the call
-        SleepService.start(app)
-        var battery = false
-        try {
-            val pm = app.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-            if (Build.VERSION.SDK_INT >= 23 && !pm.isIgnoringBatteryOptimizations(app.packageName)) {
-                battery = true
-                app.safeStart(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:" + app.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }
-        } catch (e: Exception) { }
-        val day = if (cal.get(Calendar.DAY_OF_YEAR) != Calendar.getInstance().get(Calendar.DAY_OF_YEAR)) "tomorrow " else ""
-        val at = day + SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(cal.timeInMillis))
-        val warn = (if (!Settings.canDrawOverlays(app)) " To make sure the call screen opens by itself, allow Display over other apps for Neo Plus." else "") +
-            (if (battery) " Please allow “No restrictions” for Neo Plus so the phone does not stop me while you sleep." else "")
-        if (callOnly) return "Okay, I’ll call you at $at to wake you up and tell you what happened.$warn"
-        if (act.isNotEmpty()) return "Okay. I’ll answer your messages as your assistant, saying you’re $act, and call you $at.$warn"
-        return "Good night. Sleep mode is on: I’ll answer your messages and call you $at.$warn"
+        return "Scheduled communication modes are no longer available. Ask me to handle your messages and calls until you say “I’m back”."
     }
 
     fun stop(ctx: Context): String {
