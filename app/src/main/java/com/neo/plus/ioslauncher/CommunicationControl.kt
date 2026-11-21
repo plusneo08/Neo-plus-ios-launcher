@@ -53,6 +53,7 @@ object CommunicationControl {
 
     fun back(ctx: Context): String {
         val app = ctx.applicationContext
+        if (!isEnabled(app)) return "Communication handling is not currently on. There is no new away-time report to prepare."
         val report = try { SleepMode.report(app) } catch (e: Exception) {
             "Welcome back. I couldn't prepare the full report: ${e.message ?: "unknown error"}. Your saved communication history is still on the phone."
         }
