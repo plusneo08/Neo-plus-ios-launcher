@@ -88,8 +88,7 @@ object AutoSleep {
     fun status(ctx: Context): String {
         val app = ctx.applicationContext
         val wake = String.format(Locale.US, "%02d:%02d", wakeHour(app), wakeMinute(app))
-        return if (enabled(app)) "Auto sleep is on: after ${idleMin(app)} minutes with the screen unused, between ${fromHour(app)}:00 and $wake, I start sleep mode and phone you at $wake."
-        else "Auto sleep is off."
+        return "Automatic sleep and activity modes have been retired. Ask me to handle your messages and calls when you need it."
     }
 
     /** The `auto_sleep` action: {"on":false}, {"on":true,"hour":6,"minute":30}, {"minutes":45}, {"do":"status"}. */
@@ -102,7 +101,7 @@ object AutoSleep {
         if (a.has("on")) e.putBoolean("on", a.optBoolean("on", true))
         e.apply()
         if (!enabled(app)) screenOn(app)
-        return if (enabled(app)) "Okay. " + status(app) else "Okay, auto sleep is off. You can still say “sleep mode” yourself."
+        return if (enabled(app)) "Okay. " + status(app) else "Okay. Automatic sleep is off; ask me directly when you want me to handle messages and calls."
     }
 }
 
