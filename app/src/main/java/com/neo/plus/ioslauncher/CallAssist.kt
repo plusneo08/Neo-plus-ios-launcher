@@ -111,7 +111,7 @@ object CallAssist {
             ((name.isNotBlank() && name.contains(r.first, ignoreCase = true)) || sameNumber(r.first, number)) }
         // A specific caller rule always wins. Otherwise the single communication switch makes the assistant answer and talk naturally.
         val convRule = picked.first == "conversation" && !(onLine && !specific)
-        val modeTalk = CommunicationControl.isEnabled(app) && picked.first == "announce" && !specific && (!onLine || AssistantLine.lineAction(app).first == "announce")
+        val modeTalk = CommunicationControl.isEnabled(app) && picked.first == "announce" && !specific
         if ((convRule || modeTalk) && CallConversation.cannotRun(app) == null) {
             SleepHooks.note(app, "NOTE", "Phone call", who, "Incoming call", "I answered and talked to the caller")
             val r = CallConversation.start(app, number, name, if (convRule) picked.second else "")
