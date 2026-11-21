@@ -139,6 +139,9 @@ object AssistantLine {
             else -> "REPLIED"
         }
         SleepHooks.note(app, reportKind, "Text on the assistant line (${label(app, slot)})", sender, body, reply)
+        if (assessment.priority == JarvisCommunicationEngine.Priority.URGENT) {
+            CallAssist.notify(app, "Urgent message from $sender", body.take(220), false)
+        }
     }
 
     private fun draft(ctx: Context, incoming: String, contactKey: String): String {
