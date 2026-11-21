@@ -114,30 +114,7 @@ class AutoSleepReceiver : BroadcastReceiver() {
 }
 
 /** Understands "auto sleep off", "auto sleep on", "auto sleep wake me at 6:30", "auto sleep after 45 minutes", "auto sleep status". */
+/** Legacy automatic-sleep command parser intentionally disabled. */
 object AutoSleepCmd {
-    private val I = RegexOption.IGNORE_CASE
-    private val nameRe = Regex("\\bauto(?:matic(?:ally)?)?[- ]?sleep(?:ing)?\\b|\\bsleep (?:mode )?automatic(?:ally)?\\b", I)
-    private val offRe = Regex("\\b(?:off|stop|disable|cancel|turn off|switch off)\\b", I)
-    private val statusRe = Regex("\\bstatus\\b|\\bis it on\\b|\\bwhat time\\b", I)
-    private val timeRe = Regex("\\b(?:at|until|till|by|call me|wake me)\\b[^0-9]{0,15}(\\d{1,2})(?:[:.](\\d{2}))?\\s*(a\\.?m\\.?|p\\.?m\\.?)?", I)
-    private val afterRe = Regex("\\b(?:after|when idle for|idle for)\\s+(\\d{1,3})\\s*(?:minutes?|mins?)\\b", I)
-
-    fun plan(text: String): LocalPlan? {
-        val t = text.trim()
-        if (!nameRe.containsMatchIn(t)) return null
-        val a = JSONObject()
-        if (statusRe.containsMatchIn(t)) return LocalPlan("", listOf("auto_sleep" to a.put("do", "status")))
-        if (offRe.containsMatchIn(t)) return LocalPlan("", listOf("auto_sleep" to a.put("on", false)))
-        a.put("on", true)
-        afterRe.find(t)?.groupValues?.get(1)?.toIntOrNull()?.let { a.put("minutes", it) }
-        timeRe.find(t)?.let { m ->
-            var h = m.groupValues[1].toIntOrNull() ?: return@let
-            val min = m.groupValues[2].toIntOrNull() ?: 0
-            val ap = m.groupValues[3].lowercase(Locale.ROOT).replace(".", "")
-            if (ap == "pm" && h < 12) h += 12
-            if (ap == "am" && h == 12) h = 0
-            if (h in 0..23 && min in 0..59) a.put("hour", h).put("minute", min)
-        }
-        return LocalPlan("", listOf("auto_sleep" to a))
-    }
+    fun plan(text: String): LocalPlan? = null
 }
