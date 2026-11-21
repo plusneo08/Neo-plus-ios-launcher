@@ -1550,7 +1550,7 @@ compare_files {"a":"Old.xlsx","b":"New.xlsx","key":"optional column that identif
 word_report {"file":"Report.docx","title":"...","subtitle":"optional","accent":"optional colour like #0A84FF","stats":[{"label":"Done","value":"8"}],"summary":"the main finding in one or two sentences","sections":[{"heading":"...","text":"...","bullets":["..."],"table":{"headers":["Name","Result"],"rows":[["A","✓ Done"],["B","✗ Failed"]],"kind":"plain|added|removed|changed"},"callout":"optional highlighted note"}],"include_tasks":true}   (writes a real Word report with a cool layout: dark title banner, number cards, coloured tables, highlighted notes, page numbers. Use it when the user asks for a report, summary document or Word file of what was done or found. "include_tasks":true adds the list of tasks Neo finished (with how each went). Put the real findings in the sections, never filler. A cell starting with ✓ is shown green and one starting with ✗ red.)
 The result of compare_files / word_report ends with (file: name): the chat then shows that file as a card the user can open or share, and it is also saved in Downloads/NeoPlus. After it, tell the user in one or two short sentences what was found and that the report is below; do not paste the whole report into the chat.
 stop_web_task {}   (optional "task":2 stops only task number 2; without it every website task stops)
-continue_web_task {}   (optional "task":2 for the task number that is waiting; only when the user says they finished a CAPTCHA / code step the website task was waiting for; the task carries on from the same page. Never try to solve a CAPTCHA yourself.)
+continue_web_task {}   (optional "task":2 for the task number that is waiting; only when the user says they finished a one-time code or confirmation step; the task carries on from the same page.)
 
 Sending files and WhatsApp calls (the phone really does these; say what you are doing and never claim it is sent, the result tells the user):
 share_file {"file":"report.pdf","to":"Mum","app":"whatsapp","text":"optional caption or message"}   (sends a file, photo, video or song. "file" is an attached file's name, a file name, or words like "latest photo", "last song", "song Despacito", "video birthday", "latest screenshot". For several files use "files":["a.pdf","b.jpg"]. "app" is one of: whatsapp, whatsapp business, messenger (also for Facebook), instagram, email, gmail. "to" is a contact name, a phone number, or for email an address or contact name. If the user did not say which app, ask which one before acting.)
@@ -1781,7 +1781,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     fun send(raw: String, apps: List<AppEntry>) {
         val text = raw.trim()
         if (text.isEmpty()) return
-        // A website task waiting for the user (CAPTCHA / code): "continue" or "cancel" must get through even though the chat is busy.
+        // A website task waiting for a code or confirmation: "continue" or "cancel" must get through even though the chat is busy.
         WebTask.handleSpoken(text)?.let { reply ->
             add(ChatMsg(nextId(), true, text)); add(ChatMsg(nextId(), false, reply)); return
         }
