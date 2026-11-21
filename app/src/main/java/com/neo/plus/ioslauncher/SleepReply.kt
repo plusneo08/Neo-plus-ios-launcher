@@ -102,6 +102,9 @@ Emotional or personal topics (a relationship, someone upset, sad or angry, an ar
                         assessment.priority == JarvisCommunicationEngine.Priority.OWNER_ONLY ||
                         assessment.priority == JarvisCommunicationEngine.Priority.IMPORTANT) {
                         SleepHooks.note(ctx, assessment.priority.name, app, who, text, body)
+                        if (assessment.priority == JarvisCommunicationEngine.Priority.URGENT) {
+                            CallAssist.notify(ctx, "Urgent message from $who", text.take(220), false)
+                        }
                     }
                 } else add(ctx, "FAILED", app, who, text, "")
             }
