@@ -30,10 +30,10 @@ import java.util.concurrent.Executors
 
     /* ---------------- the night summary ---------------- */
 
-private const val SLEEP_REPORT_SYSTEM = """You are Neo Plus Assistant, speaking to Neo on a phone call right after he woke up. Tell him what happened during the night.
+private const val SLEEP_REPORT_SYSTEM = """You are Neo Plus Assistant, giving Neo a catch-up report after he returns. Tell him everything recorded while communication assistance was enabled.
 Sound like a real person chatting on the phone, not like someone reading a report: warm, relaxed, contractions ("you've", "I didn't"), short and medium sentences mixed, small natural connectors like "so", "also", "and one more thing". Plain text only, no markdown, no lists. Say times the way people say them out loud ("around two in the morning"), never as digits like 02:15. Speak English unless Neo's messages show he wants otherwise.
-Start with "Good morning." Then cover, in this order: who wrote to him and what about, and what you answered; then other notifications grouped by app with counts; then group chats you left alone.
-Phone calls, goal progress (app starts with Goal), texts on the assistant line and switched-off permissions also count: mention each in plain words, calls and texts on the assistant line by who and what you did. Skip a part when it is empty. If nothing happened say it was a quiet night. Never read out codes or passwords. Do not invent anything. Mention every item in the log, none may be skipped; a line like "You picked up and unlocked the phone" means he was awake for a moment in the night, say when. Keep it under about 200 words unless a lot happened. Do not say goodbye or have a good day: the call carries on and a question to him is added after your summary."""
+Start with "Welcome back." Then cover, in this order: who wrote to him and what about, and what you answered; then other notifications grouped by app with counts; then group chats you left alone.
+Phone calls, goal progress (app starts with Goal), texts on the assistant line and switched-off permissions also count: mention each in plain words, calls and texts on the assistant line by who and what you did. Skip a part when it is empty. If nothing happened say there were no new messages or calls to report. Never read out codes or passwords. Do not invent anything. Mention every item in the log, none may be skipped; a line like "You picked up and unlocked the phone" means he was awake for a moment in the night, say when. Keep it under about 200 words unless a lot happened. Do not say goodbye or have a good day: the call carries on and a question to him is added after your summary."""
 
     fun SleepMode.report(ctx: Context): String {
         val app = ctx.applicationContext
@@ -47,15 +47,15 @@ Phone calls, goal progress (app starts with Goal), texts on the assistant line a
         val tf = SimpleDateFormat("h:mm a", Locale.getDefault())
         val sb = StringBuilder()
         val startedAt = prefs(app).getLong("started", 0L)
-        if (startedAt > 0L) sb.append("Sleep mode started at ").append(tf.format(Date(startedAt))).append(if (prefs(app).getBoolean("auto", false)) " by itself, after the screen was unused for a while.\n" else ".\n")
-        for (i in maxOf(0, arr.length() - 150) until arr.length()) {
+        if (startedAt > 0L) sb.append("Communication assistant enabled at ").append(tf.format(Date(startedAt))).append(if (prefs(app).getBoolean("auto", false)) " by itself, after the screen was unused for a while.\n" else ".\n")
+        for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
             sb.append("[").append(tf.format(Date(o.optLong("t")))).append("] ").append(o.optString("k")).append(" | ")
                 .append(o.optString("app")).append(" | ").append(o.optString("who")).append(" | ")
                 .append(o.optString("text").take(160).replace('\n', ' ')).append(" | my reply: ")
                 .append(o.optString("reply").ifBlank { "none" }.take(160).replace('\n', ' ')).append('\n')
         }
-        if (arr.length() == 0) return withMorningAsk(app, Modes.quiet(app)).also { prefs(app).edit().putString("report", it).apply() }
+        if (arr.length() == 0) return withMorningAsk(app, "Welcome back. There were no new messages or calls to report.").also { prefs(app).edit().putString("report", it).apply() }
         val key = AssistantConfig.load(app).key
         val text = try {
             if (key.isBlank()) throw Exception("no key")
@@ -75,11 +75,7 @@ Phone calls, goal progress (app starts with Goal), texts on the assistant line a
     )
 
     /** The morning call must not end after the summary: a question about you is added, so the conversation starts (sleep mode only). */
-    internal fun SleepMode.withMorningAsk(ctx: Context, text: String): String {
-        val key = Modes.current(ctx)?.key ?: "sleep"
-        if (key != "sleep" || text.trimEnd().endsWith("?")) return text
-        return text.trimEnd() + " " + morningAsks[Calendar.getInstance().get(Calendar.DAY_OF_YEAR) % morningAsks.size]
-    }
+    internal fun SleepMode.withMorningAsk(ctx: Context, text: String): String = text
 
     internal fun SleepMode.fallbackReport(arr: JSONArray): String {
         val c = HashMap<String, Int>()
@@ -91,10 +87,17 @@ Phone calls, goal progress (app starts with Goal), texts on the assistant line a
             if (k == "REPLIED" || k == "MSG") people.add(o.optString("who"))
         }
         val parts = ArrayList<String>()
-        parts.add("Good morning.")
-        if (people.isNotEmpty()) parts.add("${people.size} people wrote to you: ${people.joinToString(", ")}. I answered ${c["REPLIED"] ?: 0} of them.")
-        if ((c["NOTE"] ?: 0) > 0) parts.add("You also had ${c["NOTE"]} other notifications.")
-        if ((c["GROUP"] ?: 0) > 0) parts.add("${c["GROUP"]} group messages were left alone.")
+        parts.add("Welcome back. Here is the activity I retained.")
+        if (people.isNotEmpty()) parts.add("${people.size} people contacted you: ${people.joinToString(", ")}.")
+        if ((c["REPLIED"] ?: 0) > 0) parts.add("I sent ${c["REPLIED"]} replies.")
+        if ((c["CALL"] ?: 0) > 0) parts.add("There were ${c["CALL"]} call updates.")
+        if ((c["URGENT"] ?: 0) + (c["OWNER_ONLY"] ?: 0) + (c["IMPORTANT"] ?: 0) > 0) parts.add("There are ${(c["URGENT"] ?: 0) + (c["OWNER_ONLY"] ?: 0) + (c["IMPORTANT"] ?: 0)} items that need your attention.")
+        if ((c["NOTE"] ?: 0) > 0) parts.add("There were ${c["NOTE"]} other notifications.")
+        if ((c["GROUP"] ?: 0) > 0) parts.add("${c["GROUP"]} group messages were left unanswered.")
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            parts.add("${o.optString("who", "Unknown")}: ${o.optString("text").take(100)}. Reply: ${o.optString("reply").ifBlank { "none" }.take(100)}.")
+        }
         return parts.joinToString(" ")
     }
 
