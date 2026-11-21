@@ -22,22 +22,23 @@ object CommunicationControl {
                 return "Turn on notification access for NEO PLUS, then ask me again."
             }
             if (AssistantConfig.load(app).key.isBlank()) return "Add your Gemini API key first, then ask me to handle your messages and calls."
-            // Cancel any legacy wake-up schedule without clearing its history, then begin continuous handling.
             val settings = app.getSharedPreferences(PREF, Context.MODE_PRIVATE)
             val wasEnabled = settings.getBoolean(ENABLED, false)
-            SleepMode.finish(app)
             if (!wasEnabled) {
+                // Retire any old wake-up alarm without touching saved logs or conversation history.
+                SleepMode.finish(app)
                 val callPrefs = app.getSharedPreferences("neo_calls", Context.MODE_PRIVATE)
                 settings.edit().putBoolean("calls_were_on", callPrefs.getBoolean("on", true)).apply()
+                settings.edit().putBoolean(ENABLED, true).putLong("enabled_at", System.currentTimeMillis()).apply()
+                SleepMode.prefs(app).edit().putLong("started", System.currentTimeMillis())
+                    .putBoolean("calls_only", false).putString("activity", "").putString("mode", "")
+                    .putLong("wake_at", 0L).putBoolean("auto", false).putInt("prep_n", -1).putLong("prep_at", 0L).apply()
             }
-            settings.edit().putBoolean(ENABLED, true).putLong("enabled_at", System.currentTimeMillis()).apply()
+            // Repeated requests are idempotent: they never reset the report window or erase prior events.
             app.getSharedPreferences("neo_calls", Context.MODE_PRIVATE).edit().putBoolean("on", true).apply()
-            SleepMode.prefs(app).edit().putLong("started", System.currentTimeMillis())
-                .putBoolean("calls_only", false).putString("activity", "").putString("mode", "")
-                .putLong("wake_at", 0L).putBoolean("auto", false).putInt("prep_n", -1).putLong("prep_at", 0L).apply()
-            // Preserve all existing logs, transcripts, preferences, and per-contact counters.
             SleepService.start(app)
-            return "Okay. I’ll handle eligible messages and calls until you say “I’m back”. I’ll keep a record for your catch-up report."
+            return if (wasEnabled) "I'm already handling eligible messages and calls. Say “I’m back” when you return for your full report."
+                else "Okay. I’ll handle eligible messages and calls until you say “I’m back”. I’ll keep a record for your catch-up report."
         }
         val settings = app.getSharedPreferences(PREF, Context.MODE_PRIVATE)
         val wasEnabled = settings.getBoolean(ENABLED, false)
@@ -52,6 +53,7 @@ object CommunicationControl {
 
     fun back(ctx: Context): String {
         val app = ctx.applicationContext
+        if (!isEnabled(app)) return "Communication handling is not currently on. There is no new away-time report to prepare."
         val report = try { SleepMode.report(app) } catch (e: Exception) {
             "Welcome back. I couldn't prepare the full report: ${e.message ?: "unknown error"}. Your saved communication history is still on the phone."
         }
