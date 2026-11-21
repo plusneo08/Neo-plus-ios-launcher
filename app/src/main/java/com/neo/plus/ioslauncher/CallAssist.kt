@@ -113,14 +113,14 @@ object CallAssist {
         val convRule = picked.first == "conversation" && !(onLine && !specific)
         val modeTalk = CommunicationControl.isEnabled(app) && picked.first == "announce" && !specific
         if ((convRule || modeTalk) && CallConversation.cannotRun(app) == null) {
-            SleepHooks.note(app, "NOTE", "Phone call", who, "Incoming call", "I answered and talked to the caller")
+            SleepHooks.note(app, "CALL", "Phone call", who, "Incoming call", "I answered and talked to the caller")
             val r = CallConversation.start(app, number, name, if (convRule) picked.second else "")
             notify(app, "Answered a call", "$who: $r", false)
             return
         }
         val (action, text) = if (onLine && !specific) AssistantLine.lineAction(app) else picked
         val via = if (onLine) " on your assistant line (${AssistantLine.label(app, slot)})" else ""
-        SleepHooks.note(app, "NOTE", "Phone call" + (if (onLine) " (assistant line)" else ""), who, "Incoming call",
+        SleepHooks.note(app, "CALL", "Phone call" + (if (onLine) " (assistant line)" else ""), who, "Incoming call",
             when (action) { "decline" -> "I declined it"; "decline_text" -> "I declined it and texted them"; "speaker" -> "I answered on speaker"
                 "greeting", "conversation" -> "I answered and played the greeting"; else -> "I announced it, it was not answered by me" })
         when (action) {
