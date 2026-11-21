@@ -514,11 +514,10 @@ object PhoneActions {
             "communication" -> return CommunicationControl.setEnabled(ctx, onOff(a))
             "communication_report", "sleep_report" -> return CommunicationControl.back(ctx)
             "wake_call", "sleep_mode", "mode", "auto_sleep", "sleep_voice" ->
-                return "Activity and scheduled communication modes are no longer available. Ask me to handle your messages and calls until you say “I’m back”.
+                return "Activity and scheduled communication modes are no longer available. Ask me to handle your messages and calls until you say “I’m back”."
             "skill" -> return Skills.handle(ctx, a)
             "skill_use" -> return SkillStore.use(ctx, a.optString("name"), a.optString("file"))
             "skill_commit" -> return SkillStore.commit(ctx, a)   // only from an approved "waiting for your OK" item (it needs the saved key)
-            "auto_sleep" -> return "Automatic sleep mode has been removed. Ask me to handle messages and calls until you say I am back."
             "proactive" -> return Proactive.handle(ctx, a)
             "friday" -> return Friday.handle(ctx, a)
             "lab" -> return Lab.handle(ctx, a)
