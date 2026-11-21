@@ -61,7 +61,7 @@ object CommunicationControl {
 
 /** Understands plain requests directly, without asking the model to invent an activity mode. */
 object CommunicationCmd {
-    private val back = Regex("\\b(?:i['’]?m|i am|im)\\s+back\\b|\\b(?:i have|i've|ive)\\s+returned\\b|\\bndabwerera\\b|\\bndabwera\\b", RegexOption.IGNORE_CASE)
+    private val back = Regex("\\b(?:i['’]?m|i am|im|am)\\s+back\\b|\\b(?:i have|i've|ive)\\s+returned\\b|\\bndabwerera\\b|\\bndabwera\\b", RegexOption.IGNORE_CASE)
     private val enable = Regex("\\b(?:answer|handle|manage|reply to|respond to)\\b.{0,45}\\b(?:my )?(?:messages?|texts?|calls?)\\b|\\b(?:answer|handle)\\b.{0,25}\\bmessages?\\b.{0,20}\\bcalls?\\b", RegexOption.IGNORE_CASE)
 
     fun plan(text: String): LocalPlan? {
