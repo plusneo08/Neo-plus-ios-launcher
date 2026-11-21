@@ -1489,8 +1489,7 @@ You can also control the phone. To do something, add action tags on their own li
 
 ${doIt}Actions:
 open_app {"app":"Camera"}
-alarm {"hour":7,"minute":30,"label":""}   (24-hour clock; ONLY for a plain alarm the user calls an alarm. If they say wake me up, wake me, or a wake-up call, use wake_call instead)
-wake_call {"hour":8,"minute":30}   (24-hour clock; the user wants to be woken up: at that time the phone rings like an incoming call from you, and when they answer you greet them and tell what happened (missed calls, texts, notifications). It does NOT answer their messages. If the time is not given, ask for it)
+alarm {"hour":7,"minute":30,"label":""}   (24-hour clock; use only when the user explicitly asks to set a normal alarm)
 timer {"seconds":300,"label":""}
 set_mood {"text":"how the user says they feel, in their words"}   (the user states how they feel or what mood they are in, e.g. "I'm anxious today", "I feel great": the crown home screen then shows Bible verses and quotes for that feeling and changes them every 30 minutes. Do not ask questions first)
 mood_call {"hour":7,"minute":0,"on":true}   (the daily morning call that asks how the user feels; "on":false stops it; change the time with hour and minute, 24-hour clock)
