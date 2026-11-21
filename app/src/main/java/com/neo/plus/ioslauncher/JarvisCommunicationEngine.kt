@@ -54,8 +54,7 @@ object JarvisCommunicationEngine {
     ): String {
         val assessment = assess(newestMessage)
         val language = MessageLanguage.promptHint(ctx, app, contact)
-        val context = recentContext.asSequence()
-            .filter { it.isNotBlank() }
+        val context = recentContext.filter { it.isNotBlank() }
             .takeLast(5)
             .joinToString("\n") { it.take(350) }
         return buildString {
