@@ -33,7 +33,8 @@ object CommunicationControl {
             settings.edit().putBoolean(ENABLED, true).putLong("enabled_at", System.currentTimeMillis()).apply()
             app.getSharedPreferences("neo_calls", Context.MODE_PRIVATE).edit().putBoolean("on", true).apply()
             SleepMode.prefs(app).edit().putLong("started", System.currentTimeMillis())
-                .putBoolean("calls_only", false).putString("activity", "").apply()
+                .putBoolean("calls_only", false).putString("activity", "").putString("mode", "")
+                .putLong("wake_at", 0L).putBoolean("auto", false).putInt("prep_n", -1).putLong("prep_at", 0L).apply()
             // Preserve all existing logs, transcripts, preferences, and per-contact counters.
             SleepService.start(app)
             return "Okay. I’ll handle eligible messages and calls until you say “I’m back”. I’ll keep a record for your catch-up report."
@@ -61,7 +62,7 @@ object CommunicationControl {
 
 /** Understands plain requests directly, without asking the model to invent an activity mode. */
 object CommunicationCmd {
-    private val back = Regex("\\b(?:i['’]?m|i am|im)\\s+back\\b|\\bam back\\b|\\b(?:i have|i've|ive)\\s+returned\\b|\\bndabwerera\\b|\\bndabwera\\b", RegexOption.IGNORE_CASE)
+    private val back = Regex("\\b(?:i['’]?m|i am|im|am)\\s+back\\b|\\b(?:i have|i've|ive)\\s+returned\\b|\\bndabwerera\\b|\\bndabwera\\b", RegexOption.IGNORE_CASE)
     private val enable = Regex("\\b(?:answer|handle|manage|reply to|respond to)\\b.{0,45}\\b(?:my )?(?:messages?|texts?|calls?)\\b|\\b(?:answer|handle)\\b.{0,25}\\bmessages?\\b.{0,20}\\bcalls?\\b", RegexOption.IGNORE_CASE)
 
     fun plan(text: String): LocalPlan? {
