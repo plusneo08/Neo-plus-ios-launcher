@@ -114,7 +114,7 @@ Emotional or personal topics (a relationship, someone upset, sad or angry, an ar
     internal fun SleepMode.add(ctx: Context, kind: String, app: String, who: String, text: String, reply: String) {
         val arr = try { JSONArray(prefs(ctx).getString("log", "[]")) } catch (e: Exception) { JSONArray() }
         arr.put(JSONObject().put("t", System.currentTimeMillis()).put("k", kind).put("app", app).put("who", who)
-            .put("text", text.take(300)).put("reply", reply.take(300)))
+            .put("text", text.take(2000)).put("reply", reply.take(2000)))
         val trimmed = if (arr.length() > MAX_LOG) JSONArray().also { o -> for (i in arr.length() - MAX_LOG until arr.length()) o.put(arr.get(i)) } else arr
         prefs(ctx).edit().putString("log", trimmed.toString()).apply()
         SleepPrep.onLogChanged(ctx.applicationContext)   // after the 5-minutes-before preparation, keep the ready summary complete
