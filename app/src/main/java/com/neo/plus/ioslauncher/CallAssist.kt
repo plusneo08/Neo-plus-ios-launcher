@@ -113,7 +113,6 @@ object CallAssist {
         val convRule = picked.first == "conversation" && !(onLine && !specific)
         val modeTalk = CommunicationControl.isEnabled(app) && picked.first == "announce" && !specific
         if ((convRule || modeTalk) && CallConversation.cannotRun(app) == null) {
-            SleepHooks.note(app, "CALL", "Phone call", who, "Incoming call", "I answered and talked to the caller")
             val r = CallConversation.start(app, number, name, if (convRule) picked.second else "")
             notify(app, "Answered a call", "$who: $r", false)
             return
