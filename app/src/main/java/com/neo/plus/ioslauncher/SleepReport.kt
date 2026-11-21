@@ -87,10 +87,17 @@ Phone calls, goal progress (app starts with Goal), texts on the assistant line a
             if (k == "REPLIED" || k == "MSG") people.add(o.optString("who"))
         }
         val parts = ArrayList<String>()
-        parts.add("Welcome back.")
-        if (people.isNotEmpty()) parts.add("${people.size} people wrote to you: ${people.joinToString(", ")}. I answered ${c["REPLIED"] ?: 0} of them.")
-        if ((c["NOTE"] ?: 0) > 0) parts.add("You also had ${c["NOTE"]} other notifications.")
-        if ((c["GROUP"] ?: 0) > 0) parts.add("${c["GROUP"]} group messages were left alone.")
+        parts.add("Welcome back. Here is the activity I retained.")
+        if (people.isNotEmpty()) parts.add("${people.size} people contacted you: ${people.joinToString(", ")}.")
+        if ((c["REPLIED"] ?: 0) > 0) parts.add("I sent ${c["REPLIED"]} replies.")
+        if ((c["CALL"] ?: 0) > 0) parts.add("There were ${c["CALL"]} call updates.")
+        if ((c["URGENT"] ?: 0) + (c["OWNER_ONLY"] ?: 0) + (c["IMPORTANT"] ?: 0) > 0) parts.add("There are ${(c["URGENT"] ?: 0) + (c["OWNER_ONLY"] ?: 0) + (c["IMPORTANT"] ?: 0)} items that need your attention.")
+        if ((c["NOTE"] ?: 0) > 0) parts.add("There were ${c["NOTE"]} other notifications.")
+        if ((c["GROUP"] ?: 0) > 0) parts.add("${c["GROUP"]} group messages were left unanswered.")
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            parts.add("${o.optString("who", "Unknown")}: ${o.optString("text").take(100)}. Reply: ${o.optString("reply").ifBlank { "none" }.take(100)}.")
+        }
         return parts.joinToString(" ")
     }
 
