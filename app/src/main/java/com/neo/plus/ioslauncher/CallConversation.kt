@@ -415,6 +415,11 @@ REPLY: <what you say out loud>"""
         val lines = ArrayList(transcript)
         val w = who; val n = number; val heardIt = heardAny
         val secs = ((System.currentTimeMillis() - startedAt) / 1000).toInt()
+        // Record the call and transcript before the slower AI summary, so "I'm back" cannot race ahead of the report.
+        val quickTranscript = lines.filter { it.startsWith("Caller:") || it.startsWith("Assistant:") }
+            .joinToString(" ").take(1200).ifBlank { if (heardIt) "Conversation ended; no transcript was captured" else "Answered, but no caller speech was detected" }
+        SleepHooks.note(a, "CALL", "Phone call (assistant answered)", w, "Talked for ${secs}s", quickTranscript)
+        save(a, w, n, quickTranscript, lines)
         io.execute { try { summarize(a, w, n, lines, heardIt, secs) } catch (e: Exception) { } }
     }
 
@@ -422,8 +427,6 @@ REPLY: <what you say out loud>"""
         if (!heardIt) {
             val msg = "I answered but heard nothing from the caller. If this keeps happening, your phone is blocking the microphone during calls: make Neo Plus the default Phone app, or use the greeting mode instead."
             CallAssist.notify(a, "Answered, nothing heard", "$who: $msg", false)
-            SleepHooks.note(a, "CALL", "Phone call (assistant answered)", who, "Answered as your assistant", "Heard nothing from the caller")
-            save(a, who, number, "Heard nothing from the caller", lines)
             return
         }
         val key = a.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE).getString("key", "").orEmpty()
@@ -434,8 +437,6 @@ REPLY: <what you say out loud>"""
         } catch (e: Exception) { "" }
         val text = summary.ifBlank { lines.filter { it.startsWith("Caller:") }.joinToString(" ").take(300) }
         CallAssist.notify(a, "Call from $who", text, false)
-        SleepHooks.note(a, "CALL", "Phone call (assistant answered)", who, "Talked for ${secs}s", text)
-        save(a, who, number, text, lines)
     }
 
     private fun save(a: Context, who: String, number: String, summary: String, lines: List<String>) {
