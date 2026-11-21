@@ -106,6 +106,11 @@ object AssistantLine {
         val digits = sender.filter { it.isDigit() }
         if (digits.length < 8 || sender.any { it.isLetter() }) return
         if (CODE.containsMatchIn(body)) return
+        val assessment = JarvisCommunicationEngine.assess(body)
+        if (assessment.priority == JarvisCommunicationEngine.Priority.AUTOMATED) {
+            SleepHooks.note(app, "AUTO", "Text on the assistant line", sender, body)
+            return
+        }
         val p = prefs(app)
         val key = digits.takeLast(9)
         if (p.getStringSet("blocked", emptySet()).orEmpty().contains(key)) return
@@ -127,8 +132,7 @@ object AssistantLine {
             if (parts.size == 1) sms.sendTextMessage(sender, null, reply, null, null) else sms.sendMultipartTextMessage(sender, null, parts, null, null)
         } catch (e: Exception) { return }
         record(app, sender, body, reply)
-        val priority = JarvisCommunicationEngine.assess(body).priority
-        val reportKind = when (priority) {
+        val reportKind = when (assessment.priority) {
             JarvisCommunicationEngine.Priority.URGENT -> "URGENT"
             JarvisCommunicationEngine.Priority.OWNER_ONLY -> "OWNER_REQUIRED"
             JarvisCommunicationEngine.Priority.IMPORTANT -> "IMPORTANT"
@@ -147,7 +151,6 @@ object AssistantLine {
         val info = prefs(app).getString("info", "").orEmpty()
         val recentContext = conversationContext(app, contactKey)
         val jarvisContext = JarvisCommunicationEngine.promptFor(app, "sms", contactKey, incoming, recentContext)
-        val assessment = JarvisCommunicationEngine.assess(incoming)
         val system = """You are the text-message assistant of $owner. Someone texted $owner's assistant number. Write ONE short reply (at most 2 sentences, 280 characters).
 You may only: say $owner can't answer personally right now, take a message and say $owner will reply, and answer simple questions using ONLY the info below.
 Detect the language of this message each time and reply in that same language. Support Chichewa/Chinyanja, English, mixed-language messages, and any other language you can confidently write. If the sender switches languages, switch with the newest message; use saved language only when the newest message is ambiguous.
