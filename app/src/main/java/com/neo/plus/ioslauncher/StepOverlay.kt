@@ -17,7 +17,7 @@ import android.widget.TextView
 /**
  * While "Watch page" is on, the website page fills the whole screen and this draws the task steps over it on a transparent
  * background (semi-transparent bubbles, so the page stays visible behind them), with Hide page and Stop buttons.
- * It hides itself while the task is waiting for the user (CAPTCHA / code), so nothing covers the page then.
+ * It hides itself while the task is waiting for a one-time code, so nothing covers the page then.
  * All of it runs on the main thread.
  */
 object StepOverlay {

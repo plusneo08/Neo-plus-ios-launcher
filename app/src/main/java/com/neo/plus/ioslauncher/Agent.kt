@@ -1,6 +1,9 @@
 package com.neo.plus.ioslauncher
 
 import android.content.Context
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 
 /**
  * Runs one request: asks the AI model, runs its actions, and when the model asked for information first
@@ -11,6 +14,46 @@ object Agent {
     class Outcome(val text: String, val results: List<ActionResult>, val fromFirstReply: Boolean = false)
 
     private const val MAX_ROUNDS = 4
+
+    /**
+     * Independent, read-only information lookups can run together. This makes requests such as
+     * "check the weather, latest news and share price" wait for the slowest lookup rather than
+     * adding every network delay together. Phone/UI actions and anything with side effects stay
+     * sequential; only these read-only information actions use the pool.
+     */
+    private val FAST_INFO_ACTIONS = setOf("weather", "news", "stock", "sports", "lookup")
+    private val infoExecutor = Executors.newFixedThreadPool(4) { task ->
+        Thread(task, "neo-fast-info").apply { isDaemon = true }
+    }
+
+    private fun runInfoActions(
+        ctx: Context,
+        actions: List<Pair<String, JSONObject>>,
+        apps: List<AppEntry>
+    ): List<Pair<Pair<String, JSONObject>, ActionResult>> {
+        val pending = HashMap<Int, Future<ActionResult>>()
+        actions.forEachIndexed { index, action ->
+            if (action.first in FAST_INFO_ACTIONS) {
+                pending[index] = infoExecutor.submit(Callable {
+                    PhoneActions.run(ctx, action.first, action.second, apps)
+                })
+            }
+        }
+        // Preserve the model's action order in the prompt while allowing independent lookups to overlap.
+        return actions.mapIndexed { index, action ->
+            val result = pending[index]?.let { future ->
+                try {
+                    future.get()
+                } catch (e: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    ActionResult("That lookup was interrupted.", false, false, info = true)
+                } catch (e: Exception) {
+                    ActionResult("That lookup could not be completed.", false, false, info = true)
+                }
+            } ?: PhoneActions.run(ctx, action.first, action.second, apps)
+            action to result
+        }
+    }
 
     /**
      * Quota saver: the chat always uses the model chosen in the settings (Gemini 3.8 Flash unless the user picked Argon).
@@ -94,8 +137,8 @@ object Agent {
                 val doneNow = actions.filter { it.first !in PhoneActions.infoActions }
                     .map { it to PhoneActions.run(ctx, it.first, it.second, apps) }
                 done += doneNow.map { it.second }
-                val block = data.joinToString("\n\n") { a ->
-                    a.first + ": " + PhoneActions.run(ctx, a.first, a.second, apps).note
+                val block = runInfoActions(ctx, data, apps).joinToString("\n\n") { (a, result) ->
+                    a.first + ": " + result.note
                 }
                 val already = if (doneNow.isEmpty() && earlyNames.isEmpty()) "" else
                     "\n\nAlready done, do not repeat: " + (earlyNames.map { it } + doneNow.map { it.first.first + " (" + it.second.note + ")" }).joinToString("; ")

@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * The user gives the goal once. The phone then checks in on it every N minutes (an exact alarm, like [Scheduler]):
  * each check-in runs [AppTask], which publishes the post (once), reads the numbers, and replies to comments that have no
  * reply yet. The user is told ONLY when: the goal is met, time ran out, or the phone cannot carry on without them
- * (it needs their OK, a login / CAPTCHA / PIN, the app is not connected, or three check-ins in a row failed).
+ * (it needs their OK, a login / security challenge / PIN, the app is not connected, or three check-ins in a row failed).
  *
  * goal {"do":"start","instruction":"...","app":"Facebook Lite","every_minutes":30,"days":7}
  * goal {"do":"list"}   goal {"do":"stop","id":"..."|"all"}   goal {"do":"resume","id":"..."}
