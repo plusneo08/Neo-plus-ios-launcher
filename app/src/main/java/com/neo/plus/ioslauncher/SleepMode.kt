@@ -175,6 +175,8 @@ object SleepMode {
         val app = ctx.applicationContext
         if (!isOn(app)) return
         SleepService.start(app)
+        // Continuous communication has no wake-up time: never resurrect a legacy alarm after reboot.
+        if (CommunicationControl.isEnabled(app)) return
         val at = prefs(app).getLong("wake_at", 0L)
         if (at > System.currentTimeMillis()) { schedule(app, at); SleepPrep.schedule(app, at) } else ring(app)
     }
