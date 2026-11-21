@@ -53,7 +53,7 @@ object SleepMode {
     @Volatile internal var pendingActivity = ""
     @Volatile internal var pendingAt = 0L
 
-    fun isOn(ctx: Context) = prefs(ctx).getBoolean("on", false)
+    fun isOn(ctx: Context) = prefs(ctx).getBoolean("on", false) || CommunicationControl.isEnabled(ctx)
 
     /** True = the wake-up call speaks with the phone's free voice instead of the Gemini voice (saves API quota). */
     fun freeVoice(ctx: Context) = prefs(ctx.applicationContext).getBoolean("free_voice", false)
@@ -237,7 +237,7 @@ object SleepMode {
     fun onPosted(ctx: Context, sbn: StatusBarNotification): Boolean {
         val app = ctx.applicationContext
         if (!isOn(app)) return false
-        if (prefs(app).getBoolean("calls_only", false)) return false   // wake-up call only: messages are not answered
+        if (prefs(app).getBoolean("calls_only", false) && !CommunicationControl.isEnabled(app)) return false   // wake-up call only: messages are not answered
         if (sbn.packageName == app.packageName) return false
         val n = sbn.notification ?: return true
         val skipFlags = Notification.FLAG_ONGOING_EVENT or Notification.FLAG_GROUP_SUMMARY or Notification.FLAG_FOREGROUND_SERVICE
