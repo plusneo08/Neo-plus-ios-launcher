@@ -85,3 +85,60 @@ object AutoSleep {
     /** The countdown ran out. Starts sleep mode only if everything still fits. */
     fun check(ctx: Context) { /* retired: never starts scheduled modes */ }
 
+    fun status(ctx: Context): String {
+        val app = ctx.applicationContext
+        val wake = String.format(Locale.US, "%02d:%02d", wakeHour(app), wakeMinute(app))
+        return if (enabled(app)) "Auto sleep is on: after ${idleMin(app)} minutes with the screen unused, between ${fromHour(app)}:00 and $wake, I start sleep mode and phone you at $wake."
+        else "Auto sleep is off."
+    }
+
+    /** The `auto_sleep` action: {"on":false}, {"on":true,"hour":6,"minute":30}, {"minutes":45}, {"do":"status"}. */
+    fun handle(ctx: Context, a: JSONObject): String {
+        val app = ctx.applicationContext
+        if (a.optString("do").equals("status", true)) return status(app)
+        val e = p(app).edit()
+        if (a.has("hour")) e.putInt("wake_hour", a.optInt("hour", 7).coerceIn(0, 23)).putInt("wake_minute", a.optInt("minute", 0).coerceIn(0, 59))
+        if (a.has("minutes")) e.putInt("idle_min", a.optInt("minutes", 30).coerceIn(5, 180))
+        if (a.has("on")) e.putBoolean("on", a.optBoolean("on", true))
+        e.apply()
+        if (!enabled(app)) screenOn(app)
+        return if (enabled(app)) "Okay. " + status(app) else "Okay, auto sleep is off. You can still say “sleep mode” yourself."
+    }
+}
+
+class AutoSleepReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val app = context.applicationContext
+        val pending = goAsync()
+        SleepMode.io.execute { try { AutoSleep.check(app) } catch (e: Exception) { } finally { pending.finish() } }
+    }
+}
+
+/** Understands "auto sleep off", "auto sleep on", "auto sleep wake me at 6:30", "auto sleep after 45 minutes", "auto sleep status". */
+object AutoSleepCmd {
+    private val I = RegexOption.IGNORE_CASE
+    private val nameRe = Regex("\\bauto(?:matic(?:ally)?)?[- ]?sleep(?:ing)?\\b|\\bsleep (?:mode )?automatic(?:ally)?\\b", I)
+    private val offRe = Regex("\\b(?:off|stop|disable|cancel|turn off|switch off)\\b", I)
+    private val statusRe = Regex("\\bstatus\\b|\\bis it on\\b|\\bwhat time\\b", I)
+    private val timeRe = Regex("\\b(?:at|until|till|by|call me|wake me)\\b[^0-9]{0,15}(\\d{1,2})(?:[:.](\\d{2}))?\\s*(a\\.?m\\.?|p\\.?m\\.?)?", I)
+    private val afterRe = Regex("\\b(?:after|when idle for|idle for)\\s+(\\d{1,3})\\s*(?:minutes?|mins?)\\b", I)
+
+    fun plan(text: String): LocalPlan? {
+        val t = text.trim()
+        if (!nameRe.containsMatchIn(t)) return null
+        val a = JSONObject()
+        if (statusRe.containsMatchIn(t)) return LocalPlan("", listOf("auto_sleep" to a.put("do", "status")))
+        if (offRe.containsMatchIn(t)) return LocalPlan("", listOf("auto_sleep" to a.put("on", false)))
+        a.put("on", true)
+        afterRe.find(t)?.groupValues?.get(1)?.toIntOrNull()?.let { a.put("minutes", it) }
+        timeRe.find(t)?.let { m ->
+            var h = m.groupValues[1].toIntOrNull() ?: return@let
+            val min = m.groupValues[2].toIntOrNull() ?: 0
+            val ap = m.groupValues[3].lowercase(Locale.ROOT).replace(".", "")
+            if (ap == "pm" && h < 12) h += 12
+            if (ap == "am" && h == 12) h = 0
+            if (h in 0..23 && min in 0..59) a.put("hour", h).put("minute", min)
+        }
+        return LocalPlan("", listOf("auto_sleep" to a))
+    }
+}
