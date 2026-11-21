@@ -64,7 +64,7 @@ Phone calls, goal progress (app starts with Goal), texts on the assistant line a
                 "NOTE" -> "Other activity or notification"
                 "URGENT" -> "Urgent item"
                 "IMPORTANT" -> "Important item"
-                "OWNER_ONLY" -> "Needs your attention"
+                "OWNER_ONLY", "OWNER_REQUIRED" -> "Needs your attention"
                 else -> event.optString("k", "Notification").ifBlank { "Notification" }
             }
             val who = reportSafe(event.optString("who").ifBlank { "Unknown sender" })
