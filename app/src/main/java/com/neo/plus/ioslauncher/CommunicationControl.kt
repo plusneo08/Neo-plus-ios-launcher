@@ -23,16 +23,28 @@ object CommunicationControl {
             }
             if (AssistantConfig.load(app).key.isBlank()) return "Add your Gemini API key first, then ask me to handle your messages and calls."
             // Cancel any legacy wake-up schedule without clearing its history, then begin continuous handling.
+            val settings = app.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+            val wasEnabled = settings.getBoolean(ENABLED, false)
             SleepMode.finish(app)
-            app.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
-                .putBoolean(ENABLED, true).putLong("enabled_at", System.currentTimeMillis()).apply()
+            if (!wasEnabled) {
+                val callPrefs = app.getSharedPreferences("neo_calls", Context.MODE_PRIVATE)
+                settings.edit().putBoolean("calls_were_on", callPrefs.getBoolean("on", true)).apply()
+            }
+            settings.edit().putBoolean(ENABLED, true).putLong("enabled_at", System.currentTimeMillis()).apply()
+            app.getSharedPreferences("neo_calls", Context.MODE_PRIVATE).edit().putBoolean("on", true).apply()
             SleepMode.prefs(app).edit().putLong("started", System.currentTimeMillis())
                 .putBoolean("calls_only", false).putString("activity", "").apply()
             // Preserve all existing logs, transcripts, preferences, and per-contact counters.
             SleepService.start(app)
             return "Okay. I’ll handle eligible messages and calls until you say “I’m back”. I’ll keep a record for your catch-up report."
         }
-        app.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit().putBoolean(ENABLED, false).apply()
+        val settings = app.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+        val wasEnabled = settings.getBoolean(ENABLED, false)
+        settings.edit().putBoolean(ENABLED, false).apply()
+        if (wasEnabled) {
+            val restoreCalls = settings.getBoolean("calls_were_on", true)
+            app.getSharedPreferences("neo_calls", Context.MODE_PRIVATE).edit().putBoolean("on", restoreCalls).apply()
+        }
         if (!SleepMode.prefs(app).getBoolean("on", false)) SleepService.stop(app)
         return "Message and call handling is off."
     }
