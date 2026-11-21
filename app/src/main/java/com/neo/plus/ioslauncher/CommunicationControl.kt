@@ -22,8 +22,12 @@ object CommunicationControl {
                 return "Turn on notification access for NEO PLUS, then ask me again."
             }
             if (AssistantConfig.load(app).key.isBlank()) return "Add your Gemini API key first, then ask me to handle your messages and calls."
+            // Cancel any legacy wake-up schedule without clearing its history, then begin continuous handling.
+            SleepMode.finish(app)
             app.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
                 .putBoolean(ENABLED, true).putLong("enabled_at", System.currentTimeMillis()).apply()
+            SleepMode.prefs(app).edit().putLong("started", System.currentTimeMillis())
+                .putBoolean("calls_only", false).putString("activity", "").apply()
             // Preserve all existing logs, transcripts, preferences, and per-contact counters.
             SleepService.start(app)
             return "Okay. I’ll handle eligible messages and calls until you say “I’m back”. I’ll keep a record for your catch-up report."
