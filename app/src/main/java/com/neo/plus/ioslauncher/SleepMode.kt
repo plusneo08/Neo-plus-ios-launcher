@@ -37,7 +37,7 @@ object SleepMode {
     internal const val CHANNEL = "neo_wake_call"
     internal const val NOTIF_ID = 4712
     const val ACTION_WAKE = "com.neo.plus.ioslauncher.SLEEP_WAKE"
-    internal const val MAX_LOG = 200
+    internal const val MAX_LOG = 1000
     internal const val MAX_REPLIES = 60
     internal const val MAX_RETRIES = 5
     internal const val MAX_PER_CHAT = 8          // automatic replies per conversation per night
