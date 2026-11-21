@@ -332,11 +332,7 @@ object CallConversation {
         val style = p.getString("conv_style", "").orEmpty()
         val brief = p.getString("conv_brief", "").orEmpty()
         val info = p.getString("conv_info", "").orEmpty()
-        val mode = Modes.current(ctx)
-        val until = Modes.endTime(ctx)
-        val situation = if (mode == null) "" else
-            "Right now $owner is ${mode.situation}" + (if (until.isNotEmpty()) " and will be free around $until" else "") +
-            ". You may say that, but never add any more detail about what $owner is doing or where $owner is.\n"
+        val situation = "The owner may be unavailable; do not guess why or when they will return.\n"
         val system = """You are the AI phone assistant of $owner. You are answering a live phone call that $owner did not pick up. The caller hears you through the phone's speaker. You already said hello; do not introduce yourself again.
 Goals: find out who is calling and why, take a clear message, answer simple questions using ONLY the info below, and say $owner will call back or reply when you cannot help.
 ${situation}Speak the way $owner speaks: ${style.ifBlank { "warm, polite and short" }}.
@@ -426,7 +422,7 @@ REPLY: <what you say out loud>"""
         if (!heardIt) {
             val msg = "I answered but heard nothing from the caller. If this keeps happening, your phone is blocking the microphone during calls: make Neo Plus the default Phone app, or use the greeting mode instead."
             CallAssist.notify(a, "Answered, nothing heard", "$who: $msg", false)
-            SleepHooks.note(a, "NOTE", "Phone call (assistant answered)", who, "Answered as your assistant", "Heard nothing from the caller")
+            SleepHooks.note(a, "CALL", "Phone call (assistant answered)", who, "Answered as your assistant", "Heard nothing from the caller")
             save(a, who, number, "Heard nothing from the caller", lines)
             return
         }
