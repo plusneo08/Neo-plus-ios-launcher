@@ -48,7 +48,7 @@ Phone calls, goal progress (app starts with Goal), texts on the assistant line a
         val sb = StringBuilder()
         val startedAt = prefs(app).getLong("started", 0L)
         if (startedAt > 0L) sb.append("Communication assistant enabled at ").append(tf.format(Date(startedAt))).append(if (prefs(app).getBoolean("auto", false)) " by itself, after the screen was unused for a while.\n" else ".\n")
-        for (i in maxOf(0, arr.length() - 150) until arr.length()) {
+        for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
             sb.append("[").append(tf.format(Date(o.optLong("t")))).append("] ").append(o.optString("k")).append(" | ")
                 .append(o.optString("app")).append(" | ").append(o.optString("who")).append(" | ")
