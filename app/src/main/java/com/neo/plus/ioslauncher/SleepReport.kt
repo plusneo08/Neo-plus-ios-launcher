@@ -33,13 +33,13 @@ import java.util.concurrent.Executors
 private const val SLEEP_REPORT_SYSTEM = """You are Neo Plus Assistant, giving Neo a catch-up report after he returns. Tell him everything recorded while communication assistance was enabled.
 Sound like a real person chatting on the phone, not like someone reading a report: warm, relaxed, contractions ("you've", "I didn't"), short and medium sentences mixed, small natural connectors like "so", "also", "and one more thing". Plain text only, no markdown, no lists. Say times the way people say them out loud ("around two in the morning"), never as digits like 02:15. Speak English unless Neo's messages show he wants otherwise.
 Start with "Welcome back." Then cover, in this order: who wrote to him and what about, and what you answered; then other notifications grouped by app with counts; then group chats you left alone.
-Phone calls, goal progress (app starts with Goal), texts on the assistant line and switched-off permissions also count: mention each in plain words, calls and texts on the assistant line by who and what you did. Skip a part when it is empty. If nothing happened say there were no new messages or calls to report. Never read out codes or passwords. Do not invent anything. Mention every item in the log, none may be skipped; a line like "You picked up and unlocked the phone" means he was awake for a moment in the night, say when. Keep it under about 200 words unless a lot happened. Do not say goodbye or have a good day: the call carries on and a question to him is added after your summary."""
+Phone calls, goal progress (app starts with Goal), texts on the assistant line and switched-off permissions also count: mention each in plain words, calls and texts on the assistant line by who and what you did. Skip a part when it is empty. If nothing happened say there were no new messages or calls to report. Never read out codes or passwords. Do not invent anything. Mention every item in the log, none may be skipped; a line like "You picked up and unlocked the phone" means he was awake for a moment in the night, say when. Do not impose a word limit: include every logged message, reply, call, caller summary, missed call, and unresolved item. Group related events only if no detail is lost. Do not invent missing details or expose codes, passwords, PINs or OTPs."""
 
     fun SleepMode.report(ctx: Context): String {
         val app = ctx.applicationContext
         if (prefs(app).getBoolean("calls_only", false)) {
             // wake-up call only: greet, then tell what came in since it was set (missed calls, texts, notifications)
-            val text = withMorningAsk(app, try { ClapWake.report(app, prefs(app).getLong("started", 0L), "") } catch (e: Exception) { "Good morning." })
+            val text = try { ClapWake.report(app, prefs(app).getLong("started", 0L), "") } catch (e: Exception) { "Welcome back. I could not retrieve the call-only report." }
             prefs(app).edit().putString("report", text).apply()
             return text
         }
@@ -55,14 +55,14 @@ Phone calls, goal progress (app starts with Goal), texts on the assistant line a
                 .append(o.optString("text").take(160).replace('\n', ' ')).append(" | my reply: ")
                 .append(o.optString("reply").ifBlank { "none" }.take(160).replace('\n', ' ')).append('\n')
         }
-        if (arr.length() == 0) return withMorningAsk(app, "Welcome back. There were no new messages or calls to report.").also { prefs(app).edit().putString("report", it).apply() }
+        if (arr.length() == 0) return "Welcome back. There were no new messages or calls recorded.".also { prefs(app).edit().putString("report", it).apply() }
         val key = AssistantConfig.load(app).key
         val text = try {
             if (key.isBlank()) throw Exception("no key")
             Llm.chat(Provider.GEMINI, key, GeminiModels.FLASH, SLEEP_REPORT_SYSTEM,
                 listOf(true to ("Kinds: REPLIED=I answered, MSG=message not answered, GROUP=group chat not answered, AUTO=automated message, NOTE=other notification, FAILED=could not answer.\n\n" + sb)), null, false).trim()
         } catch (e: Exception) { fallbackReport(arr) }
-        val full = withMorningAsk(app, text)
+        val full = text
         prefs(app).edit().putString("report", full).apply()
         return full
     }
