@@ -59,7 +59,7 @@ class TaskFeed(val id: Int) {
     var total by mutableStateOf(0)
     var status by mutableStateOf("")
     var dismissed by mutableStateOf(false)
-    /** True while the task is paused for a CAPTCHA / code step that only the user can do. */
+    /** True while the task is paused for a one-time code or confirmation. */
     var waiting by mutableStateOf(false)
     /** The full-screen task view (everything the task does, as a chat) is open; Minimise switches to the small panel. */
     var fullView by mutableStateOf(true)
@@ -203,7 +203,7 @@ fun TaskPanel(onStop: () -> Unit, modifier: Modifier = Modifier, maxListHeight: 
             Column(Modifier.weight(1f)) {
                 Text(TaskLog.title.ifBlank { "Task" }, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                 val progress = if (TaskLog.total > 0) "  ·  ${TaskLog.done + TaskLog.failed}/${TaskLog.total}" + (if (TaskLog.failed > 0) "  ·  ${TaskLog.failed} problem(s)" else "") else ""
-                Text((if (TaskLog.waiting) "Waiting for you: do the CAPTCHA on the page, then Continue" else TaskLog.status) + progress, color = Color.White.copy(alpha = 0.65f), fontSize = 11.sp, maxLines = 1)
+                Text((if (TaskLog.waiting) "Waiting for you: complete the code, then Continue" else TaskLog.status) + progress, color = Color.White.copy(alpha = 0.65f), fontSize = 11.sp, maxLines = 1)
             }
             if (TaskLog.waiting) { PanelButton("Continue", Color(0xFF2BFF88)) { WebTask.resume() }; Spacer(Modifier.padding(horizontal = 3.dp)) }
             PanelButton("Full view") { TaskLog.fullView = true }
