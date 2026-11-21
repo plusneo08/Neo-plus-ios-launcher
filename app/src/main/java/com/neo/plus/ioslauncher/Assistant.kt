@@ -519,7 +519,7 @@ object PhoneActions {
             "skill" -> return Skills.handle(ctx, a)
             "skill_use" -> return SkillStore.use(ctx, a.optString("name"), a.optString("file"))
             "skill_commit" -> return SkillStore.commit(ctx, a)   // only from an approved "waiting for your OK" item (it needs the saved key)
-            "auto_sleep" -> return AutoSleep.handle(ctx, a)
+            "auto_sleep" -> return "Automatic sleep mode has been removed. Ask me to handle messages and calls until you say I am back."
             "proactive" -> return Proactive.handle(ctx, a)
             "friday" -> return Friday.handle(ctx, a)
             "lab" -> return Lab.handle(ctx, a)
@@ -1088,7 +1088,6 @@ object LocalCommands {
         SkillCmd.plan(text)?.let { return it }   // first: the skill text may contain words other matchers react to
         WakeCode.plan(text)?.let { return it }
         TimeLockCmd.plan(text)?.let { return it }
-        AutoCommunicationCmd.plan(text)?.let { return it }
         CommunicationCmd.plan(text)?.let { return it }
         ProactiveCmd.plan(text)?.let { return it }
         SplitCmd.plan(text)?.let { return it }   // before LabCmd / the "and" splitter: "open A and B side by side"
