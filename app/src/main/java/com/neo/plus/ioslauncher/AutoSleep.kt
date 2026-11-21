@@ -84,6 +84,9 @@ object AutoSleep {
 
     /** The countdown ran out. Starts sleep mode only if everything still fits. */
     fun check(ctx: Context) {
+        // Legacy scheduled sleep/activity automation is intentionally disabled.
+        return
+        @Suppress("UNREACHABLE_CODE")
         val app = ctx.applicationContext
         if (!enabled(app) || SleepMode.isOn(app)) return
         val pm = app.getSystemService(Context.POWER_SERVICE) as PowerManager
