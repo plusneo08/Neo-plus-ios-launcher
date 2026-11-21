@@ -126,7 +126,7 @@ object PhoneActions {
     )
 
     /** Actions that fetch something to tell the user (the note is the answer). */
-    val infoActions = setOf("calendar", "weather", "lookup", "news", "stock", "sports", "read_sms", "call_log", "screen", "read_messages", "read_notifications", "read_app", "last_message", "sleep_mode", "wake_call", "communication", "communication_report", "mode", "auto_sleep", "proactive", "friday", "diagnose", "split", "lab", "swarm", "companion", "connect", "watch", "calendar_edit", "sleep_report", "sleep_voice", "time_lock", "web_search", "look", "excel_create", "excel_edit", "excel_read", "compare_files", "word_report", "web_task", "web_batch", "page_source", "file_read", "ui_list", "app_task", "goal", "call_assist", "lock_app", "post_apps", "queue", "approvals", "schedule", "schedules", "report_number", "skill_use")
+    val infoActions = setOf("calendar", "weather", "lookup", "news", "stock", "sports", "read_sms", "call_log", "screen", "read_messages", "read_notifications", "read_app", "last_message", "communication", "communication_report", "proactive", "friday", "diagnose", "split", "lab", "swarm", "companion", "connect", "watch", "calendar_edit", "time_lock", "web_search", "look", "excel_create", "excel_edit", "excel_read", "compare_files", "word_report", "web_task", "web_batch", "page_source", "file_read", "ui_list", "app_task", "goal", "call_assist", "lock_app", "post_apps", "queue", "approvals", "schedule", "schedules", "report_number", "skill_use")
 
     /** Every action (chat, orb, agent, scheduler, approvals) shows the HUD from its start until it returns. */
     fun run(ctx: Context, name: String, a: JSONObject, apps: List<AppEntry>): ActionResult {
@@ -511,11 +511,10 @@ object PhoneActions {
 
             "set_mood" -> return MoodQuotes.setMood(ctx, a.optString("text"))
             "mood_call" -> return MoodQuotes.configureCall(ctx, a)
-            "wake_call" -> return SleepMode.start(ctx, a.optInt("hour", 7), a.optInt("minute", 0), callOnly = true)
             "communication" -> return CommunicationControl.setEnabled(ctx, onOff(a))
-            "communication_report" -> return CommunicationControl.back(ctx)
-            "sleep_mode" -> return "Scheduled sleep mode has been replaced. Say: answer my messages and calls."
-            "mode" -> return "Activity modes have been removed. Ask me to handle your messages and calls instead."
+            "communication_report", "sleep_report" -> return CommunicationControl.back(ctx)
+            "wake_call", "sleep_mode", "mode", "auto_sleep", "sleep_voice" ->
+                return "Activity and scheduled communication modes are no longer available. Ask me to handle your messages and calls until you say “I’m back”.
             "skill" -> return Skills.handle(ctx, a)
             "skill_use" -> return SkillStore.use(ctx, a.optString("name"), a.optString("file"))
             "skill_commit" -> return SkillStore.commit(ctx, a)   // only from an approved "waiting for your OK" item (it needs the saved key)
@@ -531,10 +530,6 @@ object PhoneActions {
             "split" -> return SplitScreen.handle(ctx, a)
             "gesture" -> return Gestures.handle(ctx, a)
             "calendar_edit" -> return CalendarWrite.handle(ctx, a)
-
-            "sleep_voice" -> return SleepMode.setFreeVoice(ctx, a.optBoolean("free", true))
-
-            "sleep_report" -> return SleepMode.lastReport(ctx).ifBlank { SleepMode.report(ctx) }
 
             "unlock" -> return PowerControl.unlock(ctx)
 
