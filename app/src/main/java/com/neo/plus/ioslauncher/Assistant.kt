@@ -1810,7 +1810,11 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
             busy = true
             track(text) {
                 if (generation != turnGeneration) return@track
-                val results = withContext(Dispatchers.IO) { plan.actions.map { PhoneActions.run(ctx, it.first, it.second, apps) } }
+                val results = ArrayList<ActionResult>()
+                for (action in plan.actions) {
+                    if (generation != turnGeneration) return@track
+                    results += withContext(Dispatchers.IO) { PhoneActions.run(ctx, action.first, action.second, apps) }
+                }
                 if (generation == turnGeneration) finish(plan.reply, results)
             }
             return
@@ -1827,7 +1831,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         }
 
         busy = true
-        activeTurnJob = track(text) {
+        track(text) {
             if (generation != turnGeneration) return@track
             // The reply is shown (and spoken, when "read replies aloud" is on) while it is still being written.
             val live = LiveReply(ctx, speak)
