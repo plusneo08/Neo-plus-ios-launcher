@@ -637,8 +637,9 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
                 "offline_login" -> { if (offlineLogin(s).isNotEmpty()) s.feed.add(TaskLine.Kind.INFO, "      replay ${i + 1}/$total: typed the saved login"); continue }
                 "goto" -> {
                     val u = a.optString("url")
-                    if (SiteVault.authorizedFor(s.ctx, u) == null) return Replay(false, i, "the address is not an authorised site")
-                    navigate(s, if (u.startsWith("http")) u else "https://$u")
+                    val target = if (u.startsWith("http", true)) u else "https://$u"
+                    if (!hostAllowed(s, target)) return Replay(false, i, "the address must be a valid HTTP or HTTPS website")
+                    navigate(s, target)
                     s.feed.add(TaskLine.Kind.INFO, "      replay ${i + 1}/$total: " + stepLabel(a, null))
                     continue
                 }
@@ -711,8 +712,10 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
         val siteArg = a.optString("site").ifBlank { a.optString("url") }
         if (template.isBlank()) return "Couldn’t start: no goal was given for the batch."
         if (siteArg.isBlank()) return "Couldn’t start: no website was given."
-        val entry = SiteVault.authorizedFor(ctx, siteArg)
-            ?: return "No authorised website matches “${SiteVault.normalizeDomain(siteArg)}”. Open the assistant settings, tap Authorised websites, add it with your login and switch it on, then ask again."
+        val startHost = SiteVault.normalizeDomain(siteArg)
+        val startUri = try { Uri.parse(if (siteArg.startsWith("http", true)) siteArg else "https://$siteArg") } catch (_: Exception) { null }
+        if (startUri == null || startUri.scheme !in setOf("http", "https") || startHost.isBlank()) return "Couldn’t start: enter a valid HTTP or HTTPS website."
+        val entry = SiteVault.authorizedFor(ctx, siteArg) ?: SiteEntry(startHost, "", "", false)
         val key = ctx.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE).getString("key", "")?.trim().orEmpty().also { KeyPool.attach(ctx) }
         if (key.isBlank()) return "Couldn’t start: add your Gemini key in the assistant settings first."
         val fileName = a.optString("file")
@@ -729,7 +732,7 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
         if (rowNums.isEmpty()) return "No data rows found in ${src.name}."
 
         val startUrl = a.optString("url").ifBlank { "https://" + entry.domain }.let { if (it.startsWith("http")) it else "https://$it" }
-        if (SiteVault.authorizedFor(ctx, startUrl) == null) return "No authorised website matches that address."
+        if (!startUrl.startsWith("https://", true) && !startUrl.startsWith("http://", true)) return "Couldn’t start: the batch URL must use HTTP or HTTPS."
         val uploads = HashSet<String>()
         a.optString("upload").takeIf { it.isNotBlank() }?.let { n -> AssistantFiles.find(ctx, n)?.let { uploads += it.absolutePath } ?: return "No file called “$n” to upload. Check the name and try again." }
         val s = Session(ctx.applicationContext, entry)
@@ -1071,7 +1074,7 @@ return JSON.stringify({url:location.href,title:document.title,elements:out,text:
     /** Reading the page's HTML and server calls: on when the user switched it on, or when they asked for the backend (it needs the server calls). */
     private fun deepOn(s: Session): Boolean = WebTaskPrefs.deepRead(s.ctx) || s.backend
 
-    /** May the agent open [url]: an authorised site, or one the user allowed in the settings. */
+    /** May the agent open [url]: any valid HTTP or HTTPS website. Saved credentials are guarded separately. */
     private fun hostAllowed(s: Session, url: String): Boolean {
         val parsed = try { Uri.parse(url) } catch (_: Exception) { return false }
         if (parsed.scheme != "https" && parsed.scheme != "http") return false
