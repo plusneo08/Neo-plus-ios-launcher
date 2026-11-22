@@ -80,7 +80,7 @@ object WebTaskPrefs {
     }
 
     private fun parseHosts(raw: String): List<String> = raw
-        .split(',', ';', '\\n', '\\r', ' ', '\\t')
+        .split(',', ';', '\n', '\r', ' ', '\t')
         .mapNotNull { token -> hostOf(token.trim()) }
         .distinct()
         .take(100)
