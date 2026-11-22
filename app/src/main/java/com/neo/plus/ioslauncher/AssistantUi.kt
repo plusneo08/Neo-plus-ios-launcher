@@ -670,24 +670,8 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                             .clickable { showSites = true }.padding(vertical = 12.dp),
                         contentAlignment = Alignment.Center
                     ) { Text("Authorised websites", color = Color.White, fontSize = 15.sp) }
-                    Text("How far the website assistant may go", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    var domainMode by remember { mutableStateOf(WebTaskPrefs.domainMode(ctx)) }
-                    var extraHosts by remember { mutableStateOf(WebTaskPrefs.extraHostsRaw(ctx)) }
-                    var risky by remember { mutableStateOf(WebTaskPrefs.risky(ctx)) }
-                    var deepRead by remember { mutableStateOf(WebTaskPrefs.deepRead(ctx)) }
-                    var backendOn by remember { mutableStateOf(WebTaskPrefs.backendCalls(ctx)) }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        WebChip("My sites only", domainMode == "strict", Modifier.weight(1f)) { domainMode = "strict"; WebTaskPrefs.setDomainMode(ctx, "strict") }
-                        WebChip("Also these", domainMode == "list", Modifier.weight(1f)) { domainMode = "list"; WebTaskPrefs.setDomainMode(ctx, "list") }
-                        WebChip("Any site", domainMode == "any", Modifier.weight(1f)) { domainMode = "any"; WebTaskPrefs.setDomainMode(ctx, "any") }
-                    }
-                    if (domainMode == "list") GlassField(extraHosts, { extraHosts = it; WebTaskPrefs.setExtraHosts(ctx, it) }, "Other sites it may open, e.g. paypal.com, stripe.com")
-                    Text(
-                        if (domainMode == "any") "It can follow links anywhere. The saved login is still typed only on the authorised site."
-                        else if (domainMode == "list") "It can also open the sites above. The saved login is typed only on the authorised site."
-                        else "Links to any other site are blocked.",
-                        color = note, fontSize = 12.sp, lineHeight = 16.sp
-                    )
+                    Text("Website browsing", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text("NEO can open any HTTP or HTTPS website and follow links across websites. Saved logins are used only on their matching saved website.", color = note, fontSize = 12.sp, lineHeight = 16.sp)
                     WebSwitch("Purchases, deleting and messaging", "Allowed when your request clearly asks for it. Off: it never does these.", risky) { risky = !risky; WebTaskPrefs.setRisky(ctx, risky) }
                     if (risky) Text("Payments and other sensitive actions always pause for your approval. This safety check cannot be switched off.", color = note, fontSize = 12.sp, lineHeight = 16.sp)
                     WebSwitch("Read the code behind the page", "HTML, frames and the page’s own server calls, to understand pages that are hard to read. Passwords and tokens are always hidden.", deepRead) { deepRead = !deepRead; WebTaskPrefs.setDeepRead(ctx, deepRead) }
