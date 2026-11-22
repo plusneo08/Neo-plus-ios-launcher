@@ -320,9 +320,12 @@ return 'none';}catch(e){return 'none';}})()"""
                 lastResult = "Your last reply was not a single JSON object. Reply with ONE JSON object only."
                 continue
             }
-            // A pay / order button: the phone itself asks the user first (the user can switch this off in the settings).
+            // Sensitive website actions are blocked when disabled, and always require an explicit in-app approval when enabled.
             val gated = moneyGate(s, act0)
-            val act = if (gated != null) JSONObject().put("action", "need_user").put("reason", if (act0.optString("action").equals("api", true)) "Confirm payment: tap Continue and I will send the backend call “$gated” to ${s.entry.domain}" else "Confirm payment: tap Continue and I will press “$gated” on ${s.entry.domain}") else act0
+            if (gated?.startsWith("BLOCKED:") == true) {
+                return stopWith(s, "approval_required", gated.removePrefix("BLOCKED:"), "I stopped before making that change. " + gated.removePrefix("BLOCKED:"))
+            }
+            val act = if (gated != null) JSONObject().put("action", "need_user").put("reason", "Approval needed: tap Continue only if you approve this action: $gated on ${s.entry.domain}") else act0
             val kind = act.optString("action").lowercase()
             val note = act.optString("thought").take(80)
             when (kind) {
@@ -351,8 +354,7 @@ return 'none';}catch(e){return 'none';}})()"""
                             steps += "$n. (paused for you: $why)"
                             if (gated != null) {
                                 s.moneyOk = s.moneyKey
-                                lastResult = if (act0.optString("action").equals("api", true)) "The user CONFIRMED the payment. Send the same api call again now (“$gated”), then check the result."
-                                else "The user CONFIRMED the payment. Click “$gated” now (the same button), then check the page."
+                                lastResult = "The user explicitly approved this website action: $gated. Repeat only that same action now, then verify its result."
                                 settle(s)
                                 continue@steps
                             }
@@ -1108,8 +1110,65 @@ return out.length?out.join('\n'):'none yet';}"""
     private const val FINDER = "(window.__neoFind||function(i){return document.querySelector('[data-neo=\"'+i+'\"]')})"
     private val MONEY_RE = Regex("\\b(pay|pay now|buy now|purchase|place (?:your )?order|complete (?:order|purchase|payment)|confirm (?:order|payment|purchase)|checkout|check out|donate|send money|transfer|subscribe)\\b", RegexOption.IGNORE_CASE)
 
-    /** The label of a pay / order button the agent is about to press, when the user wants to confirm those first; null otherwise. */
-    private fun moneyGate(s: Session, act: JSONObject): String? = null
+    /**
+     * Classifies website actions with external side effects. A disabled setting blocks them;
+     * enabling the setting still requires the user to approve each individual action.
+     * The approval key is consumed once, so approval cannot authorize later actions.
+     */
+    private fun moneyGate(s: Session, act: JSONObject): String? {
+        val action = act.optString("action").lowercase()
+        var kind = ""
+        var label = ""
+
+        when (action) {
+            "api" -> {
+                val method = act.optString("method", "GET").uppercase()
+                val raw = act.optString("url").trim()
+                val uri = try {
+                    java.net.URI(currentUrl(s).ifBlank { "https://${s.entry.domain}" }).resolve(raw)
+                } catch (_: Exception) { return null }
+                val bodyValue = act.opt("body")
+                val body = if (bodyValue == null || bodyValue == JSONObject.NULL) "" else bodyValue.toString()
+                kind = apiClass(method, (uri.path ?: "") + " " + (uri.query ?: ""), body)
+                label = "$method ${uri.host ?: s.entry.domain}${uri.path ?: ""}"
+            }
+            "click", "type" -> {
+                if (action == "type" && !act.optBoolean("submit", false)) return null
+                val id = act.optInt("id", -1)
+                if (id < 0) return null
+                val rawLabel = unquote(js(s, """(function(id){var e=(window.__neoFind||function(i){return document.querySelector('[data-neo="'+i+'"]')})(id);if(!e)return '';var f=e.form;var b=f&&f.querySelector('button[type=submit],input[type=submit],button:not([type])');var t=[e.innerText,e.value,e.getAttribute('aria-label'),e.getAttribute('title'),e.getAttribute('name'),b&&(b.innerText||b.value||b.getAttribute('aria-label'))].filter(Boolean).join(' ');return t.slice(0,180);})($id)"""))
+                val words = apiWords(rawLabel)
+                kind = when {
+                    MONEY_RE.containsMatchIn(rawLabel) -> "money"
+                    words.any { it in DELETE_WORDS } -> "delete"
+                    words.any { it in MESSAGE_PATH || it == "post" || it == "upload" } -> "message"
+                    else -> ""
+                }
+                label = rawLabel.ifBlank { if (action == "type") "submit form" else "button #$id" }
+            }
+            "upload" -> { kind = "message"; label = "upload a file to the website" }
+            else -> return null
+        }
+
+        if (kind.isBlank()) return null
+        if (!WebTaskPrefs.risky(s.ctx)) {
+            val verb = when (kind) {
+                "money" -> "pay, purchase, or transfer money"
+                "delete" -> "delete or deactivate data"
+                else -> "send, publish, share, or upload information"
+            }
+            return "BLOCKED: This task is not allowed to $verb because “Purchases, deleting and messaging” is switched off in settings."
+        }
+
+        val key = "$kind|$action|$label"
+        if (s.moneyOk == key) {
+            s.moneyOk = ""
+            s.moneyKey = ""
+            return null
+        }
+        s.moneyKey = key
+        return "$kind: $label"
+    }
 
     // ------------------------------------------------------------------ doing things
     private fun execute(s: Session, a: JSONObject, uploads: Set<String>): String {
