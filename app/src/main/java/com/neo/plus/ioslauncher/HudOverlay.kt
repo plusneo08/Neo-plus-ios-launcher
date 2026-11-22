@@ -414,16 +414,43 @@ private class NeoHudView(context: Context) : View(context) {
         paint.color = color(65, 220, 255, 205)
         canvas.drawOval(RectF(cx - radius * 0.48f, cy - radius * 0.74f, cx + radius * 0.48f, cy + radius * 0.74f), paint)
         paint.style = Paint.Style.FILL
-        // Holographic facial features, intentionally abstract rather than a real person's likeness.
+        // Match the holographic avatar to the voice gender explicitly selected in Assistant settings.
+        // Read the same persisted preference used by AssistantViewModel.saveVoice().
+        val maleVoice = context.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE)
+            .getString("voice_gender", "female").equals("male", ignoreCase = true)
+        paint.color = color(70, 220, 255, 185)
+        if (maleVoice) {
+            // Short swept-back hair and stronger brow/jaw silhouette for the male avatar.
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 5f * d
+            paint.color = color(70, 220, 255, 150)
+            canvas.drawArc(RectF(cx - radius * 0.49f, cy - radius * 0.78f, cx + radius * 0.49f, cy + radius * 0.12f),
+                195f, 150f, false, paint)
+            paint.strokeWidth = 2.8f * d
+            canvas.drawLine(cx - radius * 0.30f, cy - radius * 0.20f, cx - radius * 0.08f, cy - radius * 0.23f, paint)
+            canvas.drawLine(cx + radius * 0.08f, cy - radius * 0.23f, cx + radius * 0.30f, cy - radius * 0.20f, paint)
+            paint.strokeWidth = 1.4f * d
+            canvas.drawArc(RectF(cx - radius * 0.20f, cy + radius * 0.09f, cx + radius * 0.20f, cy + radius * 0.36f),
+                18f, 144f, false, paint)
+        } else {
+            // Softer facial outline and longer side hair for the female holographic avatar.
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 3f * d
+            paint.color = color(70, 220, 255, 150)
+            canvas.drawArc(RectF(cx - radius * 0.62f, cy - radius * 0.83f, cx + radius * 0.62f, cy + radius * 0.76f),
+                115f, 130f, false, paint)
+            canvas.drawArc(RectF(cx - radius * 0.62f, cy - radius * 0.83f, cx + radius * 0.62f, cy + radius * 0.76f),
+                295f, 130f, false, paint)
+            paint.strokeWidth = 1.4f * d
+            canvas.drawArc(RectF(cx - radius * 0.17f, cy + radius * 0.10f, cx + radius * 0.17f, cy + radius * 0.34f),
+                15f, 150f, false, paint)
+        }
+        paint.style = Paint.Style.FILL
         paint.color = color(70, 220, 255, 185)
         canvas.drawCircle(cx - radius * 0.17f, cy - radius * 0.12f, 3f * d, paint)
         canvas.drawCircle(cx + radius * 0.17f, cy - radius * 0.12f, 3f * d, paint)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 1.4f * d
-        canvas.drawArc(RectF(cx - radius * 0.17f, cy + radius * 0.10f, cx + radius * 0.17f, cy + radius * 0.34f),
-            15f, 150f, false, paint)
-        paint.style = Paint.Style.FILL
-        label(canvas, "NEO", cx - 14f * d, cy + radius + 20f * d, 12f * d, color(85, 230, 255), true)
+        label(canvas, if (maleVoice) "NEO • MALE VOICE" else "NEO • FEMALE VOICE",
+            cx - 48f * d, cy + radius + 20f * d, 10f * d, color(85, 230, 255), true)
 
         // Real device telemetry.
         val sys = RectF(14f * d, h - 142f * d, w * 0.43f, h - 48f * d)
