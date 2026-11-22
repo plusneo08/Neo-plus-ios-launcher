@@ -198,13 +198,18 @@ return 'none';}catch(e){return 'none';}})()"""
         val siteArg = a.optString("site").ifBlank { a.optString("url") }
         if (goal.isBlank()) return "Couldn’t start: no goal was given for the website task."
         if (siteArg.isBlank()) return "Couldn’t start: no website was given."
-        val entry = SiteVault.authorizedFor(ctx, siteArg)
-            ?: return "No authorised website matches “${SiteVault.normalizeDomain(siteArg)}”. Open the assistant settings, tap Authorised websites, add it with your login and switch it on, then ask again."
+        val startHost = SiteVault.normalizeDomain(siteArg)
+        if (startHost.isBlank()) return "Couldn’t start: that website address is invalid."
+        // General browsing does not require a SiteVault entry. Saved credentials remain scoped to saved sites only.
+        val entry = SiteVault.authorizedFor(ctx, siteArg) ?: SiteEntry(startHost, "", "", false)
         val key = ctx.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE).getString("key", "")?.trim().orEmpty().also { KeyPool.attach(ctx) }
         if (key.isBlank()) return "Couldn’t start: add your Gemini key in the assistant settings first."
 
         val startUrl = a.optString("url").ifBlank { "https://" + entry.domain }.let { if (it.startsWith("http")) it else "https://$it" }
-        if (SiteVault.authorizedFor(ctx, startUrl) == null) return "No authorised website matches that address."
+        val parsedStart = try { Uri.parse(startUrl) } catch (_: Exception) { null }
+        if (parsedStart?.host.isNullOrBlank() || (parsedStart?.scheme != "http" && parsedStart?.scheme != "https")) {
+            return "Couldn’t start: use a valid http or https website address."
+        }
 
         val allowedUploads = HashSet<String>()
         val s = Session(ctx.applicationContext, entry)
@@ -1071,12 +1076,8 @@ return JSON.stringify({url:location.href,title:document.title,elements:out,text:
         val host = SiteVault.normalizeDomain(url)
         if (host.isBlank()) return false
 
-        // The task's original SiteVault-authorised domain (including its subdomains) is always allowed.
-        val authorised = s.entry.domain
-        if (host == authorised || host.endsWith(".$authorised")) return true
-
-        // Cross-domain navigation requires an explicit owner-selected policy.
-        return WebTaskPrefs.allows(s.ctx, url)
+        // General browsing is open to any HTTP(S) website; credentials remain scoped separately.
+        return true
     }
 
     /** The saved login is only ever typed on the site it belongs to, whatever other sites the agent may visit. */
