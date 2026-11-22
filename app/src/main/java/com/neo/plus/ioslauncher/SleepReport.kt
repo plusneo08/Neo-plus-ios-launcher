@@ -56,6 +56,9 @@ Phone calls, goal progress (app starts with Goal), texts on the assistant line a
         val details = events.mapIndexed { index, event ->
             val kind = when (event.optString("k")) {
                 "REPLIED" -> "Message answered"
+                "URGENT_REPLIED" -> "Urgent message answered"
+                "IMPORTANT_REPLIED" -> "Important message answered"
+                "OWNER_ONLY_REPLIED" -> "Sensitive message handled"
                 "MSG" -> "Message not answered"
                 "GROUP" -> "Group message left for you"
                 "AUTO" -> "Automated message skipped"
