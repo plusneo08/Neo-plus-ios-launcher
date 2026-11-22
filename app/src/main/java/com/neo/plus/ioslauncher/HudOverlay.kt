@@ -487,6 +487,7 @@ private class NeoHudTaskRailView(context: Context) : View(context) {
     private var downY = 0f
     private var lastY = 0f
     private var dragging = false
+    private var dragRemainder = 0f
 
     fun update(items: List<TaskFeed>) {
         tasks = items
@@ -555,16 +556,22 @@ private class NeoHudTaskRailView(context: Context) : View(context) {
                 downY = event.y
                 lastY = event.y
                 dragging = false
+                dragRemainder = 0f
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
                 val delta = event.y - lastY
                 if (kotlin.math.abs(event.y - downY) > 8f * density) dragging = true
                 if (dragging) {
-                    val visibleCount = ((height - 8f * density) / stride).toInt().coerceAtLeast(1)
-                    val maxOffset = (tasks.size - visibleCount).coerceAtLeast(0)
-                    scrollOffset = (scrollOffset - (delta / stride).toInt()).coerceIn(0, maxOffset)
-                    invalidate()
+                    dragRemainder += delta
+                    val wholeCards = (dragRemainder / stride).toInt()
+                    if (wholeCards != 0) {
+                        val visibleCount = ((height - 8f * density) / stride).toInt().coerceAtLeast(1)
+                        val maxOffset = (tasks.size - visibleCount).coerceAtLeast(0)
+                        scrollOffset = (scrollOffset - wholeCards).coerceIn(0, maxOffset)
+                        dragRemainder -= wholeCards * stride
+                        invalidate()
+                    }
                 }
                 lastY = event.y
                 return true
