@@ -401,55 +401,47 @@ private class NeoHudView(context: Context) : View(context) {
                 taskRect.top + (132f + index * 16f) * d, 9f * d, c)
         }
 
-        // Central holographic assistant face and animated telemetry rings.
+        // Central NEO PLUS smoke orb: soft fluid-like wisps, never waveform bars.
         val cx = w * 0.51f
         val cy = h * 0.48f
         val radius = min(w * 0.25f, h * 0.145f)
         ring(canvas, cx, cy, radius, phase)
-        paint.color = color(0, 165, 230, 34)
-        canvas.drawOval(RectF(cx - radius * 0.54f, cy - radius * 0.78f, cx + radius * 0.54f, cy + radius * 0.86f), paint)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 1.5f * d
-        paint.color = color(65, 220, 255, 205)
-        canvas.drawOval(RectF(cx - radius * 0.48f, cy - radius * 0.74f, cx + radius * 0.48f, cy + radius * 0.74f), paint)
+        val orb = RectF(cx - radius * 0.72f, cy - radius * 0.72f, cx + radius * 0.72f, cy + radius * 0.72f)
         paint.style = Paint.Style.FILL
-        // Match the holographic avatar to the voice gender explicitly selected in Assistant settings.
-        // Read the same persisted preference used by AssistantViewModel.saveVoice().
-        val maleVoice = context.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE)
-            .getString("voice_gender", "female").equals("male", ignoreCase = true)
-        paint.color = color(70, 220, 255, 185)
-        if (maleVoice) {
-            // Short swept-back hair and stronger brow/jaw silhouette for the male avatar.
+        paint.color = color(2, 15, 35, 220)
+        canvas.drawCircle(cx, cy, radius * 0.70f, paint)
+        // Layered translucent curved wisps create a calm smoke effect; animation follows the existing HUD phase.
+        for (i in 0 until 9) {
+            val a = phase * (if (i % 2 == 0) 0.22f else -0.16f) + i * 0.698f
+            val drift = sin(phase * 0.7f + i * 0.91f)
+            val x1 = cx + kotlin.math.cos(a) * radius * (0.12f + (i % 3) * 0.10f)
+            val y1 = cy + kotlin.math.sin(a) * radius * (0.16f + (i % 4) * 0.07f)
+            val x2 = cx + kotlin.math.cos(a + 1.35f) * radius * (0.34f + drift * 0.08f)
+            val y2 = cy + kotlin.math.sin(a + 1.35f) * radius * (0.34f + drift * 0.08f)
+            val smoke = Path().apply {
+                moveTo(x1, y1)
+                cubicTo(
+                    x1 + radius * 0.30f * sin(a + 0.7f), y1 - radius * 0.24f,
+                    x2 - radius * 0.24f, y2 + radius * 0.30f * sin(a),
+                    x2, y2
+                )
+            }
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 5f * d
-            paint.color = color(70, 220, 255, 150)
-            canvas.drawArc(RectF(cx - radius * 0.49f, cy - radius * 0.78f, cx + radius * 0.49f, cy + radius * 0.12f),
-                195f, 150f, false, paint)
-            paint.strokeWidth = 2.8f * d
-            canvas.drawLine(cx - radius * 0.30f, cy - radius * 0.20f, cx - radius * 0.08f, cy - radius * 0.23f, paint)
-            canvas.drawLine(cx + radius * 0.08f, cy - radius * 0.23f, cx + radius * 0.30f, cy - radius * 0.20f, paint)
-            paint.strokeWidth = 1.4f * d
-            canvas.drawArc(RectF(cx - radius * 0.20f, cy + radius * 0.09f, cx + radius * 0.20f, cy + radius * 0.36f),
-                18f, 144f, false, paint)
-        } else {
-            // Softer facial outline and longer side hair for the female holographic avatar.
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 3f * d
-            paint.color = color(70, 220, 255, 150)
-            canvas.drawArc(RectF(cx - radius * 0.62f, cy - radius * 0.83f, cx + radius * 0.62f, cy + radius * 0.76f),
-                115f, 130f, false, paint)
-            canvas.drawArc(RectF(cx - radius * 0.62f, cy - radius * 0.83f, cx + radius * 0.62f, cy + radius * 0.76f),
-                295f, 130f, false, paint)
-            paint.strokeWidth = 1.4f * d
-            canvas.drawArc(RectF(cx - radius * 0.17f, cy + radius * 0.10f, cx + radius * 0.17f, cy + radius * 0.34f),
-                15f, 150f, false, paint)
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.strokeJoin = Paint.Join.ROUND
+            paint.strokeWidth = (7f + (i % 3) * 3f) * d
+            paint.color = if (i % 2 == 0) color(55, 205, 255, 62) else color(145, 95, 255, 54)
+            canvas.drawPath(smoke, paint)
         }
         paint.style = Paint.Style.FILL
-        paint.color = color(70, 220, 255, 185)
-        canvas.drawCircle(cx - radius * 0.17f, cy - radius * 0.12f, 3f * d, paint)
-        canvas.drawCircle(cx + radius * 0.17f, cy - radius * 0.12f, 3f * d, paint)
-        label(canvas, if (maleVoice) "NEO • MALE VOICE" else "NEO • FEMALE VOICE",
-            cx - 48f * d, cy + radius + 20f * d, 10f * d, color(85, 230, 255), true)
+        paint.color = color(80, 195, 255, 36)
+        canvas.drawCircle(cx, cy, radius * 0.34f, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 1.2f * d
+        paint.color = color(100, 225, 255, 170)
+        canvas.drawCircle(cx, cy, radius * 0.70f, paint)
+        paint.style = Paint.Style.FILL
+        label(canvas, "NEO PLUS", cx - 29f * d, cy + radius + 20f * d, 10f * d, color(85, 230, 255), true)
 
         // Real device telemetry.
         val sys = RectF(14f * d, h - 142f * d, w * 0.43f, h - 48f * d)
@@ -474,14 +466,8 @@ private class NeoHudView(context: Context) : View(context) {
         label(canvas, "Select a card to switch focus",
             activity.left + 11f * d, activity.top + 83f * d, 8f * d, color(175, 220, 255))
 
-        // Small animated voice-like signal, purely visual activity indicator (not a microphone permission claim).
-        val waveY = h - 25f * d
-        for (i in 0 until 31) {
-            val x = w * 0.27f + i * (w * 0.46f / 30f)
-            val amplitude = (4f + 9f * kotlin.math.abs(sin(phase * 3f + i * 0.63f))) * d
-            paint.color = color(20, 210, 255, 190)
-            canvas.drawRoundRect(x, waveY - amplitude, x + 2f * d, waveY + amplitude, 2f * d, 2f * d, paint)
-        }
+        // No soundwave bars: the smoke orb is the sole voice-reactive visual.
+
     }
 }
 
