@@ -37,3 +37,13 @@ The current project has a selectable built-in voice gender and a voice preview, 
 - The `Build debug APK` step and artifact upload both succeeded.
 - The `NEO-PLUS-apk` artifact was created (about 19.6 MB). It is a debug build, not a release-signed production APK.
 - Vivo Y35 / Android 14 installation, performance, microphone, and real-device interaction tests remain pending.
+
+
+## Website automation safety hardening
+- Website permission preferences are now persisted in Android app storage instead of returning hard-coded values.
+- The default website policy is strict: a task must start on a site explicitly enabled in SiteVault. The old fallback that treated an unlisted domain as authorised has been removed.
+- Cross-domain navigation is blocked by default. The owner can explicitly choose an allowlist or opt into any site in settings; allowlist matching is host-based.
+- Purchases, payments, transfers, deletion/deactivation, messaging, publishing, sharing, and uploads are blocked when the sensitive-actions setting is off.
+- When sensitive actions are enabled, each classified action pauses for a separate Continue approval. The approval is one-shot and bound to the action; it cannot authorize a later different action.
+- CAPTCHA and verification-code steps still pause for the user; NEO PLUS does not bypass them.
+- These safeguards are code changes pending successful CI validation and later on-device testing. The app cannot yet claim real-device verification.
