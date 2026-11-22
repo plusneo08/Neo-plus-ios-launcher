@@ -55,3 +55,10 @@ The current project has a selectable built-in voice gender and a voice preview, 
 - Saved website credentials remain scoped to the exact saved website and are not carried to unrelated domains.
 - Sensitive side effects remain separate from browsing: payments, transfers, deletion, messaging, publishing, sharing and uploads are still blocked when disabled and require a fresh approval for each action when enabled.
 - CAPTCHA and verification-code steps still require the user; NEO PLUS does not solve or bypass them.
+
+
+## Message sending authorization
+- A clear instruction in the current website task to send, reply, or respond to a recipient authorizes that specific requested message; NEO does not ask for a second approval for the same message.
+- This is not blanket permission: NEO must stay within the requested recipient and content, and cannot infer permission for unrelated or future messages.
+- Drafting or preparing a message without an explicit send/reply instruction does not authorize sending it.
+- Payments, transfers, deletion, publishing, sharing, and uploads remain separately gated; CAPTCHA and verification steps still require the user.
