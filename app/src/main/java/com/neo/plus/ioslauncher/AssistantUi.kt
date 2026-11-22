@@ -672,10 +672,13 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                     ) { Text("Authorised websites", color = Color.White, fontSize = 15.sp) }
                     Text("Website browsing", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     Text("NEO can open any HTTP or HTTPS website and follow links across websites. Saved logins are used only on their matching saved website.", color = note, fontSize = 12.sp, lineHeight = 16.sp)
-                    WebSwitch("Purchases, deleting and messaging", "Allowed when your request clearly asks for it. Off: it never does these.", risky) { risky = !risky; WebTaskPrefs.setRisky(ctx, risky) }
-                    if (risky) Text("Payments and other sensitive actions always pause for your approval. This safety check cannot be switched off.", color = note, fontSize = 12.sp, lineHeight = 16.sp)
+                    var risky by remember { mutableStateOf(WebTaskPrefs.risky(ctx)) }
+                    var deepRead by remember { mutableStateOf(WebTaskPrefs.deepRead(ctx)) }
+                    var backendOn by remember { mutableStateOf(WebTaskPrefs.backendCalls(ctx)) }
+                    WebSwitch("Purchases, transfers and deleting", "Off: NEO will not make payments, transfer money or delete data. On: these actions still require your approval.", risky) { risky = !risky; WebTaskPrefs.setRisky(ctx, risky) }
+                    if (risky) Text("Payments, transfers and deletion always pause for your approval. Sending a specifically requested reply or message does not need a second confirmation.", color = note, fontSize = 12.sp, lineHeight = 16.sp)
                     WebSwitch("Read the code behind the page", "HTML, frames and the page’s own server calls, to understand pages that are hard to read. Passwords and tokens are always hidden.", deepRead) { deepRead = !deepRead; WebTaskPrefs.setDeepRead(ctx, deepRead) }
-                    WebSwitch("Use the website’s backend when I ask", "On: when you explicitly ask for the website backend / API, the assistant may use the site’s own server. Sensitive actions still stop and require your approval.", backendOn) { backendOn = !backendOn; WebTaskPrefs.setBackendCalls(ctx, backendOn) }
+                    WebSwitch("Use the website’s backend when I ask", "On: when you explicitly ask for the website backend / API, the assistant may use the site’s own server. Payments, transfers and deletion still stop and require your approval.", backendOn) { backendOn = !backendOn; WebTaskPrefs.setBackendCalls(ctx, backendOn) }
                     Text("A CAPTCHA always stops the task for you to solve; that can’t be switched off.", color = note, fontSize = 12.sp, lineHeight = 16.sp)
                     Text("Daily limit for website tasks", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     GlassField(limitText, { limitText = it.filter { c -> c.isDigit() }.take(6) }, "Requests per day (0 = no limit)")
