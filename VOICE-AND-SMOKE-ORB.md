@@ -23,3 +23,17 @@ The current project has a selectable built-in voice gender and a voice preview, 
 - The full-screen HUD canvas is now fully opaque deep navy/black, so the underlying app window is not visible through the interface.
 - The status panel identifies the display as `VIRTUAL TASKS ONLY`; it does not show the foreground app name.
 - Apps may still run behind the HUD when a task requires an app/API, but their physical UI is not presented as the NEO PLUS interface. Task status and progress are shown in NEO PLUS panels.
+
+
+## Virtual workspace and task execution notes
+- The split-task engine gives each task its own pane, request history, status, and pending follow-ups.
+- Independent work that does not drive the phone screen can run concurrently.
+- Tasks that must operate the single Android screen share a fair screen lock and take turns; this prevents two tasks from tapping or typing into the same app at once.
+- The HUD task-feed registry currently retains up to 9 feeds at a time. The task rail scrolls through all retained feeds; it does not mean the registry or Android can run an unlimited number of resource-intensive tasks.
+- Minimizing or focusing a feed changes its presentation, not the worker's execution state.
+
+## GitHub build validation
+- GitHub Actions run [45028370129](https://github.com/plusneo08/Neo-plus-ios-launcher/actions/runs/45028370129) completed successfully on 2026-11-22 for commit `8d7216e296308605d6d1a0a4f46ed6a9cc7c4827`.
+- The `Build debug APK` step and artifact upload both succeeded.
+- The `NEO-PLUS-apk` artifact was created (about 19.6 MB). It is a debug build, not a release-signed production APK.
+- Vivo Y35 / Android 14 installation, performance, microphone, and real-device interaction tests remain pending.
