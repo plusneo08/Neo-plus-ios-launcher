@@ -967,8 +967,8 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
             else -> "Stay on ${s.entry.domain}. Links to other sites are blocked."
         }
         val risk = if (WebTaskPrefs.risky(s.ctx))
-            "Never type, say or output the password. Purchases, payments, transfers, deletion, deactivation, messages, publishing, sharing and uploads are sensitive actions. Even when the GOAL explicitly asks for one, do not carry it out until the phone pauses with need_user for that exact action and the user presses Continue. A request in the GOAL is not approval. Never infer approval from silence or from an earlier approval."
-        else "Never type, say or output the password. Never make purchases or payments, transfer money, delete or deactivate data, send messages, publish, share or upload information. Even if the GOAL asks, stop with fail and explain that the owner has disabled sensitive website actions."
+            "Never type, say or output the password. Payments, transfers, deletion, deactivation, publishing, sharing and uploads remain sensitive: pause for a fresh need_user approval for the exact action. Sending or replying to a message is different: when the GOAL clearly instructs you to send/reply/respond to a recipient with the requested content, that instruction itself is the owner's authorisation for that specific message. Do not ask for a second approval for that exact message. Never send extra messages, change the recipient/content, or infer permission for future messages."
+        else "Never type, say or output the password. Never make purchases or payments, transfer money, delete or deactivate data, publish, share or upload information. A clear current GOAL to send or reply to a recipient is sufficient authorisation for that message only; do not ask for a second approval, and do not send anything beyond the requested recipient and content."
         val deepLines = if (deepOn(s)) """{"action":"inspect","id":12,"what":"node|form"}          (reads the HTML behind the page: of element 12, or of the whole form around it with what:"form", or of the whole page when id is left out. Use it when labels are missing or a field is hard to understand)
 {"action":"requests","contains":"api"}                   (lists the server calls the page made, each with the start of its JSON reply, so you can read an exact value or error message; "contains" is an optional filter)""" else ""
         val apiLines = if (s.backend) """{"action":"api","method":"GET|POST|PUT|PATCH|DELETE","url":"/api/path or https://${s.entry.domain}/api/path","body":{"key":"value"},"headers":{"X-CSRF-Token":"{{csrf}}"},"max":5000}   (BACKEND: sends the request straight to the website's own server from the logged-in page, with the same session, instead of clicking. body (an object, or "a=1&b=2") and headers are optional. {{csrf}} is filled in by the phone from the page, {{username}} / {{password}} work inside body. You get the status and the start of the reply)""" else ""
@@ -1110,6 +1110,16 @@ return out.length?out.join('\n'):'none yet';}"""
     private const val FINDER = "(window.__neoFind||function(i){return document.querySelector('[data-neo=\"'+i+'\"]')})"
     private val MONEY_RE = Regex("\\b(pay|pay now|buy now|purchase|place (?:your )?order|complete (?:order|purchase|payment)|confirm (?:order|payment|purchase)|checkout|check out|donate|send money|transfer|subscribe)\\b", RegexOption.IGNORE_CASE)
 
+    private fun explicitMessageRequested(goal: String): Boolean {
+        val g = goal.lowercase()
+        val sendVerb = Regex("\\b(send|reply|respond|message)\\b").containsMatchIn(g)
+        val recipient = Regex("\\b(to|back to)\\b").containsMatchIn(g)
+        val draftOnly = Regex("\\b(draft|prepare|write)\\b").containsMatchIn(g) &&
+            !Regex("\\b(send|reply|respond)\\b").containsMatchIn(g)
+        val negated = Regex("\\b(do not|don't|dont|never|without)\\s+(send|reply|respond|message)\\b").containsMatchIn(g)
+        return sendVerb && recipient && !draftOnly && !negated
+    }
+
     /**
      * Classifies website actions with external side effects. A disabled setting blocks them;
      * enabling the setting still requires the user to approve each individual action.
@@ -1157,6 +1167,8 @@ return out.length?out.join('\n'):'none yet';}"""
         }
 
         if (kind.isBlank()) return null
+        // A clear current instruction to send or reply authorises only that requested message.
+        if (kind == "message" && explicitMessageRequested(s.goal)) return null
         if (!WebTaskPrefs.risky(s.ctx)) {
             val verb = when (kind) {
                 "money" -> "pay, purchase, or transfer money"
@@ -1302,7 +1314,7 @@ return 'started';})"""
         val body: String? = if (bAny == null || bAny == JSONObject.NULL) null else bAny.toString()
         val u = java.net.URI(full)
         val kind = apiClass(method, (u.path ?: "") + " " + (u.query ?: ""), body.orEmpty())
-        if (kind.isNotEmpty() && !WebTaskPrefs.risky(s.ctx))
+        if (kind.isNotEmpty() && !(kind == "message" && explicitMessageRequested(s.goal)) && !WebTaskPrefs.risky(s.ctx))
             return "Blocked: this call would " + (when (kind) { "money" -> "pay or order something"; "delete" -> "delete something"; else -> "send a message" }) + " and “Purchases, deleting and messaging” is switched off in the assistant settings."
 
         var sendBody = body
