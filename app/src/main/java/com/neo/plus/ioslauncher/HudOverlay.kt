@@ -204,7 +204,8 @@ object HudOverlay {
     }
 
     private fun syncRail(c: Context, tasks: List<TaskFeed>) {
-        val shown = tasks.filter { !it.dismissed }.takeLast(5)
+        // Keep every task in the rail; the rail itself provides vertical scrolling.
+        val shown = tasks.filter { !it.dismissed }
         if (shown.isEmpty()) {
             removeRail()
             return
@@ -482,6 +483,10 @@ private class NeoHudTaskRailView(context: Context) : View(context) {
     private var tasks: List<TaskFeed> = emptyList()
     private var cardHeight = 68f * density
     private var gap = 8f * density
+    private var scrollOffset = 0
+    private var downY = 0f
+    private var lastY = 0f
+    private var dragging = false
 
     fun update(items: List<TaskFeed>) {
         tasks = items
@@ -502,8 +507,13 @@ private class NeoHudTaskRailView(context: Context) : View(context) {
         val d = density
         val left = 4f * d
         val right = width - 4f * d
-        tasks.take(5).forEachIndexed { index, task ->
-            val top = 4f * d + index * (cardHeight + gap)
+        val stride = cardHeight + gap
+        val visibleCount = ((height - 8f * d) / stride).toInt().coerceAtLeast(1)
+        val maxOffset = (tasks.size - visibleCount).coerceAtLeast(0)
+        scrollOffset = scrollOffset.coerceIn(0, maxOffset)
+        val visible = tasks.drop(scrollOffset).take(visibleCount)
+        visible.forEachIndexed { index, task ->
+            val top = 4f * d + index * stride
             val rect = RectF(left, top, right, top + cardHeight)
             paint.style = Paint.Style.FILL
             paint.color = Color.argb(225, 4, 22, 42)
@@ -532,20 +542,47 @@ private class NeoHudTaskRailView(context: Context) : View(context) {
                 canvas.drawRoundRect(bar, 3f * d, 3f * d, paint)
             }
         }
-        if (tasks.size > 5) {
-            drawText(canvas, "+" + (tasks.size - 5) + " MORE TASKS", 8f * d,
-                4f * d + 5 * (cardHeight + gap), 8f * d, Color.CYAN, true)
+        if (tasks.size > visibleCount) {
+            drawText(canvas, "${scrollOffset + 1}-${(scrollOffset + visibleCount).coerceAtMost(tasks.size)}/${tasks.size}  SWIPE",
+                8f * d, height - 4f * d, 7f * d, Color.CYAN, true)
         }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action == MotionEvent.ACTION_UP) {
-            val index = (event.y / (cardHeight + gap)).toInt()
-            val task = tasks.getOrNull(index)
-            if (task != null && event.y >= 4f * density + index * (cardHeight + gap)) {
-                // Focus changes presentation only. The task's worker and callbacks are untouched.
-                TaskLog.focusId = task.id
-                performClick()
+        val stride = cardHeight + gap
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                downY = event.y
+                lastY = event.y
+                dragging = false
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val delta = event.y - lastY
+                if (kotlin.math.abs(event.y - downY) > 8f * density) dragging = true
+                if (dragging) {
+                    val visibleCount = ((height - 8f * density) / stride).toInt().coerceAtLeast(1)
+                    val maxOffset = (tasks.size - visibleCount).coerceAtLeast(0)
+                    scrollOffset = (scrollOffset - (delta / stride).toInt()).coerceIn(0, maxOffset)
+                    invalidate()
+                }
+                lastY = event.y
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                if (!dragging && event.y >= 4f * density) {
+                    val visibleIndex = ((event.y - 4f * density) / stride).toInt()
+                    val task = tasks.getOrNull(scrollOffset + visibleIndex)
+                    if (task != null) {
+                        // Focus changes presentation only. The task's worker and callbacks are untouched.
+                        TaskLog.focusId = task.id
+                        performClick()
+                    }
+                }
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                dragging = false
                 return true
             }
         }
