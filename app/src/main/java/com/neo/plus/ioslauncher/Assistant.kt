@@ -29,8 +29,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.withContext
+ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -1681,8 +1680,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     val messages = mutableStateListOf<ChatMsg>()
     var busy by mutableStateOf(false)
         private set
-    private var activeTurnJob: Job? = null
-    private var turnGeneration = 0L
+    @Volatile private var turnGeneration = 0L
 
     init { if (!(prefs.getString("key", "") ?: "").isBlank()) Llm.warm() }
 
@@ -1773,7 +1771,8 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
      * Runs one request inside a foreground service, so it keeps going when the user opens another app or the screen turns off.
      * If it took a while, the result is also posted as a notification.
      */
-    private fun track(what: String, block: suspend () -> Unit): Job = viewModelScope.launch(TaskOrigin.chatElement()) {
+    private fun track(what: String, block: suspend () -> Unit) {
+        viewModelScope.launch(TaskOrigin.chatElement()) {
             val start = System.currentTimeMillis()
             TaskOrigin.reset()
             TaskService.begin(ctx, what)
@@ -1784,6 +1783,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                 }
             }
         }
+    }
 
     fun send(raw: String, apps: List<AppEntry>) {
         val text = raw.trim()
@@ -1792,24 +1792,23 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         WebTask.handleSpoken(text)?.let { reply ->
             add(ChatMsg(nextId(), true, text)); add(ChatMsg(nextId(), false, reply)); return
         }
-        // A fresh user turn interrupts the current conversational reply instead of being dropped.
+        // A new turn supersedes the visible conversation, but never cancels a phone / website action already in progress.
+        // Agent.respond checks this generation between actions, so the current action may finish while no later action starts.
         val generation = ++turnGeneration
-        val previous = activeTurnJob
-        if (previous?.isActive == true) {
+        if (busy) {
             Speaker.stop()
             liveMsgId.takeIf { it >= 0 }?.let { id ->
                 val index = messages.indexOfLast { it.id == id }
                 if (index >= 0) messages[index] = messages[index].copy(text = messages[index].text + "  [Interrupted]")
             }
             liveMsgId = -1L
-            previous.cancel()
         }
         add(ChatMsg(nextId(), true, text))
 
         val plan = LocalCommands.plan(text, apps, configured)
         if (plan != null) {
             busy = true
-            activeTurnJob = track(text) {
+            track(text) {
                 if (generation != turnGeneration) return@track
                 val results = withContext(Dispatchers.IO) { plan.actions.map { PhoneActions.run(ctx, it.first, it.second, apps) } }
                 if (generation == turnGeneration) finish(plan.reply, results)
@@ -1819,7 +1818,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
         if (!configured) {
             busy = true
-            activeTurnJob = track(text) {
+            track(text) {
                 if (generation != turnGeneration) return@track
                 val out = try { withContext(Dispatchers.IO) { Keyless.answer(ctx, text, apps) } } catch (e: Exception) { "Something went wrong." }
                 if (generation == turnGeneration) finish(out, emptyList())
@@ -1837,11 +1836,13 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                 val hist = history()
                 val out = withContext(Dispatchers.IO) {
                     Agent.respond(ctx, provider, apiKey, activeModel, prompt, hist, apps, onPartial = { piece ->
-                        val shown = live.push(piece)
-                        if (shown.isNotBlank()) viewModelScope.launch(Dispatchers.Main) { if (generation == turnGeneration) showLive(shown) }
-                    })
+                        if (generation == turnGeneration) {
+                            val shown = live.push(piece)
+                            if (shown.isNotBlank()) viewModelScope.launch(Dispatchers.Main) { if (generation == turnGeneration) showLive(shown) }
+                        }
+                    }, shouldContinue = { generation == turnGeneration })
                 }
-                live.finish()
+                if (generation == turnGeneration) live.finish()
                 if (generation == turnGeneration) finish(out.text, out.results, natural = true, covered = out.fromFirstReply && live.voiceStarted)
             } catch (e: CancellationException) {
                 // Expected when the user interrupts this turn; do not surface it as an error.
