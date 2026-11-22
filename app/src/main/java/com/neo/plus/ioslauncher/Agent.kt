@@ -1,6 +1,7 @@
 package com.neo.plus.ioslauncher
 
 import android.content.Context
+import org.json.JSONObject
 
 /**
  * Runs one request: asks the AI model, runs its actions, and when the model asked for information first
