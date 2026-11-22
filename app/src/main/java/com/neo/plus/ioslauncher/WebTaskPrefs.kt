@@ -26,7 +26,7 @@ object WebTaskPrefs {
 
     /** strict = only the SiteVault-authorised site; list = that site plus extraHosts; any = owner opted into any domain. */
     fun domainMode(ctx: Context): String =
-        p(ctx).getString(DOMAIN_MODE, "strict")?.takeIf { it in setOf("strict", "list", "any") } ?: "strict"
+        p(ctx).getString(DOMAIN_MODE, "any")?.takeIf { it in setOf("strict", "list", "any") } ?: "strict"
 
     fun setDomainMode(ctx: Context, mode: String) {
         if (mode in setOf("strict", "list", "any")) p(ctx).edit().putString(DOMAIN_MODE, mode).apply()
