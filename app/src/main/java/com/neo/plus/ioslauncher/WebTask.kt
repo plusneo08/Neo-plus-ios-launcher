@@ -1064,7 +1064,19 @@ return JSON.stringify({url:location.href,title:document.title,elements:out,text:
     private fun deepOn(s: Session): Boolean = WebTaskPrefs.deepRead(s.ctx) || s.backend
 
     /** May the agent open [url]: an authorised site, or one the user allowed in the settings. */
-    private fun hostAllowed(s: Session, url: String): Boolean = true
+    private fun hostAllowed(s: Session, url: String): Boolean {
+        val parsed = try { Uri.parse(url) } catch (_: Exception) { return false }
+        if (parsed.scheme != "https" && parsed.scheme != "http") return false
+        val host = SiteVault.normalizeDomain(url)
+        if (host.isBlank()) return false
+
+        // The task's original SiteVault-authorised domain (including its subdomains) is always allowed.
+        val authorised = s.entry.domain
+        if (host == authorised || host.endsWith(".$authorised")) return true
+
+        // Cross-domain navigation requires an explicit owner-selected policy.
+        return WebTaskPrefs.allows(s.ctx, url)
+    }
 
     /** The saved login is only ever typed on the site it belongs to, whatever other sites the agent may visit. */
     private fun onOwnDomain(s: Session): Boolean {
@@ -1664,8 +1676,20 @@ return 'started';})"""
             }
         }, "NeoBridge")
         wv.webViewClient = object : WebViewClient() {
-            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) { s.loading = true; SessionKeeper.noteVisit(s.entry.domain, url) }
-            override fun onPageFinished(view: WebView?, url: String?) { s.loading = false; SessionKeeper.noteVisit(s.entry.domain, url) }
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                if (!url.isNullOrBlank() && !hostAllowed(s, url)) {
+                    s.blocked = url.take(100)
+                    view?.stopLoading()
+                    s.loading = false
+                    return
+                }
+                s.loading = true
+                SessionKeeper.noteVisit(s.entry.domain, url)
+            }
+            override fun onPageFinished(view: WebView?, url: String?) {
+                s.loading = false
+                if (url.isNullOrBlank() || hostAllowed(s, url)) SessionKeeper.noteVisit(s.entry.domain, url)
+            }
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest): Boolean {
                 val u = request.url
                 val ok = (u.scheme == "https" || u.scheme == "http") && hostAllowed(s, u.toString())
