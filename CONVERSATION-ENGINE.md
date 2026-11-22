@@ -10,6 +10,7 @@ Make voice conversation feel immediate and natural while keeping task execution 
 - `LiveReply` can begin speech while text is still arriving when the configured provider supports it.
 - Conversation history is persisted locally (last 40 messages) and recent turns are included in the prompt.
 - Long requests are tracked by the foreground task service.
+- A new chat turn now cancels the previous chat coroutine, stops its speech, marks an in-progress live bubble as interrupted, and starts processing the new turn; stale model chunks are ignored by a turn-generation check.
 
 ## Required conversation pipeline
 1. **Capture:** use partial speech recognition for live captions; detect end-of-turn with a short, configurable silence window. Keep microphone capture permission-gated and visibly indicated.
@@ -35,4 +36,4 @@ Measure on device rather than promise fixed latency:
 - bound concurrent model and device-UI operations to avoid memory pressure and screen-control collisions.
 
 ## Implementation status
-This document records the target architecture and verified existing foundations. The current app still has a single `busy` chat-turn gate, so it does not yet provide full-duplex interruption or independent simultaneous model turns. Those require code changes and tests; this document alone does not enable them. Device latency, multilingual recognition quality, and microphone behavior remain to be tested on the target Vivo Y35 / Android 14.
+This document records the target architecture and verified existing foundations. The chat-level `busy` rejection has been removed for new turns: the latest turn supersedes the prior conversational turn. This is interruption/replacement, not true simultaneous model conversations. Cancellation depends on the underlying network/model call honoring coroutine cancellation. Foreground-task service overlap and task-worker independence still need dedicated lifecycle tests. The microphone capture loop also needs verification to ensure a new utterance is reliably delivered while speech is playing. Device latency, multilingual recognition quality, and microphone behavior remain to be tested on the target Vivo Y35 / Android 14.
