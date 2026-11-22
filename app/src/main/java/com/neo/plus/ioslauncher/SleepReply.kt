@@ -95,14 +95,16 @@ Emotional or personal topics (a relationship, someone upset, sad or angry, an ar
                     if (language.isNotBlank()) MessageLanguage.remember(ctx, pkg, who, language)
                     replied.put(pkey, replied.optInt(pkey, 0) + 1)
                     prefs(ctx).edit().putString("replied_n", replied.toString()).apply()
-                    add(ctx, "REPLIED", app, who, text, body)
-                    if (assessment.priority == JarvisCommunicationEngine.Priority.URGENT ||
-                        assessment.priority == JarvisCommunicationEngine.Priority.OWNER_ONLY ||
-                        assessment.priority == JarvisCommunicationEngine.Priority.IMPORTANT) {
-                        SleepHooks.note(ctx, assessment.priority.name, app, who, text, body)
-                        if (assessment.priority == JarvisCommunicationEngine.Priority.URGENT) {
-                            CallAssist.notify(ctx, "Urgent message from $who", text.take(220), false)
-                        }
+                    val eventKind = when (assessment.priority) {
+                        JarvisCommunicationEngine.Priority.URGENT -> "URGENT_REPLIED"
+                        JarvisCommunicationEngine.Priority.OWNER_ONLY -> "OWNER_ONLY_REPLIED"
+                        JarvisCommunicationEngine.Priority.IMPORTANT -> "IMPORTANT_REPLIED"
+                        else -> "REPLIED"
+                    }
+                    // One event per message: include its priority on the reply record rather than duplicating it.
+                    add(ctx, eventKind, app, who, text, body)
+                    if (assessment.priority == JarvisCommunicationEngine.Priority.URGENT) {
+                        CallAssist.notify(ctx, "Urgent message from $who", text.take(220), false)
                     }
                 } else add(ctx, "FAILED", app, who, text, "")
             }
