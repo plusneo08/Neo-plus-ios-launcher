@@ -1788,15 +1788,11 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     fun send(raw: String, apps: List<AppEntry>) {
         val text = raw.trim()
         if (text.isEmpty()) return
-        // A website task waiting for the user (CAPTCHA / code): "continue" or "cancel" must get through even though the chat is busy.
-        WebTask.handleSpoken(text)?.let { reply ->
-            add(ChatMsg(nextId(), true, text)); add(ChatMsg(nextId(), false, reply)); return
-        }
-        // A new turn supersedes the visible conversation, but never cancels a phone / website action already in progress.
-        // Agent.respond checks this generation between actions, so the current action may finish while no later action starts.
+        // A new user turn always takes speech priority. Existing phone / website actions are allowed to finish their
+        // current step, while generation checks prevent the stale turn from starting any further actions.
         val generation = ++turnGeneration
+        Speaker.stop()
         if (busy) {
-            Speaker.stop()
             liveMsgId.takeIf { it >= 0 }?.let { id ->
                 val index = messages.indexOfLast { it.id == id }
                 if (index >= 0) messages[index] = messages[index].copy(text = messages[index].text + "  [Interrupted]")
@@ -1804,6 +1800,12 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
             liveMsgId = -1L
         }
         add(ChatMsg(nextId(), true, text))
+        // A website task waiting for the user ("continue" / "cancel") is a new user turn too.
+        WebTask.handleSpoken(text)?.let { reply ->
+            busy = false
+            add(ChatMsg(nextId(), false, reply))
+            return
+        }
 
         val plan = LocalCommands.plan(text, apps, configured)
         if (plan != null) {
@@ -1894,7 +1896,6 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         if (at >= 0) { messages[at] = msg; persist() } else add(msg)
         liveMsgId = -1L
         busy = false
-        activeTurnJob = null
         if (TaskOrigin.didAppWork()) {
             // The job ran in another app and the request came from the chat: come back and show the result (never closes the panel)
             ChatReturn.bring(ctx)
