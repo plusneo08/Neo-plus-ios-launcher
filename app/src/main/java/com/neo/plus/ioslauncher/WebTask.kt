@@ -146,6 +146,7 @@ return 'none';}catch(e){return 'none';}})()"""
         lateinit var wv: WebView
         /** This task's own feed / tile. Nothing from another task is ever written to it or read from it. */
         lateinit var feed: TaskFeed
+        @Volatile var goal = ""
         @Volatile var cancelled = false
         @Volatile var waitingForUser = false
         @Volatile var userSignal = 0 // 1 = the user pressed Continue
@@ -213,6 +214,7 @@ return 'none';}catch(e){return 'none';}})()"""
 
         val allowedUploads = HashSet<String>()
         val s = Session(ctx.applicationContext, entry)
+        s.goal = goal
         s.backend = backendWanted(ctx, a, goal)
         a.optString("upload").takeIf { it.isNotBlank() }?.let { n -> AssistantFiles.find(ctx, n)?.let { allowedUploads += it.absolutePath } ?: return "No file called “$n” to upload. Check the name and try again." }
 
