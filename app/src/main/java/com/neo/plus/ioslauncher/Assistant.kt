@@ -1784,7 +1784,6 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                 }
             }
         }
-    }
 
     fun send(raw: String, apps: List<AppEntry>) {
         val text = raw.trim()
