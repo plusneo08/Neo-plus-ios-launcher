@@ -46,6 +46,9 @@ object SocialPoster {
             "insta", "ig" -> "instagram"
             "iglite", "instalite" -> "instagramlite"
             "tiktoklite" -> "tiktok"
+            "pin" -> "pinterest"
+            "twitter" -> "x"
+            "yt" -> "youtube"
             "whatsappb", "w4b" -> "whatsappbusiness"
             else -> k
         }
