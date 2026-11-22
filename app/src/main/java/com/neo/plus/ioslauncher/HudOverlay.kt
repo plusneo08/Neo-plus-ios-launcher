@@ -41,7 +41,7 @@ object HudState {
             history.add(clean)
             while (history.size > 30) history.removeAt(0)
         }
-        // HUD display removed; task activity remains available to assistant/task history.
+        // Activity feed is retained for the NEO PLUS holographic dashboard and task history.
     }
 
     fun describe(name: String, args: JSONObject): String {
@@ -82,7 +82,7 @@ object HudOverlay {
     private var ticking = false
     private var idleSince = 0L
 
-    fun enabled(c: Context): Boolean = false // HUD interface permanently disabled; task engine remains active.
+    fun enabled(c: Context): Boolean = c.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE).getBoolean("hud_enabled", true) // NEO PLUS holographic HUD; task engine remains independent.
 
     fun overApps(c: Context): Boolean =
         c.applicationContext.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE).getBoolean("hud_over_apps", true)
@@ -253,7 +253,7 @@ object HudOverlay {
     }
 }
 
-/** Full-screen click-through holographic HUD. */
+/** Full-screen NEO PLUS holographic dashboard. The visual layer remains click-through; task cards are independently selectable. */
 private class NeoHudView(context: Context) : View(context) {
     private val density = resources.displayMetrics.density
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
