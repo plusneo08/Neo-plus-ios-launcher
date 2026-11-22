@@ -39,14 +39,16 @@ object Agent {
             "upload|download|show|put|toggle|mute|wake|listen)\\b",
         RegexOption.IGNORE_CASE
     )
+    // Avoid adding a live web-search round trip to ordinary conversation.
+    // Search is reserved for changing/current information or an explicit search request.
     private val LIVE = Regex(
-        "\\b(news|latest|today|current|currently|recent|recently|price|prices|cost|rate|score|scores|result|results|weather|forecast|" +
-            "stock|stocks|who is|who was|who won|who are|what is|what's|what are|what was|when is|when was|when did|where is|how much|how many|" +
-            "president|minister|ceo|champion|winner|match|fixture|bitcoin|exchange rate|opening hours|open now|near me|search|google|look up|find out)\\b|\\?",
+        "\\b(latest|today|current|currently|right now|recent|recently|breaking|live|price|prices|cost|rate|rates|score|scores|results|weather|forecast|" +
+            "stock|stocks|exchange rate|bitcoin|president|minister|ceo|champion|winner|match|fixture|opening hours|open now|near me|" +
+            "search|google|look up|find out|news|traffic|air quality|currency)\\b",
         RegexOption.IGNORE_CASE
     )
 
-    fun needsSearch(userText: String): Boolean = !COMMAND.containsMatchIn(userText.trim()) || LIVE.containsMatchIn(userText)
+    fun needsSearch(userText: String): Boolean = LIVE.containsMatchIn(userText.trim())
 
     @Suppress("UNUSED_PARAMETER")
     private fun pickModel(default: String, hist: List<Pair<Boolean, String>>, usedTools: Boolean): String = GeminiModels.sanitize(default)

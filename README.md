@@ -37,10 +37,11 @@
 - Limits, by design of Android: setKeyguardDisabled only works when Android's own lock is removed first; fingerprint and face unlock exist only together with an Android lock, so they are NOT available while the Neo lock replaces it (the fingerprint button appears only if the phone reports an enrolled fingerprint or face). With the replacement OFF, the clock screen opens Android's real unlock, which takes every type including fingerprint and face.
 - Weak points to know: files are not protected by the Neo PIN at the phone's deepest level; safe mode skips the Neo lock; a forgotten Neo PIN has no reset from the phone and may need a factory reset. No Emergency call button is offered on the lock.
 
-## Wake-up call: summary ready before you pick up (new)
-- Sleep mode now prepares the night summary 5 minutes before the wake-up time: it goes through the night log, writes the summary and makes the assistant's voice for it. When you answer, it speaks at once instead of searching first.
-- If something new arrives after that (a message in the last minutes), the summary and voice are redone in the background, so what you hear is always complete.
-- If the preparation could not run (phone off, alarm missed), answering the call builds the summary then, exactly as before. Needs the exact-alarm permission already used for the wake-up call; without it Android may run the preparation a little late.
+## One NEO PLUS communication control (new)
+- Say “answer my messages and calls” to turn on the single communication assistant. There are no Sleep, Working, Journey, Meeting or Chill modes, no activity status and no wake-up schedule.
+- While enabled, NEO PLUS handles eligible incoming messages using recent conversation context and the sender's latest language. It can speak with incoming callers when the required phone, microphone and speech permissions are granted and the device supports the call path.
+- Say “I'm back” or “am back” to stop handling and receive a catch-up report of the recorded messages, replies, skipped or unresolved items, notifications and calls, including available caller transcripts.
+- Existing conversation history, per-contact language preferences and call settings are retained. NEO PLUS does not clear the log when the control is enabled. Sensitive matters, private details, codes and financial commitments remain protected.
 
 ## iOS-style widget gallery and edit mode (new)
 - Today View → "＋" opens a bottom sheet like iOS: search box, the apps that have widgets (with their icons), then a swipeable preview of each widget with its size (Small / Medium / Large) and a blue "Add Widget" button.

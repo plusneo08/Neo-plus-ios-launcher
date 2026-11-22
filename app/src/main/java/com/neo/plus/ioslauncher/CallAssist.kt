@@ -109,19 +109,17 @@ object CallAssist {
         // A rule for this exact person wins; otherwise a call on the assistant's own SIM follows the line rule
         val specific = rules(app).any { r -> r.first.isNotBlank() && r.first != "unknown" && r.first != "everyone" &&
             ((name.isNotBlank() && name.contains(r.first, ignoreCase = true)) || sameNumber(r.first, number)) }
-        // A rule "conversation" for this caller, or any mode being on (sleep, work, meeting, ...) with no other rule for the call:
-        // answer and talk to the caller. A rule for a person, "decline" or "greeting" etc. always wins over the mode.
+        // A specific caller rule always wins. Otherwise the single communication switch makes the assistant answer and talk naturally.
         val convRule = picked.first == "conversation" && !(onLine && !specific)
-        val modeTalk = Modes.current(app) != null && picked.first == "announce" && !onLine
+        val modeTalk = CommunicationControl.isEnabled(app) && picked.first == "announce" && !specific
         if ((convRule || modeTalk) && CallConversation.cannotRun(app) == null) {
-            SleepHooks.note(app, "NOTE", "Phone call", who, "Incoming call", "I answered and talked to the caller")
             val r = CallConversation.start(app, number, name, if (convRule) picked.second else "")
             notify(app, "Answered a call", "$who: $r", false)
             return
         }
         val (action, text) = if (onLine && !specific) AssistantLine.lineAction(app) else picked
         val via = if (onLine) " on your assistant line (${AssistantLine.label(app, slot)})" else ""
-        SleepHooks.note(app, "NOTE", "Phone call" + (if (onLine) " (assistant line)" else ""), who, "Incoming call",
+        SleepHooks.note(app, "CALL", "Phone call" + (if (onLine) " (assistant line)" else ""), who, "Incoming call",
             when (action) { "decline" -> "I declined it"; "decline_text" -> "I declined it and texted them"; "speaker" -> "I answered on speaker"
                 "greeting", "conversation" -> "I answered and played the greeting"; else -> "I announced it, it was not answered by me" })
         when (action) {

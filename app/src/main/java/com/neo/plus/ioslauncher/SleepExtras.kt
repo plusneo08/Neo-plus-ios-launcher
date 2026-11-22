@@ -78,68 +78,9 @@ class SleepBootReceiver : BroadcastReceiver() {
 }
 
 /** Understands "I'm sleeping, call me at 6:30", "I'm awake" and "what did I miss" without asking the AI model. */
+/** Legacy sleep/activity command parser intentionally disabled. */
 object SleepCmd {
-    private val I = RegexOption.IGNORE_CASE
-    private val offRe = Regex("\\b(?:i['’]?m|i am|im) (?:awake|up now)\\b|\\b(?:stop|end|turn off|cancel|switch off|disable) (?:the )?sleep mode\\b|\\bsleep mode off\\b|\\bndadzuka\\b", I)
-    private val reportRe = Regex("\\bwhat did i miss\\b|\\b(?:night|sleep|overnight) (?:report|summary)\\b|\\bsummary of the night\\b|\\bwhat happened (?:last night|while i (?:was )?sleeping)\\b", I)
-    private val freeRe = Regex("\\b(?:free|phone|offline|system)\\b.{0,20}\\bvoice\\b.{0,40}\\b(?:call|sleep|wake)|\\b(?:call|sleep|wake)\\b.{0,40}\\b(?:free|phone|offline)\\b.{0,15}\\bvoice\\b", I)
-    private val gemRe = Regex("\\b(?:gemini|natural|ai)\\b.{0,15}\\bvoice\\b.{0,40}\\b(?:call|sleep|wake)|\\b(?:call|sleep|wake)\\b.{0,40}\\b(?:gemini|natural|ai)\\b.{0,15}\\bvoice\\b", I)
-    private val sleepRe = Regex("\\b(?:sleep|sleeping|going to (?:bed|sleep)|good ?night|bedtime)\\b|ndikugona|ndigona", I)
-    private val timeRe = Regex("(?:\\bcall\\b|\\bwake\\b|\\bring\\b|\\buntil\\b|\\btill\\b|\\bat\\b|\\bby\\b|\\baround\\b)[^0-9]{0,15}(\\d{1,2})(?:[:.](\\d{2}))?\\s*(a\\.?m\\.?|p\\.?m\\.?)?", I)
-
-    private val wakeRe = Regex("\\bwake me\\b|\\bwake[- ]?up call\\b|\\bgive me a wake\\b|\\bcall me (?:to|and) wake\\b", I)
-
-    private val answerRe = Regex("\\b(?:answer|reply(?: to)?|respond to|handle|cover)\\b.{0,12}\\bmessages?\\b|\\breply for me\\b", I)
-    private val busyRe = Regex("\\b(?:i['’]?m|i am|im)\\s+(.{3,40}?)(?=\\s*(?:[,.;]|\\band\\b|\\buntil\\b|\\btill\\b|\\bfor the next\\b|\\b(?:call|wake|ring)\\b|$))", I)
-
-    fun plan(text: String): LocalPlan? {
-        val t = text.trim()
-        if (freeRe.containsMatchIn(t)) return LocalPlan("", listOf("sleep_voice" to JSONObject().put("free", true)))
-        if (gemRe.containsMatchIn(t)) return LocalPlan("", listOf("sleep_voice" to JSONObject().put("free", false)))
-        if (offRe.containsMatchIn(t)) return LocalPlan("", listOf("sleep_mode" to JSONObject().put("on", false)))
-        if (reportRe.containsMatchIn(t)) return LocalPlan("", listOf("sleep_report" to JSONObject()))
-        if (wakeRe.containsMatchIn(t) && !sleepRe.containsMatchIn(t) && !t.contains("sleep mode", true)) {
-            // "wake me up at 8:30 am": a wake-up call at that time (not a plain alarm, and no answering of messages)
-            val wm = timeRe.find(t)
-            var wh = wm?.groupValues?.get(1)?.toIntOrNull() ?: -1
-            if (wm != null && wh >= 0) {
-                val wmin = wm.groupValues[2].toIntOrNull() ?: 0
-                val wap = wm.groupValues[3].lowercase(Locale.ROOT).replace(".", "")
-                if (wap == "pm" && wh < 12) wh += 12
-                if (wap == "am" && wh == 12) wh = 0
-                if (wh in 0..23 && wmin in 0..59) return LocalPlan("", listOf("wake_call" to JSONObject().put("hour", wh).put("minute", wmin)))
-            }
-        }
-        if (!sleepRe.containsMatchIn(t) && !t.contains("sleep mode", true)) {
-            // "I'm in a meeting until 3pm, answer my messages": same as sleep mode, but the replies say what you are doing
-            if (!answerRe.containsMatchIn(t)) return null
-            val act = busyRe.find(t)?.groupValues?.get(1)?.trim().orEmpty()
-            val tm = timeRe.find(t) ?: return null
-            if (act.isEmpty()) return null
-            var bh = tm.groupValues[1].toIntOrNull() ?: return null
-            val bm = tm.groupValues[2].toIntOrNull() ?: 0
-            val bap = tm.groupValues[3].lowercase(Locale.ROOT).replace(".", "")
-            if (bap == "pm" && bh < 12) bh += 12
-            if (bap == "am" && bh == 12) bh = 0
-            if (bh !in 0..23 || bm !in 0..59) return null
-            SleepMode.pendingActivity = act
-            SleepMode.pendingAt = System.currentTimeMillis()
-            return LocalPlan("", listOf("sleep_mode" to JSONObject().put("on", true).put("hour", bh).put("minute", bm).put("activity", act)))
-        }
-        val m = timeRe.find(t) ?: run {
-            // "enable sleep mode" with no wake-up time: do not ask for one, use the default (07:00) and say so
-            if (t.contains("sleep mode", true) || t.contains("sleeping mode", true))
-                return LocalPlan("", listOf("mode" to JSONObject().put("on", true).put("mode", "sleep")))
-            return null
-        }
-        var h = m.groupValues[1].toIntOrNull() ?: return null
-        val min = m.groupValues[2].toIntOrNull() ?: 0
-        val ap = m.groupValues[3].lowercase(Locale.ROOT).replace(".", "")
-        if (ap == "pm" && h < 12) h += 12
-        if (ap == "am" && h == 12) h = 0
-        if (h !in 0..23 || min !in 0..59) return null
-        return LocalPlan("", listOf("sleep_mode" to JSONObject().put("on", true).put("hour", h).put("minute", min)))
-    }
+    fun plan(text: String): LocalPlan? = null
 }
 
 /** Makes written text sound right when read aloud: no markdown or emoji, times said the way people say them. */

@@ -32,7 +32,10 @@ object SocialPoster {
         Target("facebook", "Facebook", listOf("com.facebook.katana")),
         Target("tiktok", "TikTok", listOf("com.zhiliaoapp.musically", "com.ss.android.ugc.trill", "com.zhiliaoapp.musically.go")),
         Target("instagramlite", "Instagram Lite", listOf("com.instagram.lite")),
-        Target("instagram", "Instagram", listOf("com.instagram.android"))
+        Target("instagram", "Instagram", listOf("com.instagram.android")),
+        Target("pinterest", "Pinterest", listOf("com.pinterest")),
+        Target("x", "X", listOf("com.twitter.android")),
+        Target("youtube", "YouTube", listOf("com.google.android.youtube"))
     )
 
     fun normalize(raw: String): String {
@@ -43,6 +46,9 @@ object SocialPoster {
             "insta", "ig" -> "instagram"
             "iglite", "instalite" -> "instagramlite"
             "tiktoklite" -> "tiktok"
+            "pin" -> "pinterest"
+            "twitter" -> "x"
+            "yt" -> "youtube"
             "whatsappb", "w4b" -> "whatsappbusiness"
             else -> k
         }

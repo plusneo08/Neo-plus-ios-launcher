@@ -10,7 +10,7 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.content.ContextCompat
 
-/** Keeps the app process alive (and protected from the phone's battery cleaner) while sleep mode is on. */
+/** Keeps the communication assistant service alive while message and call handling is enabled. */
 class SleepService : Service() {
 
     companion object {
@@ -31,12 +31,12 @@ class SleepService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val nm = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CH) == null) {
-            nm.createNotificationChannel(NotificationChannel(CH, "Sleep mode", NotificationManager.IMPORTANCE_LOW))
+            nm.createNotificationChannel(NotificationChannel(CH, "NEO PLUS communication", NotificationManager.IMPORTANCE_LOW))
         }
         val n = (if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, CH) else @Suppress("DEPRECATION") Notification.Builder(this))
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle("Sleep mode is on")
-            .setContentText("Neo Plus is answering your messages")
+            .setContentTitle("NEO PLUS communication is active")
+            .setContentText("Handling eligible messages and calls until you say “I’m back”")
             .setOngoing(true)
             .build()
         try { startForeground(ID, n) } catch (e: Exception) { }
