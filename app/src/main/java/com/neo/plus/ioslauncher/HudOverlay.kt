@@ -41,7 +41,7 @@ object HudState {
             history.add(clean)
             while (history.size > 30) history.removeAt(0)
         }
-        HudOverlay.start(ctx)
+        // HUD display removed; task activity remains available to assistant/task history.
     }
 
     fun describe(name: String, args: JSONObject): String {
@@ -82,8 +82,7 @@ object HudOverlay {
     private var ticking = false
     private var idleSince = 0L
 
-    fun enabled(c: Context): Boolean =
-        c.applicationContext.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE).getBoolean("hud", true)
+    fun enabled(c: Context): Boolean = false // HUD interface permanently disabled; task engine remains active.
 
     fun overApps(c: Context): Boolean =
         c.applicationContext.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE).getBoolean("hud_over_apps", true)
