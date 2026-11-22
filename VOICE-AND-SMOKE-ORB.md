@@ -18,3 +18,8 @@ The current project has a selectable built-in voice gender and a voice preview, 
 - Test smoke animation performance on the target Vivo Y35 / Android 14.
 - Test live user captions and streaming assistant captions with microphone permission granted.
 - Verify actual voice cloning only after a provider and its data handling are reviewed and selected by the owner.
+
+## Dark virtual-only HUD presentation
+- The full-screen HUD canvas is now fully opaque deep navy/black, so the underlying app window is not visible through the interface.
+- The status panel identifies the display as `VIRTUAL TASKS ONLY`; it does not show the foreground app name.
+- Apps may still run behind the HUD when a task requires an app/API, but their physical UI is not presented as the NEO PLUS interface. Task status and progress are shown in NEO PLUS panels.
