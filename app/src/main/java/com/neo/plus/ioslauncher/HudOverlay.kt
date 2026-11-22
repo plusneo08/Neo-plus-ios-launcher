@@ -346,8 +346,9 @@ private class NeoHudView(context: Context) : View(context) {
         val d = density
         val now = SystemClock.uptimeMillis()
         val phase = (now - born) / 1_000f
-        val veil = if (elsewhere) 48 else 104
-        canvas.drawColor(color(0, 5, 16, veil))
+        // Fully opaque helmet-dark canvas: underlying app windows are never shown through the HUD.
+        // App work may continue in the background, but the user sees only NEO PLUS virtual tasks.
+        canvas.drawColor(color(0, 3, 12, 255))
 
         // Top identity and live device status.
         label(canvas, "NEO PLUS", 18f * d, 34f * d, 22f * d, color(44, 220, 255), true)
@@ -452,7 +453,7 @@ private class NeoHudView(context: Context) : View(context) {
         label(canvas, "NETWORK", sys.left + 11f * d, sys.top + 65f * d, 9f * d, color(180, 220, 255))
         label(canvas, if (online) "CONNECTED" else "OFFLINE", sys.left + 70f * d, sys.top + 65f * d, 9f * d,
             color(if (online) 70 else 255, if (online) 245 else 90, 140), true)
-        label(canvas, if (elsewhere && appLabel.isNotBlank()) "APP: " + appLabel.take(16) else "TASK MONITOR ACTIVE",
+        label(canvas, "VIRTUAL TASKS ONLY",
             sys.left + 11f * d, sys.top + 84f * d, 8f * d, color(120, 220, 255))
 
         // Recent activity status at the bottom right.
