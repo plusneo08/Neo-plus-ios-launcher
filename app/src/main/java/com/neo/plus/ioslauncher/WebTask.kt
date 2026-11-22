@@ -1116,8 +1116,13 @@ return out.length?out.join('\n'):'none yet';}"""
      */
     private fun moneyGate(s: Session, act: JSONObject): String? {
         val action = act.optString("action").lowercase()
+        val previouslyApproved = s.moneyOk
+        // Consume the one-shot approval before inspecting the new model action; a different action cannot reuse it.
+        s.moneyOk = ""
+        s.moneyKey = ""
         var kind = ""
         var label = ""
+        var fingerprint = ""
 
         when (action) {
             "api" -> {
@@ -1129,6 +1134,7 @@ return out.length?out.join('\n'):'none yet';}"""
                 val bodyValue = act.opt("body")
                 val body = if (bodyValue == null || bodyValue == JSONObject.NULL) "" else bodyValue.toString()
                 kind = apiClass(method, (uri.path ?: "") + " " + (uri.query ?: ""), body)
+                fingerprint = body.hashCode().toString()
                 label = "$method ${uri.host ?: s.entry.domain}${uri.path ?: ""}"
             }
             "click", "type" -> {
@@ -1159,12 +1165,8 @@ return out.length?out.join('\n'):'none yet';}"""
             return "BLOCKED: This task is not allowed to $verb because “Purchases, deleting and messaging” is switched off in settings."
         }
 
-        val key = "$kind|$action|$label"
-        if (s.moneyOk == key) {
-            s.moneyOk = ""
-            s.moneyKey = ""
-            return null
-        }
+        val key = "$kind|$action|$label|$fingerprint"
+        if (previouslyApproved == key) return null
         s.moneyKey = key
         return "$kind: $label"
     }
