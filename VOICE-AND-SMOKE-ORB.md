@@ -47,3 +47,11 @@ The current project has a selectable built-in voice gender and a voice preview, 
 - When sensitive actions are enabled, each classified action pauses for a separate Continue approval. The approval is one-shot and bound to the action; it cannot authorize a later different action.
 - CAPTCHA and verification-code steps still pause for the user; NEO PLUS does not bypass them.
 - These safeguards are code changes pending successful CI validation and later on-device testing. The app cannot yet claim real-device verification.
+
+
+## Open website browsing
+- Website tasks can now start on any valid HTTP or HTTPS website; a SiteVault entry is no longer required for general browsing.
+- Navigation across different HTTP or HTTPS domains is open by default. The website allowlist controls have been removed from the assistant settings.
+- Saved website credentials remain scoped to the exact saved website and are not carried to unrelated domains.
+- Sensitive side effects remain separate from browsing: payments, transfers, deletion, messaging, publishing, sharing and uploads are still blocked when disabled and require a fresh approval for each action when enabled.
+- CAPTCHA and verification-code steps still require the user; NEO PLUS does not solve or bypass them.
