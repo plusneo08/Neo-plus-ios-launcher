@@ -129,7 +129,20 @@ object PhoneActions {
     val infoActions = setOf("calendar", "weather", "lookup", "news", "stock", "sports", "read_sms", "call_log", "screen", "read_messages", "read_notifications", "read_app", "last_message", "communication", "communication_report", "proactive", "friday", "diagnose", "split", "lab", "swarm", "companion", "connect", "watch", "calendar_edit", "time_lock", "web_search", "look", "excel_create", "excel_edit", "excel_read", "compare_files", "word_report", "web_task", "web_batch", "page_source", "file_read", "ui_list", "app_task", "goal", "call_assist", "lock_app", "post_apps", "queue", "approvals", "schedule", "schedules", "report_number", "skill_use")
 
     /** Every action (chat, orb, agent, scheduler, approvals) shows the HUD from its start until it returns. */
-    fun run(ctx: Context, name: String, a: JSONObject, apps: List<AppEntry>): ActionResult {
+    fun run(ctx: Context, name: String, a: JSONObject, apps: List<AppEntry>): ActionResult =
+        runInternal(ctx, name, a, apps, approvalGranted = false)
+
+    /** Only the explicit Send button in Approvals may call this path. */
+    internal fun runApproved(ctx: Context, name: String, a: JSONObject, apps: List<AppEntry>): ActionResult =
+        runInternal(ctx, name, a, apps, approvalGranted = true)
+
+    private fun runInternal(ctx: Context, name: String, a: JSONObject, apps: List<AppEntry>, approvalGranted: Boolean): ActionResult {
+        // Level 2: outbound communication, publishing and file sharing always wait for the owner's explicit approval.
+        // The model cannot bypass this check by adding a field to its action arguments.
+        if (name in Approvals.GATED && !approvalGranted) {
+            val item = Approvals.add(ctx, name, JSONObject(a.toString()), apps)
+            return ActionResult("Waiting for your OK: ${item.summary}. Nothing has been sent or published yet.", true, false, info = true)
+        }
         val quick = name in setOf("ui_list", "ui_wait", "lock_app", "listen", "look")
         if (quick) return runInner(ctx, name, a, apps)
         return TaskService.track(ctx, HudState.describe(name, a)) { runInner(ctx, name, a, apps) }
