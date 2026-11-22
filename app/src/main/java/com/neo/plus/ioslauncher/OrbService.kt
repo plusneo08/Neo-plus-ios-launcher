@@ -723,7 +723,9 @@ class OrbService : Service() {
             val on = try { (getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isInteractive } catch (e: Exception) { false }
             if (on) stopClap(false)
         }
-        if (!alive || paused || clapMode || st == St.THINKING || st == St.SPEAKING) return
+        // The recognizer must never consume NEO's own audio. State can lag the audio callback by a few milliseconds,
+        // so check the speaker itself as well as the orb state before opening the microphone.
+        if (!alive || paused || clapMode || st == St.THINKING || st == St.SPEAKING || Speaker.speaking) return
         if (mode == "manual" && !manualActive && !engaged()) { setState(St.IDLE); return }
         val r = recognizer ?: return
         SpeechFix.warm(this)
@@ -762,7 +764,7 @@ class OrbService : Service() {
         val t = earlyText
         earlyText = ""
         // still listening (the final result has not arrived and nothing else took over): run it exactly like a final result
-        if (alive && st == St.LISTENING && t.isNotBlank()) handle(t)
+        if (alive && st == St.LISTENING && !Speaker.speaking && t.isNotBlank()) handle(t)
     }
 
     /** The request inside [heard] (after the wake phrase, when one is needed), or null when it is not meant for the assistant. */
@@ -797,7 +799,8 @@ class OrbService : Service() {
         override fun onEvent(eventType: Int, params: Bundle?) {}
 
         override fun onPartialResults(partialResults: Bundle?) {
-            if (!alive || st != St.LISTENING) return
+            // Ignore late recognizer callbacks if playback began after listening started.
+            if (!alive || st != St.LISTENING || Speaker.speaking) return
             if (mode == "wake" && !engaged() && System.currentTimeMillis() >= armedUntil) {
                 // standby: as soon as the wake phrase shows up the orb appears and shows that it is listening
                 val heard = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
@@ -816,6 +819,12 @@ class OrbService : Service() {
         override fun onResults(results: Bundle?) {
             if (!alive) return
             main.removeCallbacks(earlyFire)
+            // A final result delivered during NEO playback is almost certainly echo/late audio, not a user command.
+            if (Speaker.speaking || st == St.SPEAKING) {
+                cancelListening()
+                setState(St.SPEAKING)
+                return
+            }
             beepGuard()
             errorStreak = 0
             val text = SpeechFix.pick(results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION))
