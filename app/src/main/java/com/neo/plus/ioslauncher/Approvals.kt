@@ -210,7 +210,7 @@ object Approvals {
         save(app, list(app).filter { it.id != id })
         cancelNotification(app, id)
         if (!send) return "Skipped: " + item.summary
-        val r = PhoneActions.run(app, item.action, JSONObject(item.args.toString()), lastApps)
+        val r = PhoneActions.runApproved(app, item.action, JSONObject(item.args.toString()), lastApps)
         if (item.action == "skill_commit") return r.note
         return if (r.ok) "Sent: " + item.summary else "Couldn’t send: " + item.summary + " (" + r.note + ")"
     }
