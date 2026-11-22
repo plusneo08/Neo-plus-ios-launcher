@@ -12,7 +12,7 @@ object SocialCmd {
     private val I = RegexOption.IGNORE_CASE
     private val lead = Regex("^(?:hey |ok |okay )?(?:(?:neo plus assistant|neo plus|neo)[, ]+)?(?:please |can you |could you |would you )?", I)
     private val attachTag = Regex("\\[Attached file: ([^\\]]+)\\]")
-    private const val DEST = "whats ?app business|whats ?app|facebook lite|facebook|fb lite|fb|tik ?tok lite|tik ?tok|instagram lite|instagram|insta|ig"
+    private const val DEST = "whats ?app business|whats ?app|facebook lite|facebook|fb lite|fb|tik ?tok lite|tik ?tok|instagram lite|instagram|insta|ig|pinterest|pin|youtube|yt|twitter|x"
     private val sayWord = Regex("^(?:saying|says|that says|with the (?:caption|text|message)|with (?:a )?caption|captioned|caption|and say|with|:)\\s*", I)
     private val mediaPhrase = Regex("^(?:my |the |a |an |this |that |our )?(?:(?:latest|last|recent|newest|new|first|best)\\s+)?(?:photos?|pictures?|images?|pics?|selfies?|screenshots?|videos?|clips?|movies?|files?|documents?|pdf)\\b", I)
     private val thisWord = Regex("^(?:this|that|it|these|those|them)(?: (?:photo|picture|image|video|file|one))?$", I)
