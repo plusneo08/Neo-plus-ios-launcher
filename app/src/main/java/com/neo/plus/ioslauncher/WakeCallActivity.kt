@@ -69,6 +69,8 @@ class WakeCallActivity : ComponentActivity() {
         const val EXTRA_OUTGOING = "neo_outgoing_call"
         /** Set by the morning mood call (MoodQuotes): the assistant asks how you feel and the answer becomes the crown-screen quotes. */
         const val EXTRA_MOOD = "neo_mood_call"
+        /** A catch-up report delivered in a live voice call after the user says they are back. */
+        const val EXTRA_REPORT = "neo_catch_up_report"
     }
 
     private var session: CallSession? = null
@@ -109,6 +111,7 @@ class WakeCallActivity : ComponentActivity() {
         )
         val outgoing = intent?.getBooleanExtra(EXTRA_OUTGOING, false) == true
         val moodCall = intent?.getBooleanExtra(EXTRA_MOOD, false) == true
+        val report = intent?.getStringExtra(EXTRA_REPORT).orEmpty()
         val s: CallSession
         val running = liveSession?.takeIf { it.isAlive }
         if (running != null) {
@@ -116,11 +119,12 @@ class WakeCallActivity : ComponentActivity() {
             s = running
             s.act = this
         } else {
-            if (!outgoing && !moodCall && !SleepMode.isOn(applicationContext) && !WakeRinger.ringing) { finish(); return }
+            if (!outgoing && !moodCall && report.isBlank() && !SleepMode.isOn(applicationContext) && !WakeRinger.ringing) { finish(); return }
             s = CallSession(this)
             s.mood = moodCall
             liveSession = s
-            if (outgoing) s.startOutgoing()
+            if (report.isNotBlank()) s.startReport(report)
+            else if (outgoing) s.startOutgoing()
             // tapped the "missed call" note later: nothing is ringing, so connect straight away
             else if (moodCall && !WakeRinger.ringing) s.startMoodNow()
         }
@@ -210,6 +214,18 @@ private class CallSession(activity: WakeCallActivity) {
     }
 
     /** The morning mood call is on: greet and ask how the user feels. */
+    /** The user has returned: read the saved away-time report aloud, then keep the call open for conversation. */
+    fun startReport(report: String) {
+        phase = 1
+        morning = true
+        connected()
+        CallAwareness.refreshAsync(ctx)
+        val spokenReport = report.trim().ifBlank { "Welcome back. I don't have a catch-up report to read." }
+        hist += true to "[The user has returned and started a voice catch-up call. Read the saved report, then continue a natural conversation.]"
+        hist += false to spokenReport
+        main.post { say(spokenReport) }
+    }
+
     fun startMoodNow() {
         phase = 1
         connected()
