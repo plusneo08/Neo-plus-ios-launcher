@@ -82,7 +82,7 @@ object HudOverlay {
     private var ticking = false
     private var idleSince = 0L
 
-    fun enabled(c: Context): Boolean = c.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE).getBoolean("hud_enabled", true) // NEO PLUS holographic HUD; task engine remains independent.
+    fun enabled(c: Context): Boolean = false // HUD overlay permanently disabled; task execution and task history remain available.
 
     fun overApps(c: Context): Boolean =
         c.applicationContext.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE).getBoolean("hud_over_apps", true)
@@ -91,14 +91,12 @@ object HudOverlay {
     @Volatile var shotHold = false
 
     fun start(c: Context) {
-        if (!enabled(c)) return
-        val context = c.applicationContext
+        // Remove any HUD windows left by an older in-memory instance. Never create overlay windows.
         main.post {
-            app = context
-            if (!ticking) {
-                ticking = true
-                main.post(tick)
-            }
+            ticking = false
+            main.removeCallbacks(tick)
+            removeAll()
+            app = null
         }
     }
 
