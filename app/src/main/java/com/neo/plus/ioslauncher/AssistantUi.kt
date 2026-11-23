@@ -341,6 +341,9 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
     val smsPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     // The settings are separate pages: 0 = the menu, 1 = API keys, 2 = Voice, 3 = Website authorisation, 4 = Apps, 5 = Task reports.
     var page by remember { mutableStateOf(0) }
+    var risky by remember { mutableStateOf(WebTaskPrefs.risky(ctx)) }
+    var deepRead by remember { mutableStateOf(WebTaskPrefs.deepRead(ctx)) }
+    var backendOn by remember { mutableStateOf(WebTaskPrefs.backendCalls(ctx)) }
     fun saveAll() {
         a.saveSettings(Provider.GEMINI, allKeys(), "")
         a.saveVoice(gender, voiceKey)
@@ -389,7 +392,7 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                     Text("Settings", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
                     MenuRow("API keys", "Your Gemini keys: add, remove, see which one is in use", 1)
                     MenuRow("Voice", "Female or male voice, and hear it", 2)
-                    MenuRow("Website authorisation", "Websites the assistant may operate, saved logins and the daily limit", 3)
+                    MenuRow("Website access", "Browse websites freely; saved logins remain limited to their own site", 3)
                     MenuRow("Apps", "Choose which phone apps the assistant may open and control", 4)
                     MenuRow("Approvals",
                         Approvals.list(ctx).size.let { n -> if (n == 0) "Nothing is waiting. Messages and skill installs the assistant wants to do show up here for your OK" else "$n waiting for your OK: tap to send, install or skip" }, 9)
@@ -660,39 +663,17 @@ private fun SettingsSheet(a: AssistantViewModel, apps: List<AppEntry>, onDone: (
                 9 -> ApprovalsPanel { page = 0 }
 
                 else -> {
-                    Text("Website authorisation", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Website access", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Chat, phone control and website tasks start on Gemini 3.8 Flash. The stronger Gemini 4 Argon (needs a paid key) only takes over a website task after two failed steps. Websites you authorise here can be operated with the login you save; the login is encrypted on this phone, the AI never sees the password, and typing it into a login form is done by the phone without any AI request.",
+                        "NEO can browse any HTTP or HTTPS website and follow links between sites. Saved login details remain encrypted on this phone and are only entered on the matching website.",
                         color = note, fontSize = 13.sp, lineHeight = 18.sp
                     )
-                    Box(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.16f))
-                            .clickable { showSites = true }.padding(vertical = 12.dp),
-                        contentAlignment = Alignment.Center
-                    ) { Text("Authorised websites", color = Color.White, fontSize = 15.sp) }
-                    Text("How far the website assistant may go", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    var domainMode by remember { mutableStateOf(WebTaskPrefs.domainMode(ctx)) }
-                    var extraHosts by remember { mutableStateOf(WebTaskPrefs.extraHostsRaw(ctx)) }
-                    var risky by remember { mutableStateOf(WebTaskPrefs.risky(ctx)) }
-                    var confirmMoney by remember { mutableStateOf(WebTaskPrefs.confirmMoney(ctx)) }
-                    var deepRead by remember { mutableStateOf(WebTaskPrefs.deepRead(ctx)) }
-                    var backendOn by remember { mutableStateOf(WebTaskPrefs.backendCalls(ctx)) }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        WebChip("My sites only", domainMode == "strict", Modifier.weight(1f)) { domainMode = "strict"; WebTaskPrefs.setDomainMode(ctx, "strict") }
-                        WebChip("Also these", domainMode == "list", Modifier.weight(1f)) { domainMode = "list"; WebTaskPrefs.setDomainMode(ctx, "list") }
-                        WebChip("Any site", domainMode == "any", Modifier.weight(1f)) { domainMode = "any"; WebTaskPrefs.setDomainMode(ctx, "any") }
-                    }
-                    if (domainMode == "list") GlassField(extraHosts, { extraHosts = it; WebTaskPrefs.setExtraHosts(ctx, it) }, "Other sites it may open, e.g. paypal.com, stripe.com")
-                    Text(
-                        if (domainMode == "any") "It can follow links anywhere. The saved login is still typed only on the authorised site."
-                        else if (domainMode == "list") "It can also open the sites above. The saved login is typed only on the authorised site."
-                        else "Links to any other site are blocked.",
-                        color = note, fontSize = 12.sp, lineHeight = 16.sp
-                    )
-                    WebSwitch("Purchases, deleting and messaging", "Allowed when your request clearly asks for it. Off: it never does these.", risky) { risky = !risky; WebTaskPrefs.setRisky(ctx, risky) }
-                    if (risky) WebSwitch("Confirm before paying", "Off by default. On: the phone stops and asks you to tap Continue before a pay / order button is pressed.", confirmMoney) { confirmMoney = !confirmMoney; WebTaskPrefs.setConfirmMoney(ctx, confirmMoney) }
+                    Text("Website browsing", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text("NEO can open any HTTP or HTTPS website and follow links across websites. Saved logins are used only on their matching saved website.", color = note, fontSize = 12.sp, lineHeight = 16.sp)
+                    WebSwitch("Purchases, transfers and deleting", "Off: NEO will not make payments, transfer money or delete data. On: these actions still require your approval.", risky) { risky = !risky; WebTaskPrefs.setRisky(ctx, risky) }
+                    if (risky) Text("Sensitive actions pause for your approval before they happen.", color = note, fontSize = 12.sp, lineHeight = 16.sp)
                     WebSwitch("Read the code behind the page", "HTML, frames and the page’s own server calls, to understand pages that are hard to read. Passwords and tokens are always hidden.", deepRead) { deepRead = !deepRead; WebTaskPrefs.setDeepRead(ctx, deepRead) }
-                    WebSwitch("Use the website’s backend when I ask", "On: when you say “use the backend / API”, the assistant sends requests straight to the site’s own server instead of clicking, without asking again. Only the authorised site; paying, deleting and messaging still follow the two switches above.", backendOn) { backendOn = !backendOn; WebTaskPrefs.setBackendCalls(ctx, backendOn) }
+                    WebSwitch("Use the website’s backend when I ask", "On: when you explicitly ask for the website backend / API, the assistant may use the site’s own server. Payments, transfers and deletion still stop and require your approval.", backendOn) { backendOn = !backendOn; WebTaskPrefs.setBackendCalls(ctx, backendOn) }
                     Text("A CAPTCHA always stops the task for you to solve; that can’t be switched off.", color = note, fontSize = 12.sp, lineHeight = 16.sp)
                     Text("Daily limit for website tasks", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     GlassField(limitText, { limitText = it.filter { c -> c.isDigit() }.take(6) }, "Requests per day (0 = no limit)")

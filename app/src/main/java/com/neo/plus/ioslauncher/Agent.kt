@@ -1,6 +1,7 @@
 package com.neo.plus.ioslauncher
 
 import android.content.Context
+import org.json.JSONObject
 
 /**
  * Runs one request: asks the AI model, runs its actions, and when the model asked for information first
@@ -57,7 +58,8 @@ object Agent {
         ctx: Context, provider: Provider, key: String, model: String, system: String,
         history: List<Pair<Boolean, String>>, apps: List<AppEntry>, image0: ByteArray? = null, extra: String? = null,
         onPartial: ((String) -> Unit)? = null,
-        useSearch: Boolean? = null   // null = decide as usual; false = never use live web search (plain conversation is faster without it)
+        useSearch: Boolean? = null,  // null = decide as usual; false = never use live web search
+        shouldContinue: () -> Boolean = { true } // a newer user turn may stop future actions without cancelling an action already running
     ): Outcome {
         val hist = history.toMutableList()
         if (!extra.isNullOrBlank() && hist.isNotEmpty() && hist.last().first) {
@@ -70,17 +72,19 @@ object Agent {
         // Live web search only when the question can need it (a screenshot or an extra block means a real task: keep it on).
         val search = useSearch ?: (image0 != null || !extra.isNullOrBlank() || needsSearch(hist.lastOrNull { it.first }?.second.orEmpty()))
         while (true) {
+            if (!shouldContinue()) return Outcome("", done.filter { !it.info })
             // Only the first model call streams (its text can be shown and spoken at once); follow-up rounds answer normally.
             var earlyRan = 0 // how many leading actions of this reply were already run while it streamed
             val reply = if (round == 0 && onPartial != null) {
                 val acc = StringBuilder()
                 Llm.chatStream(key, pickModel(model, hist, false), system, hist, image, search) { piece ->
+                    if (!shouldContinue()) return@chatStream
                     onPartial(piece)
                     acc.append(piece)
                     // A command tag can only have just been completed when this piece holds a "]".
                     if (piece.indexOf(']') >= 0) {
                         val found = parseActionTags(acc.toString()).second
-                        while (earlyRan < found.size && found[earlyRan].first in EARLY) {
+                        while (shouldContinue() && earlyRan < found.size && found[earlyRan].first in EARLY) {
                             val a = found[earlyRan++]
                             done += PhoneActions.run(ctx, a.first, a.second, apps)
                             earlyNames += a.first
@@ -89,16 +93,23 @@ object Agent {
                 }
             } else Llm.chat(provider, key, pickModel(model, hist, round > 0), system, hist, image, search)
             image = null
+            if (!shouldContinue()) return Outcome("", done.filter { !it.info })
             val (clean, allActions) = parseActionTags(reply)
             val actions = allActions.drop(earlyRan) // the first earlyRan were already done
             val data = actions.filter { it.first in PhoneActions.infoActions }
             if (data.isNotEmpty() && round < MAX_ROUNDS - 1) {
-                val doneNow = actions.filter { it.first !in PhoneActions.infoActions }
-                    .map { it to PhoneActions.run(ctx, it.first, it.second, apps) }
-                done += doneNow.map { it.second }
-                val block = data.joinToString("\n\n") { a ->
-                    a.first + ": " + PhoneActions.run(ctx, a.first, a.second, apps).note
+                val doneNow = ArrayList<Pair<Pair<String, JSONObject>, ActionResult>>()
+                for (a in actions.filter { it.first !in PhoneActions.infoActions }) {
+                    if (!shouldContinue()) return Outcome("", done.filter { !it.info })
+                    doneNow += a to PhoneActions.run(ctx, a.first, a.second, apps)
                 }
+                done += doneNow.map { it.second }
+                val dataNotes = ArrayList<String>()
+                for (a in data) {
+                    if (!shouldContinue()) return Outcome("", done.filter { !it.info })
+                    dataNotes += a.first + ": " + PhoneActions.run(ctx, a.first, a.second, apps).note
+                }
+                val block = dataNotes.joinToString("\n\n")
                 val already = if (doneNow.isEmpty() && earlyNames.isEmpty()) "" else
                     "\n\nAlready done, do not repeat: " + (earlyNames.map { it } + doneNow.map { it.first.first + " (" + it.second.note + ")" }).joinToString("; ")
                 hist += false to reply
@@ -113,6 +124,7 @@ object Agent {
             var finalClean = clean
             val doable = actions.filter { it.first !in PhoneActions.infoActions }
             if (data.isNotEmpty() && finalClean.isBlank()) {
+                if (!shouldContinue()) return Outcome("", done.filter { !it.info })
                 // The model asked for yet more data instead of answering: make it answer now with what it has.
                 hist += false to reply
                 hist += true to ("[No more lookups are available. Answer every part of the user's request now, " +
@@ -120,7 +132,11 @@ object Agent {
                 val (c2, _) = parseActionTags(Llm.chat(provider, key, pickModel(model, hist, true), system, hist, null))
                 finalClean = c2
             }
-            val results = doable.map { PhoneActions.run(ctx, it.first, it.second, apps) }
+            val results = ArrayList<ActionResult>()
+            for (a in doable) {
+                if (!shouldContinue()) return Outcome("", (done + results).filter { !it.info })
+                results += PhoneActions.run(ctx, a.first, a.second, apps)
+            }
             val shown = done + results.filter { !it.info }
             val text = when {
                 finalClean.isNotBlank() -> finalClean

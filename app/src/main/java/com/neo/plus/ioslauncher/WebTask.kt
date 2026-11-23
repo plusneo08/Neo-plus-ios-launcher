@@ -146,6 +146,7 @@ return 'none';}catch(e){return 'none';}})()"""
         lateinit var wv: WebView
         /** This task's own feed / tile. Nothing from another task is ever written to it or read from it. */
         lateinit var feed: TaskFeed
+        @Volatile var goal = ""
         @Volatile var cancelled = false
         @Volatile var waitingForUser = false
         @Volatile var userSignal = 0 // 1 = the user pressed Continue
@@ -198,16 +199,22 @@ return 'none';}catch(e){return 'none';}})()"""
         val siteArg = a.optString("site").ifBlank { a.optString("url") }
         if (goal.isBlank()) return "Couldn’t start: no goal was given for the website task."
         if (siteArg.isBlank()) return "Couldn’t start: no website was given."
-        val entry = SiteVault.authorizedFor(ctx, siteArg)
-            ?: return "No authorised website matches “${SiteVault.normalizeDomain(siteArg)}”. Open the assistant settings, tap Authorised websites, add it with your login and switch it on, then ask again."
+        val startHost = SiteVault.normalizeDomain(siteArg)
+        if (startHost.isBlank()) return "Couldn’t start: that website address is invalid."
+        // General browsing does not require a SiteVault entry. Saved credentials remain scoped to saved sites only.
+        val entry = SiteVault.authorizedFor(ctx, siteArg) ?: SiteEntry(startHost, "", "", false)
         val key = ctx.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE).getString("key", "")?.trim().orEmpty().also { KeyPool.attach(ctx) }
         if (key.isBlank()) return "Couldn’t start: add your Gemini key in the assistant settings first."
 
         val startUrl = a.optString("url").ifBlank { "https://" + entry.domain }.let { if (it.startsWith("http")) it else "https://$it" }
-        if (SiteVault.authorizedFor(ctx, startUrl) == null) return "No authorised website matches that address."
+        val parsedStart = try { Uri.parse(startUrl) } catch (_: Exception) { null }
+        if (parsedStart?.host.isNullOrBlank() || (parsedStart?.scheme != "http" && parsedStart?.scheme != "https")) {
+            return "Couldn’t start: use a valid http or https website address."
+        }
 
         val allowedUploads = HashSet<String>()
         val s = Session(ctx.applicationContext, entry)
+        s.goal = goal
         s.backend = backendWanted(ctx, a, goal)
         a.optString("upload").takeIf { it.isNotBlank() }?.let { n -> AssistantFiles.find(ctx, n)?.let { allowedUploads += it.absolutePath } ?: return "No file called “$n” to upload. Check the name and try again." }
 
@@ -320,9 +327,12 @@ return 'none';}catch(e){return 'none';}})()"""
                 lastResult = "Your last reply was not a single JSON object. Reply with ONE JSON object only."
                 continue
             }
-            // A pay / order button: the phone itself asks the user first (the user can switch this off in the settings).
+            // Sensitive website actions are blocked when disabled, and always require an explicit in-app approval when enabled.
             val gated = moneyGate(s, act0)
-            val act = if (gated != null) JSONObject().put("action", "need_user").put("reason", if (act0.optString("action").equals("api", true)) "Confirm payment: tap Continue and I will send the backend call “$gated” to ${s.entry.domain}" else "Confirm payment: tap Continue and I will press “$gated” on ${s.entry.domain}") else act0
+            if (gated?.startsWith("BLOCKED:") == true) {
+                return stopWith(s, "approval_required", gated.removePrefix("BLOCKED:"), "I stopped before making that change. " + gated.removePrefix("BLOCKED:"))
+            }
+            val act = if (gated != null) JSONObject().put("action", "need_user").put("reason", "Approval needed: tap Continue only if you approve this action: $gated on ${s.entry.domain}") else act0
             val kind = act.optString("action").lowercase()
             val note = act.optString("thought").take(80)
             when (kind) {
@@ -351,8 +361,7 @@ return 'none';}catch(e){return 'none';}})()"""
                             steps += "$n. (paused for you: $why)"
                             if (gated != null) {
                                 s.moneyOk = s.moneyKey
-                                lastResult = if (act0.optString("action").equals("api", true)) "The user CONFIRMED the payment. Send the same api call again now (“$gated”), then check the result."
-                                else "The user CONFIRMED the payment. Click “$gated” now (the same button), then check the page."
+                                lastResult = "The user explicitly approved this website action: $gated. Repeat only that same action now, then verify its result."
                                 settle(s)
                                 continue@steps
                             }
@@ -628,8 +637,9 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
                 "offline_login" -> { if (offlineLogin(s).isNotEmpty()) s.feed.add(TaskLine.Kind.INFO, "      replay ${i + 1}/$total: typed the saved login"); continue }
                 "goto" -> {
                     val u = a.optString("url")
-                    if (SiteVault.authorizedFor(s.ctx, u) == null) return Replay(false, i, "the address is not an authorised site")
-                    navigate(s, if (u.startsWith("http")) u else "https://$u")
+                    val target = if (u.startsWith("http", true)) u else "https://$u"
+                    if (!hostAllowed(s, target)) return Replay(false, i, "the address must be a valid HTTP or HTTPS website")
+                    navigate(s, target)
                     s.feed.add(TaskLine.Kind.INFO, "      replay ${i + 1}/$total: " + stepLabel(a, null))
                     continue
                 }
@@ -702,8 +712,10 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
         val siteArg = a.optString("site").ifBlank { a.optString("url") }
         if (template.isBlank()) return "Couldn’t start: no goal was given for the batch."
         if (siteArg.isBlank()) return "Couldn’t start: no website was given."
-        val entry = SiteVault.authorizedFor(ctx, siteArg)
-            ?: return "No authorised website matches “${SiteVault.normalizeDomain(siteArg)}”. Open the assistant settings, tap Authorised websites, add it with your login and switch it on, then ask again."
+        val startHost = SiteVault.normalizeDomain(siteArg)
+        val startUri = try { Uri.parse(if (siteArg.startsWith("http", true)) siteArg else "https://$siteArg") } catch (_: Exception) { null }
+        if (startUri == null || startUri.scheme !in setOf("http", "https") || startHost.isBlank()) return "Couldn’t start: enter a valid HTTP or HTTPS website."
+        val entry = SiteVault.authorizedFor(ctx, siteArg) ?: SiteEntry(startHost, "", "", false)
         val key = ctx.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE).getString("key", "")?.trim().orEmpty().also { KeyPool.attach(ctx) }
         if (key.isBlank()) return "Couldn’t start: add your Gemini key in the assistant settings first."
         val fileName = a.optString("file")
@@ -720,7 +732,7 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
         if (rowNums.isEmpty()) return "No data rows found in ${src.name}."
 
         val startUrl = a.optString("url").ifBlank { "https://" + entry.domain }.let { if (it.startsWith("http")) it else "https://$it" }
-        if (SiteVault.authorizedFor(ctx, startUrl) == null) return "No authorised website matches that address."
+        if (!startUrl.startsWith("https://", true) && !startUrl.startsWith("http://", true)) return "Couldn’t start: the batch URL must use HTTP or HTTPS."
         val uploads = HashSet<String>()
         a.optString("upload").takeIf { it.isNotBlank() }?.let { n -> AssistantFiles.find(ctx, n)?.let { uploads += it.absolutePath } ?: return "No file called “$n” to upload. Check the name and try again." }
         val s = Session(ctx.applicationContext, entry)
@@ -960,9 +972,8 @@ e.setAttribute('data-neo','9999');return 'ok';})"""
             else -> "Stay on ${s.entry.domain}. Links to other sites are blocked."
         }
         val risk = if (WebTaskPrefs.risky(s.ctx))
-            "Never type, say or output the password. Do not make purchases or payments, delete the account or data, or message other people unless the GOAL explicitly asks for exactly that." +
-                (if (WebTaskPrefs.confirmMoney(s.ctx)) " When the goal does ask you to pay or order, the phone itself stops and asks the user to confirm before the final pay / order button is pressed; that is normal, wait for it." else "")
-        else "Never type, say or output the password. Never make purchases or payments, delete the account or data, or message other people, even if the GOAL seems to ask for it: stop with fail and say what is needed."
+            "Never type, say or output the password. Payments, transfers, deletion, deactivation, publishing, sharing and uploads remain sensitive: pause for a fresh need_user approval for the exact action. Sending or replying to a message is different: when the GOAL clearly instructs you to send/reply/respond to a recipient with the requested content, that instruction itself is the owner's authorisation for that specific message. Do not ask for a second approval for that exact message. Never send extra messages, change the recipient/content, or infer permission for future messages."
+        else "Never type, say or output the password. Never make purchases or payments, transfer money, delete or deactivate data, publish, share or upload information. A clear current GOAL to send or reply to a recipient is sufficient authorisation for that message only; do not ask for a second approval, and do not send anything beyond the requested recipient and content."
         val deepLines = if (deepOn(s)) """{"action":"inspect","id":12,"what":"node|form"}          (reads the HTML behind the page: of element 12, or of the whole form around it with what:"form", or of the whole page when id is left out. Use it when labels are missing or a field is hard to understand)
 {"action":"requests","contains":"api"}                   (lists the server calls the page made, each with the start of its JSON reply, so you can read an exact value or error message; "contains" is an optional filter)""" else ""
         val apiLines = if (s.backend) """{"action":"api","method":"GET|POST|PUT|PATCH|DELETE","url":"/api/path or https://${s.entry.domain}/api/path","body":{"key":"value"},"headers":{"X-CSRF-Token":"{{csrf}}"},"max":5000}   (BACKEND: sends the request straight to the website's own server from the logged-in page, with the same session, instead of clicking. body (an object, or "a=1&b=2") and headers are optional. {{csrf}} is filled in by the phone from the page, {{username}} / {{password}} work inside body. You get the status and the start of the reply)""" else ""
@@ -1063,8 +1074,16 @@ return JSON.stringify({url:location.href,title:document.title,elements:out,text:
     /** Reading the page's HTML and server calls: on when the user switched it on, or when they asked for the backend (it needs the server calls). */
     private fun deepOn(s: Session): Boolean = WebTaskPrefs.deepRead(s.ctx) || s.backend
 
-    /** May the agent open [url]: an authorised site, or one the user allowed in the settings. */
-    private fun hostAllowed(s: Session, url: String): Boolean = true
+    /** May the agent open [url]: any valid HTTP or HTTPS website. Saved credentials are guarded separately. */
+    private fun hostAllowed(s: Session, url: String): Boolean {
+        val parsed = try { Uri.parse(url) } catch (_: Exception) { return false }
+        if (parsed.scheme != "https" && parsed.scheme != "http") return false
+        val host = SiteVault.normalizeDomain(url)
+        if (host.isBlank()) return false
+
+        // General browsing is open to any HTTP(S) website; credentials remain scoped separately.
+        return true
+    }
 
     /** The saved login is only ever typed on the site it belongs to, whatever other sites the agent may visit. */
     private fun onOwnDomain(s: Session): Boolean {
@@ -1096,8 +1115,79 @@ return out.length?out.join('\n'):'none yet';}"""
     private const val FINDER = "(window.__neoFind||function(i){return document.querySelector('[data-neo=\"'+i+'\"]')})"
     private val MONEY_RE = Regex("\\b(pay|pay now|buy now|purchase|place (?:your )?order|complete (?:order|purchase|payment)|confirm (?:order|payment|purchase)|checkout|check out|donate|send money|transfer|subscribe)\\b", RegexOption.IGNORE_CASE)
 
-    /** The label of a pay / order button the agent is about to press, when the user wants to confirm those first; null otherwise. */
-    private fun moneyGate(s: Session, act: JSONObject): String? = null
+    private fun explicitMessageRequested(goal: String): Boolean {
+        val g = goal.lowercase()
+        val sendVerb = Regex("\\b(send|reply|respond|message)\\b").containsMatchIn(g)
+        val recipient = Regex("\\b(to|back to)\\b").containsMatchIn(g)
+        val draftOnly = Regex("\\b(draft|prepare|write)\\b").containsMatchIn(g) &&
+            !Regex("\\b(send|reply|respond)\\b").containsMatchIn(g)
+        val negated = Regex("\\b(do not|don't|dont|never|without)\\s+(send|reply|respond|message)\\b").containsMatchIn(g)
+        return sendVerb && recipient && !draftOnly && !negated
+    }
+
+    /**
+     * Classifies website actions with external side effects. A disabled setting blocks them;
+     * enabling the setting still requires the user to approve each individual action.
+     * The approval key is consumed once, so approval cannot authorize later actions.
+     */
+    private fun moneyGate(s: Session, act: JSONObject): String? {
+        val action = act.optString("action").lowercase()
+        val previouslyApproved = s.moneyOk
+        // Consume the one-shot approval before inspecting the new model action; a different action cannot reuse it.
+        s.moneyOk = ""
+        s.moneyKey = ""
+        var kind = ""
+        var label = ""
+        var fingerprint = ""
+
+        when (action) {
+            "api" -> {
+                val method = act.optString("method", "GET").uppercase()
+                val raw = act.optString("url").trim()
+                val uri = try {
+                    java.net.URI(currentUrl(s).ifBlank { "https://${s.entry.domain}" }).resolve(raw)
+                } catch (_: Exception) { return null }
+                val bodyValue = act.opt("body")
+                val body = if (bodyValue == null || bodyValue == JSONObject.NULL) "" else bodyValue.toString()
+                kind = apiClass(method, (uri.path ?: "") + " " + (uri.query ?: ""), body)
+                fingerprint = body.hashCode().toString()
+                label = "$method ${uri.host ?: s.entry.domain}${uri.path ?: ""}"
+            }
+            "click", "type" -> {
+                if (action == "type" && !act.optBoolean("submit", false)) return null
+                val id = act.optInt("id", -1)
+                if (id < 0) return null
+                val rawLabel = unquote(js(s, """(function(id){var e=(window.__neoFind||function(i){return document.querySelector('[data-neo="'+i+'"]')})(id);if(!e)return '';var f=e.form;var b=f&&f.querySelector('button[type=submit],input[type=submit],button:not([type])');var t=[e.innerText,e.value,e.getAttribute('aria-label'),e.getAttribute('title'),e.getAttribute('name'),b&&(b.innerText||b.value||b.getAttribute('aria-label'))].filter(Boolean).join(' ');return t.slice(0,180);})($id)"""))
+                val words = apiWords(rawLabel)
+                kind = when {
+                    MONEY_RE.containsMatchIn(rawLabel) -> "money"
+                    words.any { it in DELETE_WORDS } -> "delete"
+                    words.any { it in MESSAGE_PATH || it == "post" || it == "upload" } -> "message"
+                    else -> ""
+                }
+                label = rawLabel.ifBlank { if (action == "type") "submit form" else "button #$id" }
+            }
+            "upload" -> { kind = "message"; label = "upload a file to the website" }
+            else -> return null
+        }
+
+        if (kind.isBlank()) return null
+        // A clear current instruction to send or reply authorises only that requested message.
+        if (kind == "message" && explicitMessageRequested(s.goal)) return null
+        if (!WebTaskPrefs.risky(s.ctx)) {
+            val verb = when (kind) {
+                "money" -> "pay, purchase, or transfer money"
+                "delete" -> "delete or deactivate data"
+                else -> "send, publish, share, or upload information"
+            }
+            return "BLOCKED: This task is not allowed to $verb because “Purchases, deleting and messaging” is switched off in settings."
+        }
+
+        val key = "$kind|$action|$label|$fingerprint"
+        if (previouslyApproved == key) return null
+        s.moneyKey = key
+        return "$kind: $label"
+    }
 
     // ------------------------------------------------------------------ doing things
     private fun execute(s: Session, a: JSONObject, uploads: Set<String>): String {
@@ -1229,7 +1319,7 @@ return 'started';})"""
         val body: String? = if (bAny == null || bAny == JSONObject.NULL) null else bAny.toString()
         val u = java.net.URI(full)
         val kind = apiClass(method, (u.path ?: "") + " " + (u.query ?: ""), body.orEmpty())
-        if (kind.isNotEmpty() && !WebTaskPrefs.risky(s.ctx))
+        if (kind.isNotEmpty() && !(kind == "message" && explicitMessageRequested(s.goal)) && !WebTaskPrefs.risky(s.ctx))
             return "Blocked: this call would " + (when (kind) { "money" -> "pay or order something"; "delete" -> "delete something"; else -> "send a message" }) + " and “Purchases, deleting and messaging” is switched off in the assistant settings."
 
         var sendBody = body
@@ -1664,8 +1754,20 @@ return 'started';})"""
             }
         }, "NeoBridge")
         wv.webViewClient = object : WebViewClient() {
-            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) { s.loading = true; SessionKeeper.noteVisit(s.entry.domain, url) }
-            override fun onPageFinished(view: WebView?, url: String?) { s.loading = false; SessionKeeper.noteVisit(s.entry.domain, url) }
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                if (!url.isNullOrBlank() && !hostAllowed(s, url)) {
+                    s.blocked = url.take(100)
+                    view?.stopLoading()
+                    s.loading = false
+                    return
+                }
+                s.loading = true
+                SessionKeeper.noteVisit(s.entry.domain, url)
+            }
+            override fun onPageFinished(view: WebView?, url: String?) {
+                s.loading = false
+                if (url.isNullOrBlank() || hostAllowed(s, url)) SessionKeeper.noteVisit(s.entry.domain, url)
+            }
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest): Boolean {
                 val u = request.url
                 val ok = (u.scheme == "https" || u.scheme == "http") && hostAllowed(s, u.toString())

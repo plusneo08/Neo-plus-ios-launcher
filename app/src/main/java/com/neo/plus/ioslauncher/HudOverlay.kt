@@ -82,7 +82,7 @@ object HudOverlay {
     private var ticking = false
     private var idleSince = 0L
 
-    fun enabled(c: Context): Boolean = c.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE).getBoolean("hud_enabled", true) // NEO PLUS holographic HUD; task engine remains independent.
+    fun enabled(c: Context): Boolean = false // HUD overlay permanently disabled; task execution and task history remain available.
 
     fun overApps(c: Context): Boolean =
         c.applicationContext.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE).getBoolean("hud_over_apps", true)
@@ -91,14 +91,12 @@ object HudOverlay {
     @Volatile var shotHold = false
 
     fun start(c: Context) {
-        if (!enabled(c)) return
-        val context = c.applicationContext
+        // Remove any HUD windows left by an older in-memory instance. Never create overlay windows.
         main.post {
-            app = context
-            if (!ticking) {
-                ticking = true
-                main.post(tick)
-            }
+            ticking = false
+            main.removeCallbacks(tick)
+            removeAll()
+            app = null
         }
     }
 
@@ -204,7 +202,8 @@ object HudOverlay {
     }
 
     private fun syncRail(c: Context, tasks: List<TaskFeed>) {
-        val shown = tasks.filter { !it.dismissed }.takeLast(5)
+        // Keep every task in the rail; the rail itself provides vertical scrolling.
+        val shown = tasks.filter { !it.dismissed }
         if (shown.isEmpty()) {
             removeRail()
             return
@@ -346,8 +345,9 @@ private class NeoHudView(context: Context) : View(context) {
         val d = density
         val now = SystemClock.uptimeMillis()
         val phase = (now - born) / 1_000f
-        val veil = if (elsewhere) 48 else 104
-        canvas.drawColor(color(0, 5, 16, veil))
+        // Fully opaque helmet-dark canvas: underlying app windows are never shown through the HUD.
+        // App work may continue in the background, but the user sees only NEO PLUS virtual tasks.
+        canvas.drawColor(color(0, 3, 12, 255))
 
         // Top identity and live device status.
         label(canvas, "NEO PLUS", 18f * d, 34f * d, 22f * d, color(44, 220, 255), true)
@@ -401,55 +401,47 @@ private class NeoHudView(context: Context) : View(context) {
                 taskRect.top + (132f + index * 16f) * d, 9f * d, c)
         }
 
-        // Central holographic assistant face and animated telemetry rings.
+        // Central NEO PLUS smoke orb: soft fluid-like wisps, never waveform bars.
         val cx = w * 0.51f
         val cy = h * 0.48f
         val radius = min(w * 0.25f, h * 0.145f)
         ring(canvas, cx, cy, radius, phase)
-        paint.color = color(0, 165, 230, 34)
-        canvas.drawOval(RectF(cx - radius * 0.54f, cy - radius * 0.78f, cx + radius * 0.54f, cy + radius * 0.86f), paint)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 1.5f * d
-        paint.color = color(65, 220, 255, 205)
-        canvas.drawOval(RectF(cx - radius * 0.48f, cy - radius * 0.74f, cx + radius * 0.48f, cy + radius * 0.74f), paint)
+        val orb = RectF(cx - radius * 0.72f, cy - radius * 0.72f, cx + radius * 0.72f, cy + radius * 0.72f)
         paint.style = Paint.Style.FILL
-        // Match the holographic avatar to the voice gender explicitly selected in Assistant settings.
-        // Read the same persisted preference used by AssistantViewModel.saveVoice().
-        val maleVoice = context.getSharedPreferences("neo_assistant", Context.MODE_PRIVATE)
-            .getString("voice_gender", "female").equals("male", ignoreCase = true)
-        paint.color = color(70, 220, 255, 185)
-        if (maleVoice) {
-            // Short swept-back hair and stronger brow/jaw silhouette for the male avatar.
+        paint.color = color(2, 15, 35, 220)
+        canvas.drawCircle(cx, cy, radius * 0.70f, paint)
+        // Layered translucent curved wisps create a calm smoke effect; animation follows the existing HUD phase.
+        for (i in 0 until 9) {
+            val a = phase * (if (i % 2 == 0) 0.22f else -0.16f) + i * 0.698f
+            val drift = sin(phase * 0.7f + i * 0.91f)
+            val x1 = cx + kotlin.math.cos(a) * radius * (0.12f + (i % 3) * 0.10f)
+            val y1 = cy + kotlin.math.sin(a) * radius * (0.16f + (i % 4) * 0.07f)
+            val x2 = cx + kotlin.math.cos(a + 1.35f) * radius * (0.34f + drift * 0.08f)
+            val y2 = cy + kotlin.math.sin(a + 1.35f) * radius * (0.34f + drift * 0.08f)
+            val smoke = Path().apply {
+                moveTo(x1, y1)
+                cubicTo(
+                    x1 + radius * 0.30f * sin(a + 0.7f), y1 - radius * 0.24f,
+                    x2 - radius * 0.24f, y2 + radius * 0.30f * sin(a),
+                    x2, y2
+                )
+            }
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 5f * d
-            paint.color = color(70, 220, 255, 150)
-            canvas.drawArc(RectF(cx - radius * 0.49f, cy - radius * 0.78f, cx + radius * 0.49f, cy + radius * 0.12f),
-                195f, 150f, false, paint)
-            paint.strokeWidth = 2.8f * d
-            canvas.drawLine(cx - radius * 0.30f, cy - radius * 0.20f, cx - radius * 0.08f, cy - radius * 0.23f, paint)
-            canvas.drawLine(cx + radius * 0.08f, cy - radius * 0.23f, cx + radius * 0.30f, cy - radius * 0.20f, paint)
-            paint.strokeWidth = 1.4f * d
-            canvas.drawArc(RectF(cx - radius * 0.20f, cy + radius * 0.09f, cx + radius * 0.20f, cy + radius * 0.36f),
-                18f, 144f, false, paint)
-        } else {
-            // Softer facial outline and longer side hair for the female holographic avatar.
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 3f * d
-            paint.color = color(70, 220, 255, 150)
-            canvas.drawArc(RectF(cx - radius * 0.62f, cy - radius * 0.83f, cx + radius * 0.62f, cy + radius * 0.76f),
-                115f, 130f, false, paint)
-            canvas.drawArc(RectF(cx - radius * 0.62f, cy - radius * 0.83f, cx + radius * 0.62f, cy + radius * 0.76f),
-                295f, 130f, false, paint)
-            paint.strokeWidth = 1.4f * d
-            canvas.drawArc(RectF(cx - radius * 0.17f, cy + radius * 0.10f, cx + radius * 0.17f, cy + radius * 0.34f),
-                15f, 150f, false, paint)
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.strokeJoin = Paint.Join.ROUND
+            paint.strokeWidth = (7f + (i % 3) * 3f) * d
+            paint.color = if (i % 2 == 0) color(55, 205, 255, 62) else color(145, 95, 255, 54)
+            canvas.drawPath(smoke, paint)
         }
         paint.style = Paint.Style.FILL
-        paint.color = color(70, 220, 255, 185)
-        canvas.drawCircle(cx - radius * 0.17f, cy - radius * 0.12f, 3f * d, paint)
-        canvas.drawCircle(cx + radius * 0.17f, cy - radius * 0.12f, 3f * d, paint)
-        label(canvas, if (maleVoice) "NEO • MALE VOICE" else "NEO • FEMALE VOICE",
-            cx - 48f * d, cy + radius + 20f * d, 10f * d, color(85, 230, 255), true)
+        paint.color = color(80, 195, 255, 36)
+        canvas.drawCircle(cx, cy, radius * 0.34f, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 1.2f * d
+        paint.color = color(100, 225, 255, 170)
+        canvas.drawCircle(cx, cy, radius * 0.70f, paint)
+        paint.style = Paint.Style.FILL
+        label(canvas, "NEO PLUS", cx - 29f * d, cy + radius + 20f * d, 10f * d, color(85, 230, 255), true)
 
         // Real device telemetry.
         val sys = RectF(14f * d, h - 142f * d, w * 0.43f, h - 48f * d)
@@ -460,7 +452,7 @@ private class NeoHudView(context: Context) : View(context) {
         label(canvas, "NETWORK", sys.left + 11f * d, sys.top + 65f * d, 9f * d, color(180, 220, 255))
         label(canvas, if (online) "CONNECTED" else "OFFLINE", sys.left + 70f * d, sys.top + 65f * d, 9f * d,
             color(if (online) 70 else 255, if (online) 245 else 90, 140), true)
-        label(canvas, if (elsewhere && appLabel.isNotBlank()) "APP: " + appLabel.take(16) else "TASK MONITOR ACTIVE",
+        label(canvas, "VIRTUAL TASKS ONLY",
             sys.left + 11f * d, sys.top + 84f * d, 8f * d, color(120, 220, 255))
 
         // Recent activity status at the bottom right.
@@ -474,14 +466,8 @@ private class NeoHudView(context: Context) : View(context) {
         label(canvas, "Select a card to switch focus",
             activity.left + 11f * d, activity.top + 83f * d, 8f * d, color(175, 220, 255))
 
-        // Small animated voice-like signal, purely visual activity indicator (not a microphone permission claim).
-        val waveY = h - 25f * d
-        for (i in 0 until 31) {
-            val x = w * 0.27f + i * (w * 0.46f / 30f)
-            val amplitude = (4f + 9f * kotlin.math.abs(sin(phase * 3f + i * 0.63f))) * d
-            paint.color = color(20, 210, 255, 190)
-            canvas.drawRoundRect(x, waveY - amplitude, x + 2f * d, waveY + amplitude, 2f * d, 2f * d, paint)
-        }
+        // No soundwave bars: the smoke orb is the sole voice-reactive visual.
+
     }
 }
 
@@ -495,6 +481,11 @@ private class NeoHudTaskRailView(context: Context) : View(context) {
     private var tasks: List<TaskFeed> = emptyList()
     private var cardHeight = 68f * density
     private var gap = 8f * density
+    private var scrollOffset = 0
+    private var downY = 0f
+    private var lastY = 0f
+    private var dragging = false
+    private var dragRemainder = 0f
 
     fun update(items: List<TaskFeed>) {
         tasks = items
@@ -515,8 +506,13 @@ private class NeoHudTaskRailView(context: Context) : View(context) {
         val d = density
         val left = 4f * d
         val right = width - 4f * d
-        tasks.take(5).forEachIndexed { index, task ->
-            val top = 4f * d + index * (cardHeight + gap)
+        val stride = cardHeight + gap
+        val visibleCount = ((height - 8f * d) / stride).toInt().coerceAtLeast(1)
+        val maxOffset = (tasks.size - visibleCount).coerceAtLeast(0)
+        scrollOffset = scrollOffset.coerceIn(0, maxOffset)
+        val visible = tasks.drop(scrollOffset).take(visibleCount)
+        visible.forEachIndexed { index, task ->
+            val top = 4f * d + index * stride
             val rect = RectF(left, top, right, top + cardHeight)
             paint.style = Paint.Style.FILL
             paint.color = Color.argb(225, 4, 22, 42)
@@ -545,20 +541,53 @@ private class NeoHudTaskRailView(context: Context) : View(context) {
                 canvas.drawRoundRect(bar, 3f * d, 3f * d, paint)
             }
         }
-        if (tasks.size > 5) {
-            drawText(canvas, "+" + (tasks.size - 5) + " MORE TASKS", 8f * d,
-                4f * d + 5 * (cardHeight + gap), 8f * d, Color.CYAN, true)
+        if (tasks.size > visibleCount) {
+            drawText(canvas, "${scrollOffset + 1}-${(scrollOffset + visibleCount).coerceAtMost(tasks.size)}/${tasks.size}  SWIPE",
+                8f * d, height - 4f * d, 7f * d, Color.CYAN, true)
         }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action == MotionEvent.ACTION_UP) {
-            val index = (event.y / (cardHeight + gap)).toInt()
-            val task = tasks.getOrNull(index)
-            if (task != null && event.y >= 4f * density + index * (cardHeight + gap)) {
-                // Focus changes presentation only. The task's worker and callbacks are untouched.
-                TaskLog.focusId = task.id
-                performClick()
+        val stride = cardHeight + gap
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                downY = event.y
+                lastY = event.y
+                dragging = false
+                dragRemainder = 0f
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val delta = event.y - lastY
+                if (kotlin.math.abs(event.y - downY) > 8f * density) dragging = true
+                if (dragging) {
+                    dragRemainder += delta
+                    val wholeCards = (dragRemainder / stride).toInt()
+                    if (wholeCards != 0) {
+                        val visibleCount = ((height - 8f * density) / stride).toInt().coerceAtLeast(1)
+                        val maxOffset = (tasks.size - visibleCount).coerceAtLeast(0)
+                        scrollOffset = (scrollOffset - wholeCards).coerceIn(0, maxOffset)
+                        dragRemainder -= wholeCards * stride
+                        invalidate()
+                    }
+                }
+                lastY = event.y
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                if (!dragging && event.y >= 4f * density) {
+                    val visibleIndex = ((event.y - 4f * density) / stride).toInt()
+                    val task = tasks.getOrNull(scrollOffset + visibleIndex)
+                    if (task != null) {
+                        // Focus changes presentation only. The task's worker and callbacks are untouched.
+                        TaskLog.focusId = task.id
+                        performClick()
+                    }
+                }
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                dragging = false
                 return true
             }
         }

@@ -25,10 +25,11 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -1494,6 +1495,8 @@ internal fun buildSystemPrompt(ctx: Context, apps: List<AppEntry>): String {
     return """
 You are Neo Plus Assistant, the built-in assistant of the NEO PLUS iOS launcher on an Android phone. Talk naturally and warmly, like Gemini or Siri: chat, answer questions, explain, write, translate, do maths, give advice. Keep replies short unless the user wants detail. Use plain text only: no markdown, no headings. Always reply in the language the user wrote or spoke in, including Chichewa (Chinyanja) and Swahili.
 
+FAST CONVERSATION, DELIBERATE ACTIONS: First decide whether the user is simply talking/asking for an explanation or asking you to change/do something on the phone. For ordinary conversation, answer directly and briefly using your own knowledge; do not call tools, create tasks, inspect the phone, or add action tags. Keep this path lightweight and start the reply as soon as you have a clear answer. For a clear phone command or task, wait until the user has finished speaking (the completed message is the end of their turn), then execute the requested action without unnecessary back-and-forth. Complex or multi-step actions may take seconds or minutes: run them in the background when supported, keep the user informed briefly, and report the actual result when finished. Never pretend a task is complete while it is still running. A question about how to do an action is conversation, not a command ("How do I open WhatsApp?" = explain; "Open WhatsApp" = do it). A direct polite request such as "Can you open WhatsApp?" is a command. If one message contains both conversation and a task, answer the conversational part and perform the task. Do not let task execution block or delay later ordinary conversation.
+
 You have live web search: for anything recent or that changes (news, sport, prices, events, who currently holds a role, opening hours) search first and answer from what you find, briefly, instead of guessing. Never answer recent events from memory. Do not search for things you already know well. Do not use the lookup action; use your own knowledge and your live search, or the news / sports / stock / weather actions.
 
 The user may ask several things in one message (two questions, or a question and a command). Handle every part: answer all the questions in order in one short, natural reply, and do all the actions. Your reply is spoken aloud by a human-sounding voice, so write the way a person talks: contractions, short sentences, no markdown, no bullet lists, never say you are an AI model.
@@ -1679,6 +1682,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     val messages = mutableStateListOf<ChatMsg>()
     var busy by mutableStateOf(false)
         private set
+    @Volatile private var turnGeneration = 0L
 
     init { if (!(prefs.getString("key", "") ?: "").isBlank()) Llm.warm() }
 
@@ -1786,19 +1790,36 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     fun send(raw: String, apps: List<AppEntry>) {
         val text = raw.trim()
         if (text.isEmpty()) return
-        // A website task waiting for the user (CAPTCHA / code): "continue" or "cancel" must get through even though the chat is busy.
-        WebTask.handleSpoken(text)?.let { reply ->
-            add(ChatMsg(nextId(), true, text)); add(ChatMsg(nextId(), false, reply)); return
+        // A new user turn always takes speech priority. Existing phone / website actions are allowed to finish their
+        // current step, while generation checks prevent the stale turn from starting any further actions.
+        val generation = ++turnGeneration
+        Speaker.stop()
+        if (busy) {
+            liveMsgId.takeIf { it >= 0 }?.let { id ->
+                val index = messages.indexOfLast { it.id == id }
+                if (index >= 0) messages[index] = messages[index].copy(text = messages[index].text + "  [Interrupted]")
+            }
+            liveMsgId = -1L
         }
-        if (busy) return
         add(ChatMsg(nextId(), true, text))
+        // A website task waiting for the user ("continue" / "cancel") is a new user turn too.
+        WebTask.handleSpoken(text)?.let { reply ->
+            busy = false
+            add(ChatMsg(nextId(), false, reply))
+            return
+        }
 
         val plan = LocalCommands.plan(text, apps, configured)
         if (plan != null) {
             busy = true
             track(text) {
-                val results = withContext(Dispatchers.IO) { plan.actions.map { PhoneActions.run(ctx, it.first, it.second, apps) } }
-                finish(plan.reply, results)
+                if (generation != turnGeneration) return@track
+                val results = ArrayList<ActionResult>()
+                for (action in plan.actions) {
+                    if (generation != turnGeneration) return@track
+                    results += withContext(Dispatchers.IO) { PhoneActions.run(ctx, action.first, action.second, apps) }
+                }
+                if (generation == turnGeneration) finish(plan.reply, results)
             }
             return
         }
@@ -1806,14 +1827,16 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         if (!configured) {
             busy = true
             track(text) {
+                if (generation != turnGeneration) return@track
                 val out = try { withContext(Dispatchers.IO) { Keyless.answer(ctx, text, apps) } } catch (e: Exception) { "Something went wrong." }
-                finish(out, emptyList())
+                if (generation == turnGeneration) finish(out, emptyList())
             }
             return
         }
 
         busy = true
         track(text) {
+            if (generation != turnGeneration) return@track
             // The reply is shown (and spoken, when "read replies aloud" is on) while it is still being written.
             val live = LiveReply(ctx, speak)
             try {
@@ -1821,18 +1844,25 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                 val hist = history()
                 val out = withContext(Dispatchers.IO) {
                     Agent.respond(ctx, provider, apiKey, activeModel, prompt, hist, apps, onPartial = { piece ->
-                        val shown = live.push(piece)
-                        if (shown.isNotBlank()) viewModelScope.launch(Dispatchers.Main) { showLive(shown) }
-                    })
+                        if (generation == turnGeneration) {
+                            val shown = live.push(piece)
+                            if (shown.isNotBlank()) viewModelScope.launch(Dispatchers.Main) { if (generation == turnGeneration) showLive(shown) }
+                        }
+                    }, shouldContinue = { generation == turnGeneration })
                 }
-                live.finish()
-                finish(out.text, out.results, natural = true, covered = out.fromFirstReply && live.voiceStarted)
+                if (generation == turnGeneration) live.finish()
+                if (generation == turnGeneration) finish(out.text, out.results, natural = true, covered = out.fromFirstReply && live.voiceStarted)
+            } catch (e: CancellationException) {
+                // Expected when the user interrupts this turn; do not surface it as an error.
+                throw e
             } catch (e: Exception) {
-                if (live.voiceStarted) Speaker.stop()
-                dropLive()
-                busy = false
-                add(ChatMsg(nextId(), false, e.message ?: "Something went wrong.", error = true))
-                if (TaskOrigin.didAppWork()) ChatReturn.bring(ctx)
+                if (generation == turnGeneration) {
+                    if (live.voiceStarted) Speaker.stop()
+                    dropLive()
+                    busy = false
+                    add(ChatMsg(nextId(), false, e.message ?: "Something went wrong.", error = true))
+                    if (TaskOrigin.didAppWork()) ChatReturn.bring(ctx)
+                }
             }
         }
     }

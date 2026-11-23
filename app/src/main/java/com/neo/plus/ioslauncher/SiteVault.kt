@@ -117,7 +117,6 @@ object SiteVault {
         val host = normalizeDomain(hostOrUrl)
         if (host.isBlank()) return null
         val found = load(ctx).firstOrNull { it.authorized && (host == it.domain || host.endsWith("." + it.domain)) }
-        if (found != null) return found
-        return SiteEntry(host, "", "", true)
+        return found
     }
 }
