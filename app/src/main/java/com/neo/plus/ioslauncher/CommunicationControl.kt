@@ -10,6 +10,7 @@ import org.json.JSONObject
 object CommunicationControl {
     private const val PREF = "neo_communication"
     private const val ENABLED = "enabled"
+    const val EXTRA_REPORT = "neo_communication_report"
 
     fun isEnabled(ctx: Context): Boolean =
         ctx.applicationContext.getSharedPreferences(PREF, Context.MODE_PRIVATE).getBoolean(ENABLED, false)
@@ -58,7 +59,15 @@ object CommunicationControl {
             "Welcome back. I couldn't prepare the full report: ${e.message ?: "unknown error"}. Your saved communication history is still on the phone."
         }
         setEnabled(app, false)
-        return report
+        return try {
+            val call = Intent(app, WakeCallActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra(WakeCallActivity.EXTRA_REPORT, report)
+            app.startActivity(call)
+            "Starting your NEO PLUS catch-up call now."
+        } catch (e: Exception) {
+            "I couldn't open the voice call. Here is your catch-up report:\n$report"
+        }
     }
 }
 
